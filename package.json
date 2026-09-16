@@ -1,0 +1,56 @@
+{
+  "name": "betapp-v2",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Provider-independent football data collector and dashboard",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22 <26"
+  },
+  "scripts": {
+    "build": "node scripts/clean.mjs && tsc -p tsconfig.build.json && node scripts/copy-assets.mjs",
+    "start": "node dist/server.js",
+    "start:worker": "node dist/worker.js",
+    "dev": "tsx watch src/server.ts",
+    "dev:worker": "tsx watch src/worker.ts",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:migrate:prod": "node dist/db/migrate.js",
+    "migrate": "npm run db:migrate",
+    "migrate:prod": "npm run db:migrate:prod",
+    "db:status": "tsx src/db/status-cli.ts",
+    "collect:once": "tsx src/worker.ts --once",
+    "providers:qualify": "tsx src/qualification/cli.ts",
+    "data:backfill": "tsx src/corners/backfill-cli.ts",
+    "data:audit": "tsx src/data/audit-cli.ts",
+    "corners:profiles": "tsx src/corners/profiles-cli.ts",
+    "corners:analyze": "tsx src/corners/analyze-cli.ts",
+    "corners:backtest": "tsx src/corners/backtest-cli.ts",
+    "corners:backtest:stage1": "tsx src/corners/backtest-cli.ts --stage=1",
+    "corners:live-preview": "tsx src/corners/live-preview-cli.ts",
+    "test:integration:db": "vitest run test/integration",
+    "test": "vitest run",
+    "test:unit": "vitest run test/unit",
+    "test:integration": "vitest run test/integration",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@fastify/helmet": "^13.0.2",
+    "fastify": "^5.6.2",
+    "pg": "^8.16.3",
+    "pino": "^9.14.0",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.38.0",
+    "@testcontainers/postgresql": "^12.1.0",
+    "@types/node": "^24.10.0",
+    "@types/pg": "^8.15.6",
+    "eslint": "^9.38.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.2",
+    "vitest": "^4.0.6"
+  }
+}

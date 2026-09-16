@@ -1,0 +1,100 @@
+services:
+  - type: web
+    name: betapp-v2-web
+    runtime: docker
+    plan: 0.5c-512mb
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    preDeployCommand: node dist/db/migrate.js
+    healthCheckPath: /health
+    maxShutdownDelaySeconds: 60
+    autoDeployTrigger: commit
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: betapp-v2-postgres
+          property: connectionString
+      - key: DATABASE_SSL
+        value: "true"
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: LOG_LEVEL
+        value: info
+      - key: DB_POOL_MAX
+        value: "10"
+      - key: DB_CONNECT_TIMEOUT
+        value: "5000"
+      - key: BACKFILL_ENABLED
+        value: "false"
+      - key: FOTMOB_ENABLED
+        value: "true"
+      - key: SUPPORTED_COMPETITIONS
+        value: PremierLeague,LaLiga,Bundesliga,SerieA,Ligue1,SuperLig,ChampionsLeague,EuropaLeague,ConferenceLeague
+
+  - type: worker
+    name: betapp-v2-collector
+    runtime: docker
+    plan: 0.5c-512mb
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: node dist/worker.js
+    preDeployCommand: node dist/db/migrate.js
+    maxShutdownDelaySeconds: 60
+    autoDeployTrigger: commit
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: betapp-v2-postgres
+          property: connectionString
+      - key: DATABASE_SSL
+        value: "true"
+      - key: NODE_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: info
+      - key: DB_POOL_MAX
+        value: "8"
+      - key: DB_CONNECT_TIMEOUT
+        value: "5000"
+      - key: COLLECTOR_ENABLED
+        value: "true"
+      - key: BACKFILL_ENABLED
+        value: "false"
+      - key: FOTMOB_ENABLED
+        value: "true"
+      - key: SUPPORTED_COMPETITIONS
+        value: PremierLeague,LaLiga,Bundesliga,SerieA,Ligue1,SuperLig,ChampionsLeague,EuropaLeague,ConferenceLeague
+      - key: COLLECTOR_INTERVAL_MS
+        value: "900000"
+      - key: COLLECTOR_HISTORY_DAYS
+        value: "2"
+      - key: COLLECTOR_FUTURE_DAYS
+        value: "14"
+      - key: PROVIDER_REQUESTS_PER_SECOND
+        value: "2"
+      - key: PROVIDER_TIMEOUT_MS
+        value: "10000"
+      - key: PROVIDER_MAX_RETRIES
+        value: "4"
+
+databases:
+  - name: betapp-v2-postgres
+    databaseName: betapp_v2
+    user: betapp
+    plan: 0.1c-256mb
+    region: frankfurt
+    postgresMajorVersion: "16"
+    storageAutoscalingEnabled: true
+    ipAllowList: []
+  - name: betapp-v2-test-postgres
+    databaseName: betapp_v2_test
+    user: betapp_test
+    plan: 0.1c-256mb
+    region: frankfurt
+    postgresMajorVersion: "16"
+    storageAutoscalingEnabled: true
+    ipAllowList: []

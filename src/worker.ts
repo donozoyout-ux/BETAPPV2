@@ -34,21 +34,50 @@ const oddsCollector = config.NOWGOAL_ENABLED
   ? new OddsCollector(nowgoal, oddsRepository, repository, config, logger)
   : null;
 const collectors = [...footballCollectors, ...(oddsCollector ? [oddsCollector] : [])];
+let stopped = false;
+let wakeSleep: (() => void) | undefined;
 
 function shutdown(signal: string) {
   logger.info({ signal }, 'Worker shutdown requested');
+  stopped = true;
   for (const collector of collectors) collector.stop();
+  wakeSleep?.();
 }
 
 process.once('SIGTERM', () => shutdown('SIGTERM'));
 process.once('SIGINT', () => shutdown('SIGINT'));
 
-try {
-  if (process.argv.includes('--once')) {
-    await Promise.all(footballCollectors.map((collector) => collector.runCycle()));
-    await oddsCollector?.runCycle();
+async function runCycle(): Promise<void> {
+  const results = await Promise.allSettled(footballCollectors.map((collector) => collector.runCycle()));
+  for (const result of results) {
+    if (result.status === 'rejected') logger.error({ err: result.reason }, 'Football collector cycle failed');
   }
-  else if (config.COLLECTOR_ENABLED) await Promise.all(collectors.map((collector) => collector.runForever()));
+  if (!stopped) {
+    try { await oddsCollector?.runCycle(); }
+    catch (error) { logger.error({ err: error }, 'Odds collector cycle failed'); }
+  }
+}
+
+async function waitForNextCycle(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    const finish = () => {
+      clearTimeout(timer);
+      wakeSleep = undefined;
+      resolve();
+    };
+    const timer = setTimeout(finish, config.COLLECTOR_INTERVAL_MS);
+    wakeSleep = finish;
+  });
+}
+
+try {
+  if (process.argv.includes('--once')) await runCycle();
+  else if (config.COLLECTOR_ENABLED) {
+    while (!stopped) {
+      await runCycle();
+      if (!stopped) await waitForNextCycle();
+    }
+  }
   else logger.info('Collector disabled by configuration');
 } catch (error) {
   logger.fatal({ err: error }, 'Worker initialization failed');

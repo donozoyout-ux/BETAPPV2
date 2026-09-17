@@ -9,6 +9,19 @@ export type NormalizedOdds = {
   capturedAt: Date;
 };
 
+export type OddsFixture = {
+  providerMatchId: string;
+  kickoffAt: Date;
+  homeTeam: string;
+  awayTeam: string;
+  leagueName: string | null;
+};
+
+export type MatchOdds = {
+  fixture: OddsFixture;
+  odds: NormalizedOdds[];
+};
+
 export interface OddsProvider {
   readonly name: string;
   getPrematchOdds(): Promise<NormalizedOdds[]>;

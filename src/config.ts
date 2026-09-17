@@ -11,6 +11,15 @@ const competitionList = z.string().default(supportedCompetitionKeys.join(',')).t
   return items;
 });
 
+const positiveIntegerList = z.string().default('2,3,4,14,15,22,136').transform((value, context) => {
+  const parsed = value.split(',').map((item) => Number(item.trim()));
+  const items = [...new Set(parsed.filter(Number.isFinite))];
+  if (!items.length || parsed.some((item) => !Number.isInteger(item) || item <= 0)) {
+    context.addIssue({ code: 'custom', message: 'Expected a comma-separated list of positive integer IDs' });
+  }
+  return items;
+});
+
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   HOST: z.string().default('0.0.0.0'),
@@ -23,6 +32,9 @@ const schema = z.object({
   COLLECTOR_ENABLED: booleanFromString.default(true),
   BACKFILL_ENABLED: booleanFromString.default(false),
   FOTMOB_ENABLED: booleanFromString.default(true),
+  NOWGOAL_ENABLED: booleanFromString.default(true),
+  NOWGOAL_FUTURE_DAYS: z.coerce.number().int().min(0).max(14).default(3),
+  NOWGOAL_COMPANY_IDS: positiveIntegerList,
   SUPPORTED_COMPETITIONS: competitionList,
   COLLECTOR_INTERVAL_MS: z.coerce.number().int().min(60_000).default(900_000),
   COLLECTOR_HISTORY_DAYS: z.coerce.number().int().min(0).max(30).default(2),
@@ -34,6 +46,7 @@ const schema = z.object({
   FOTMOB_BASE_URL: z.string().url().default('https://www.fotmob.com/api/data'),
   IDDAA_BASE_URL: z.string().url().default('https://www.iddaa.com'),
   FLASHSCORE_BASE_URL: z.string().url().default('https://www.flashscore.com'),
+  NOWGOAL_BASE_URL: z.string().url().default('https://nowgoal816.com/wp-json/sport-theme-plugin/v1/proxy'),
   PROVIDER_CIRCUIT_FAILURE_THRESHOLD: z.coerce.number().int().min(1).max(20).default(3),
   PROVIDER_CIRCUIT_COOLDOWN_MS: z.coerce.number().int().min(10_000).default(300_000),
 });

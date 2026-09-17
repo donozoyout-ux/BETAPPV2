@@ -1,6 +1,6 @@
 # BETAPP V2
 
-BETAPP V2; bağımsız futbol veri kaynaklarını qualification testinden geçiren, provider-bağımsız kimliklerle normalize eden ve PostgreSQL'de saklayan TypeScript/Node.js servisidir. FotMob aktif veri provider'ı, Sofascore bağımsız fakat bu ortamda engelli provider, Iddaa odds adayı ve Flashscore doğrulama adayıdır. Bu sürüm veri toplama, odds geçmişi, kaynak uzlaşması, sağlık izleme, dashboard ve açıklanabilir matematiksel Corner Engine V1'i içerir. AI, bahis önerisi ve otomatik bahis içermez.
+BETAPP V2; bağımsız futbol veri kaynaklarını qualification testinden geçiren, provider-bağımsız kimliklerle normalize eden ve PostgreSQL'de saklayan TypeScript/Node.js servisidir. FotMob aktif maç/istatistik provider'ı, Nowgoal aktif pre-match odds provider'ı, Sofascore bağımsız fakat bu ortamda engelli provider, Iddaa odds adayı ve Flashscore doğrulama adayıdır. Bu sürüm veri toplama, odds geçmişi, kaynak uzlaşması, sağlık izleme, dashboard ve açıklanabilir matematiksel Corner Engine V1'i içerir. AI, bahis önerisi ve otomatik bahis içermez.
 
 ## Kapsam
 
@@ -31,6 +31,7 @@ SofascoreProvider -> dayanıklı HTTP istemcisi -> Collector Worker
 - Takım alias normalizasyonu ve competition/kickoff/home/away tabanlı `EXACT`, `HIGH`, `MEDIUM`, `LOW`, `UNMATCHED` eşleştirme vardır. `LOW` ve `UNMATCHED` otomatik merge edilmez.
 - Ham yanıtların yalnızca ilgili kompakt parçaları, parser sürümü, content type, SHA-256 hash ve fetch zamanı ile saklanır; payload satırı 64 KiB ile sınırlandırılır.
 - `odds_snapshots` aynı oranı overwrite etmez. Ardışık aynı değer atlanır; değişimler opening/current/highest/lowest/movement/snapshotCount özetine dönüşür.
+- Nowgoal adapter'ı erişilebilir public web proxy'sinden 1X2, Asya handikapı, toplam gol ve toplam korner pre-match oranlarını alır. Bookmaker'lar `nowgoal:bet365`, `nowgoal:pinnacle` gibi ayrı provider anahtarlarıyla saklanır. Hong Kong formatındaki handikap/üst-alt fiyatları decimal formata çevrilir; maçlar takım adları ve kickoff zamanı ile mevcut FotMob kayıtlarına güvenli biçimde bağlanır, belirsiz eşleşmeler atlanır.
 - `data_observations` provider ölçümlerini, `data_consensus` ise basit `VERIFIED`, `SINGLE_SOURCE`, `CONFLICT`, `MISSING` kararını tutar.
 - HTTP istemcisi timeout, istek hızı sınırı, exponential backoff ve jitter uygular. Provider kesintisi cycle'ı pas geçer; worker yaşamaya devam eder.
 - Art arda provider hatalarında circuit breaker açılır ve cooldown boyunca gereksiz istek gönderilmez.
@@ -63,7 +64,7 @@ Ayrı terminalde collector:
 npm run dev:worker
 ```
 
-Tek seferlik veri toplama için `npm run collect:once` kullanın. Dashboard `http://localhost:3000`, health endpoint `GET /health`, dashboard JSON verisi `GET /api/dashboard` adresindedir.
+Tek seferlik veri toplama için `npm run collect:once` kullanın. Dashboard `http://localhost:3000`, health endpoint `GET /health`, dashboard JSON verisi `GET /api/dashboard`, normalize edilmiş yaklaşan Nowgoal oranları `GET /api/odds/upcoming` adresindedir.
 
 Corner veri hattı:
 
@@ -142,6 +143,9 @@ DB_TEST_SCHEMA=betapp_test_integration npm run test:integration:db
 | `COLLECTOR_ENABLED` | `true` | Worker döngüsünü etkinleştirir |
 | `BACKFILL_ENABLED` | `false` | Uzun historical backfill job'una açık opt-in verir |
 | `FOTMOB_ENABLED` | `true` | FotMob collector/backfill provider'ını etkinleştirir |
+| `NOWGOAL_ENABLED` | `true` | Nowgoal pre-match odds collector'ını etkinleştirir |
+| `NOWGOAL_FUTURE_DAYS` | `3` | Bugün dahil ileri odds toplama penceresi |
+| `NOWGOAL_COMPANY_IDS` | `2,3,4,14,15,22,136` | Virgülle ayrılmış Nowgoal bookmaker ID listesi |
 | `SUPPORTED_COMPETITIONS` | dokuz turnuva | Virgülle ayrılmış sabit competition key listesi |
 | `COLLECTOR_INTERVAL_MS` | `900000` | Cycle aralığı (en az 60 sn) |
 | `COLLECTOR_HISTORY_DAYS` | `2` | Her tamamlanan cycle'da geriye bakış |
@@ -153,6 +157,7 @@ DB_TEST_SCHEMA=betapp_test_integration npm run test:integration:db
 | `FOTMOB_BASE_URL` | `https://www.fotmob.com/api/data` | FotMob public web veri endpoint'i |
 | `IDDAA_BASE_URL` | `https://www.iddaa.com` | Iddaa public site qualification adresi |
 | `FLASHSCORE_BASE_URL` | `https://www.flashscore.com` | Flashscore public site qualification adresi |
+| `NOWGOAL_BASE_URL` | public proxy URL | Nowgoal web istemcisinin kullandığı, değiştirilebilir odds proxy adresi |
 | `PROVIDER_CIRCUIT_FAILURE_THRESHOLD` | `3` | Circuit açılmadan önce hata sayısı |
 | `PROVIDER_CIRCUIT_COOLDOWN_MS` | `300000` | Yeniden deneme bekleme süresi |
 
@@ -203,7 +208,7 @@ Test başlangıçta bu schema'yı oluşturur, search path'i sadece ona yönlendi
    npm run providers:qualify
    ```
 
-5. `/health`, `/api/dashboard` ve `/api/backfill/status` endpoint'lerini doğrulayın. FotMob canlı erişimi qualification çıktısında `SUPPORTED` olmalıdır; Sofascore bölgesel olarak `BLOCKED` kalabilir.
+5. `/health`, `/api/dashboard` ve `/api/backfill/status` endpoint'lerini doğrulayın. FotMob ve Nowgoal canlı erişimi qualification çıktısında `SUPPORTED` olmalıdır; Sofascore bölgesel olarak `BLOCKED` kalabilir.
 6. Render Shell veya aynı internal database'e bağlı kontrollü job ortamında önce önceki tam Premier League sezonunu doldurun:
 
    ```bash
@@ -224,3 +229,5 @@ Render web süreci `Dockerfile` varsayılan komutunu, worker ise `node dist/work
 4. Worker composition root'unda provider'ı kaydedin.
 
 Provider'a özgü ID veya payloadlar domain tablolarına anahtar olarak taşınmamalıdır; bunlar `provider_entities` ve `source_payloads` sınırında kalır.
+
+Nowgoal web endpoint'i resmi/sözleşmeli bir geliştirici API'si değildir. Üretim kullanımı öncesi kullanım koşullarını ve veri lisansını doğrulayın. Endpoint değişikliği veya erişim engeli halinde adapter `UNAVAILABLE/BLOCKED` raporlar; boş ya da sentetik oran üretmez. İlk görülen geçerli fiyat opening snapshot olur, sonraki farklı fiyatlar movement geçmişine eklenir.

@@ -31,6 +31,14 @@ services:
         value: "false"
       - key: FOTMOB_ENABLED
         value: "true"
+      - key: NOWGOAL_ENABLED
+        value: "true"
+      - key: NOWGOAL_FUTURE_DAYS
+        value: "3"
+      - key: NOWGOAL_COMPANY_IDS
+        value: 2,3,4,14,15,22,136
+      - key: NOWGOAL_BASE_URL
+        value: https://nowgoal816.com/wp-json/sport-theme-plugin/v1/proxy
       - key: SUPPORTED_COMPETITIONS
         value: PremierLeague,LaLiga,Bundesliga,SerieA,Ligue1,SuperLig,ChampionsLeague,EuropaLeague,ConferenceLeague
 
@@ -66,6 +74,14 @@ services:
         value: "false"
       - key: FOTMOB_ENABLED
         value: "true"
+      - key: NOWGOAL_ENABLED
+        value: "true"
+      - key: NOWGOAL_FUTURE_DAYS
+        value: "3"
+      - key: NOWGOAL_COMPANY_IDS
+        value: 2,3,4,14,15,22,136
+      - key: NOWGOAL_BASE_URL
+        value: https://nowgoal816.com/wp-json/sport-theme-plugin/v1/proxy
       - key: SUPPORTED_COMPETITIONS
         value: PremierLeague,LaLiga,Bundesliga,SerieA,Ligue1,SuperLig,ChampionsLeague,EuropaLeague,ConferenceLeague
       - key: COLLECTOR_INTERVAL_MS

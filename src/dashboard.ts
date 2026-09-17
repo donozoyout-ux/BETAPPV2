@@ -1,7 +1,7 @@
 type DashboardData = { matches: Array<Record<string, unknown>>; providers: Array<Record<string, unknown>>;
   qualification?: Array<Record<string, unknown>>; cornerAnalyses?: Array<Record<string, unknown>>;
   datasetAudit?: Record<string, unknown> | null; validation?: Record<string, unknown> | null;
-  backfill?: Array<Record<string, unknown>> };
+  backfill?: Array<Record<string, unknown>>; odds?: Array<Record<string, unknown>> };
 type ValidationMetric = { count?: unknown; sample?: unknown; averagePredictedProbability?: unknown; actualHitRate?: unknown;
   absoluteCalibrationError?: unknown; mae?: unknown; brier?: unknown };
 type DatasetAuditView = { totalMatches?: unknown; cornerCoverage?: { complete?: { rate?: unknown } };
@@ -57,6 +57,12 @@ export function renderDashboard(data: DashboardData): string {
     <td>${escapeHtml(run.matches_stored)}</td><td>${escapeHtml(run.corner_complete)}</td><td>${escapeHtml(run.partial)}</td>
     <td>${escapeHtml(run.failed)}</td><td>${escapeHtml(run.retries)}</td><td>${escapeHtml(run.last_checkpoint)}</td></tr>`).join('')
     : '<tr><td colspan="10">Henüz backfill çalıştırılmadı.</td></tr>';
+  const oddsRows = (data.odds ?? []).length ? (data.odds ?? []).map((odd) => `<tr>
+    <td>${escapeHtml(new Date(String(odd.kickoff_at)).toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }))}</td>
+    <td>${escapeHtml(odd.home_team)} – ${escapeHtml(odd.away_team)}</td><td>${escapeHtml(String(odd.provider).replace('nowgoal:', ''))}</td>
+    <td>${escapeHtml(odd.market_name)}</td><td>${odd.line == null ? '—' : escapeHtml(odd.line)}</td><td>${escapeHtml(odd.selection)}</td>
+    <td>${Number(odd.current_odds).toFixed(2)}</td><td>${Number(odd.movement_percent ?? 0).toFixed(2)}%</td></tr>`).join('')
+    : '<tr><td colspan="8">Henüz eşleşmiş Nowgoal oranı yok.</td></tr>';
   const datasetHealth = audit ? `<div class="grid">
     <article class="card"><strong>Historical matches</strong><p>${escapeHtml(audit.totalMatches)}</p></article>
     <article class="card"><strong>Corner coverage</strong><p>${percent(audit.cornerCoverage?.complete?.rate)}</p></article>
@@ -89,6 +95,7 @@ export function renderDashboard(data: DashboardData): string {
     <section><h2>Dataset Health</h2>${datasetHealth}<h3>Backfill Progress</h3><div class="scroll"><table><thead><tr><th>Competition</th><th>Season</th><th>Status</th><th>Discovered</th><th>Stored</th><th>Complete</th><th>Partial</th><th>Failed</th><th>Retries</th><th>Checkpoint</th></tr></thead><tbody>${backfillRows}</tbody></table></div></section>
     <section><h2>Corner Model Validation</h2>${modelValidation}</section>
     <section><h2>Corner Analysis</h2><div class="scroll"><table><thead><tr><th>Maç</th><th>Expected Corners</th><th>O8.5</th><th>O9.5</th><th>O10.5</th><th>Data Quality</th><th>Confidence</th></tr></thead><tbody>${cornerRows}</tbody></table></div></section>
+    <section><h2>Nowgoal Pre-match Odds</h2><div class="scroll"><table><thead><tr><th>Saat</th><th>Maç</th><th>Bookmaker</th><th>Market</th><th>Line</th><th>Selection</th><th>Current</th><th>Movement</th></tr></thead><tbody>${oddsRows}</tbody></table></div></section>
     <section><h2>Bugünün Maçları</h2><table><thead><tr><th>Saat</th><th>Lig</th><th>Maç</th><th>Durum</th><th>Mevcut istatistik alanları</th></tr></thead><tbody>${rows}</tbody></table></section>
     </main></body></html>`;
 }

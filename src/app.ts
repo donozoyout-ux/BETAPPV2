@@ -20,6 +20,7 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
   });
 
   app.get('/api/dashboard', async () => repository.dashboardData('Europe/Istanbul'));
+  app.get('/api/odds/upcoming', async () => ({ odds: await repository.upcomingOdds(1000) }));
   app.get('/api/backfill/status', async () => repository.backfillStatus());
   app.get('/', async (_request, reply) => {
     const data = await repository.dashboardData('Europe/Istanbul');

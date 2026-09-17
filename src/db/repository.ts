@@ -331,12 +331,12 @@ export class FootballRepository {
 
   async databaseHealth() {
     const startedAt = Date.now();
-    const requiredTables = ['leagues','teams','matches','provider_entities','match_statistics','collector_checkpoints',
+    const requiredTables = ['leagues','teams','matches','provider_entities','match_statistics','collector_checkpoints','odds_snapshots',
       'historical_match_stats','team_corner_profiles','league_corner_baselines','corner_model_versions','corner_analyses',
       'corner_backtests','backfill_runs','backfill_failures','dataset_audits'];
     const requiredIndexes = ['matches_kickoff_idx','provider_entities_internal_idx','historical_stats_competition_kickoff_idx',
       'historical_stats_home_kickoff_idx','historical_stats_away_kickoff_idx','backfill_runs_status_idx',
-      'backfill_failures_retry_idx','dataset_audits_created_idx','corner_backtests_created_idx'];
+      'backfill_failures_retry_idx','dataset_audits_created_idx','corner_backtests_created_idx','odds_history_idx'];
     const checks = { connection: false, read: false, write: false, transaction: false, advisoryLock: false,
       migrationTable: false, requiredTables: false, requiredIndexes: false };
     try {
@@ -397,7 +397,7 @@ export class FootballRepository {
     ]);
     const providerMap = new Map(providerRows.rows.map((row) => [row.provider, row]));
     for (const row of qualificationRows.rows) if (!providerMap.has(row.provider)) providerMap.set(row.provider, row);
-    const providers = Object.fromEntries(['fotmob','sofascore','iddaa','flashscore'].map((name) =>
+    const providers = Object.fromEntries(['fotmob','sofascore','iddaa','flashscore','nowgoal'].map((name) =>
       [name, providerMap.get(name) ?? { provider: name, status: 'unknown' }]));
     return { providers, worker: { lastRun: workerRows.rows[0]?.last_run ?? null, lastSuccess: workerRows.rows[0]?.last_success ?? null },
       backfill: backfillRows.rows[0] ?? { status: 'NOT_STARTED' } };
@@ -416,7 +416,7 @@ export class FootballRepository {
   }
 
   async dashboardData(timeZone: string) {
-    const [matches, providers, qualification, cornerAnalyses, datasetAudit, validation, backfill] = await Promise.all([
+    const [matches, providers, qualification, cornerAnalyses, datasetAudit, validation, backfill, odds] = await Promise.all([
       this.pool.query(
         `SELECT m.id,m.kickoff_at,m.status,m.home_score,m.away_score,l.name AS league,
           ht.name AS home_team,at.name AS away_team,
@@ -439,9 +439,24 @@ export class FootballRepository {
       this.pool.query('SELECT report,created_at FROM dataset_audits ORDER BY created_at DESC LIMIT 1'),
       this.pool.query('SELECT report,model_version,config_hash,created_at FROM corner_backtests ORDER BY created_at DESC LIMIT 1'),
       this.pool.query('SELECT * FROM backfill_runs ORDER BY updated_at DESC LIMIT 20'),
+      this.upcomingOdds(300),
     ]);
     return { matches: matches.rows, providers: providers.rows, qualification: qualification.rows, cornerAnalyses: cornerAnalyses.rows,
-      datasetAudit: datasetAudit.rows[0] ?? null, validation: validation.rows[0] ?? null, backfill: backfill.rows };
+      datasetAudit: datasetAudit.rows[0] ?? null, validation: validation.rows[0] ?? null, backfill: backfill.rows, odds };
+  }
+
+  async upcomingOdds(limit = 300) {
+    const safeLimit = Math.max(1, Math.min(1000, Math.trunc(limit)));
+    return (await this.pool.query(
+      `SELECT os.match_id,m.kickoff_at,l.name league,home.name home_team,away.name away_team,
+        os.provider,os.market_type,os.market_name,os.line,os.selection,os.opening_odds,os.current_odds,
+        os.highest_odds,os.lowest_odds,os.movement_percent,os.snapshot_count
+       FROM odds_summary os JOIN matches m ON m.id=os.match_id JOIN leagues l ON l.id=m.league_id
+       JOIN teams home ON home.id=m.home_team_id JOIN teams away ON away.id=m.away_team_id
+       WHERE m.status IN ('scheduled','live') AND m.kickoff_at >= now() - interval '3 hours'
+       AND os.provider LIKE 'nowgoal:%'
+       ORDER BY m.kickoff_at,home.name,os.market_type,os.line NULLS FIRST,os.provider,os.selection
+       LIMIT $1`, [safeLimit])).rows;
   }
 
   async cornerAnalysisDetail(matchId: string) {

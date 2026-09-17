@@ -6,6 +6,7 @@ import { FotMobProvider } from '../providers/fotmob.js';
 import { FlashscoreProvider, IddaaProvider } from '../providers/public-page-provider.js';
 import { SofascoreProvider } from '../providers/sofascore.js';
 import type { ProviderQualification } from './types.js';
+import { NowgoalProvider } from '../providers/nowgoal.js';
 
 function printReport(report: ProviderQualification) {
   console.log(`\n${report.provider.toUpperCase()}\nConnection: ${report.connection}`);
@@ -23,6 +24,7 @@ const providers = [
   new FotMobProvider(config, logger),
   new IddaaProvider(config),
   new FlashscoreProvider(config),
+  new NowgoalProvider(config, logger),
 ];
 
 console.log('PROVIDER QUALIFICATION');

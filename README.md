@@ -219,7 +219,7 @@ Test başlangıçta bu schema'yı oluşturur, search path'i sadece ona yönlendi
 
 7. Stage 1 raporu doğrulandıktan sonra kalan ligleri README'deki sırayla backfill edin ve son olarak `npm run corners:backtest` çalıştırın.
 
-Render web süreci `Dockerfile` varsayılan komutunu, worker ise `node dist/worker.js` komutunu kullanır. Uygulama runtime'ları migration çalıştırmaz; migration yalnızca `db:migrate` CLI/pre-deploy adımıyla uygulanır. Render servisleri aynı production database'in internal URL'sini kullanır; dışarıdan kullanılan Render PostgreSQL URL'lerinde TLS açılmalıdır.
+Render web süreci `Dockerfile` varsayılan komutunu, worker ise `node dist/worker.js` komutunu kullanır. Docker web başlangıcı önce advisory-lock korumalı, idempotent migration komutunu çalıştırır; bu sayede pre-deploy alanı sunmayan manuel Render servisleri de güvenli biçimde hazırlanır. Blueprint ayrıca aynı migration'ı pre-deploy aşamasında çalıştırabilir. Render servisleri aynı production database'in internal URL'sini kullanır; dışarıdan kullanılan Render PostgreSQL URL'lerinde TLS açılmalıdır.
 
 ## Yeni provider ekleme
 

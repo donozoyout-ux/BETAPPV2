@@ -16,4 +16,4 @@ RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=builder --chown=betapp:betapp /app/dist ./dist
 USER betapp
 EXPOSE 3000
-CMD ["node", "dist/server.js"]
+CMD ["sh", "-c", "node dist/db/migrate.js && exec node dist/server.js"]

@@ -122,3 +122,35 @@ A factor needs at least 12 binary outcomes, while the shared baseline needs at l
 API: `GET /api/predictions/self-audit/root-causes`
 
 CLI: `npm run predictions:self-audit` returns global V1, segmented V2, and root-cause V3 reports.
+
+
+## Self-Audit V4 — Adaptive Rule Proposals
+
+`SELF_AUDIT_V4` converts sufficiently strong V3 evidence into deterministic, human-reviewable rule proposals. It never changes `PredictionConfig`, never edits historical predictions, and never gains real-bet or AI execution authority.
+
+V4 evaluates the most recent 100 settled official predictions. A global baseline needs at least 40 binary outcomes. Two-factor interaction proposals need at least 15 binary outcomes in the exact combination. The engine requires both meaningful underperformance versus the global baseline and additional deterioration versus the weaker of the two individual parent factors before it calls the interaction actionable.
+
+Examples of proposal conditions:
+
+- `Prediction Score: 70-74`
+- `Bookmaker: 3`
+- `Prediction Score: 70-74 + Bookmaker: 3`
+- `Historical N: 30-49 + Agreement: 67-79%`
+
+Proposal types:
+
+- `SINGLE_FACTOR_GUARD`: a V3 factor with strong high-risk evidence.
+- `COMBINATION_GUARD`: two factors whose joint outcome is materially worse than both the overall baseline and their weaker individual parent.
+
+Every proposal stores sample size, positive-rate gap, reference-paper ROI gap, interaction gaps, evidence strength, a deterministic proposal score, and immutable reason codes. The suggested action is an `ADD_SKIP_RULE`, but `autoApply=false` and `executionAuthority=false`.
+
+Each V4 evaluation has its own immutable run record. If a later run produces zero proposals, older proposals remain in audit history but disappear from the current dashboard view. Repeated worker cycles with unchanged settlement evidence are idempotent.
+
+Human decisions are also immutable and stored separately as `APPROVED` or `REJECTED`. Approval does not activate the rule; applying an approved proposal requires a separate reviewed code/config change.
+
+Read-only API: `GET /api/predictions/self-audit/proposals`
+
+CLI refresh: `npm run predictions:self-audit`
+
+CLI decision:
+`npm run predictions:proposal:decide -- <proposal-uuid> <APPROVED|REJECTED> [note]`

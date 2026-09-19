@@ -280,6 +280,80 @@ export class PredictionRepository {
     };
   }
 
+  async runSegmentSelfAudit(modelConfig: PredictionConfig = predictionConfig, auditConfig: SelfAuditConfig = selfAuditV2Config) {
+    const result = await this.pool.query(`SELECT s.id settlement_id,s.settled_at,s.outcome,s.reference_paper_return,
+      j.historical_hit_rate,j.market_type,m.league_id competition_id,l.name competition_name
+      FROM prediction_settlements s JOIN prediction_journal j ON j.id=s.prediction_journal_id
+      JOIN matches m ON m.id=j.match_id JOIN leagues l ON l.id=m.league_id
+      WHERE j.decision='PREDICT' AND j.model_version=$1 AND j.config_hash=$2 AND j.market_type IS NOT NULL
+      ORDER BY s.settled_at DESC,s.id DESC`, [modelConfig.modelVersion,predictionConfigHash(modelConfig)]);
+    const records = result.rows.map((row): SegmentSelfAuditRecord => ({
+      settlementId: String(row.settlement_id),
+      settledAt: new Date(String(row.settled_at)),
+      outcome: String(row.outcome) as SettlementOutcome,
+      referencePaperReturn: Number(row.reference_paper_return),
+      historicalHitRate: row.historical_hit_rate == null ? null : Number(row.historical_hit_rate),
+      competitionId: String(row.competition_id),
+      competitionName: String(row.competition_name),
+      marketType: String(row.market_type),
+    }));
+    const reports = evaluateSegmentSelfAudits(records, new Date(), auditConfig);
+    const predictionConfigHashValue = predictionConfigHash(modelConfig);
+    for (const report of reports) {
+      await this.pool.query(`INSERT INTO prediction_self_audit_segments(
+        audit_version,model_version,prediction_config_hash,config_hash,input_hash,scope_type,segment_key,
+        competition_id,competition_name,market_type,evaluated_at,status,settled_sample_size,binary_sample_size,
+        recent_sample_size,recent_binary_sample_size,recent_positive_rate,recent_reference_paper_roi,calibration_mae,
+        calibration_sample_size,loss_streak,pause_until,reasons,metrics)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23::jsonb,$24::jsonb)
+        ON CONFLICT(audit_version,model_version,prediction_config_hash,config_hash,segment_key,input_hash) DO NOTHING`,
+      [report.version,modelConfig.modelVersion,predictionConfigHashValue,report.configHash,report.inputHash,report.scopeType,
+        report.segmentKey,report.competitionId,report.competitionName,report.marketType,report.evaluatedAt,report.status,
+        report.settledSampleSize,report.binarySampleSize,report.recentSampleSize,report.recentBinarySampleSize,
+        report.recentPositiveRate,report.recentReferencePaperRoi,report.calibrationMae,report.calibrationSampleSize,
+        report.lossStreak,report.pauseUntil,JSON.stringify(report.reasons),JSON.stringify(report.metrics)]);
+    }
+    return this.latestSegmentSelfAudits(modelConfig);
+  }
+
+  async latestSegmentSelfAudits(modelConfig: PredictionConfig = predictionConfig) {
+    const result = await this.pool.query(`SELECT DISTINCT ON(segment_key)
+      id,audit_version,model_version,prediction_config_hash,config_hash,input_hash,scope_type,segment_key,
+      competition_id,competition_name,market_type,evaluated_at,status,settled_sample_size,binary_sample_size,
+      recent_sample_size,recent_binary_sample_size,recent_positive_rate,recent_reference_paper_roi,calibration_mae,
+      calibration_sample_size,loss_streak,pause_until,reasons,metrics
+      FROM prediction_self_audit_segments
+      WHERE model_version=$1 AND prediction_config_hash=$2
+      ORDER BY segment_key,evaluated_at DESC,created_at DESC,id DESC`,
+    [modelConfig.modelVersion,predictionConfigHash(modelConfig)]);
+    const now = new Date();
+    const severity = (status: string, guardActive: boolean) =>
+      status === 'PAUSED' && guardActive ? 0 : status === 'WATCH' ? 1 : status === 'PAUSED' ? 2
+      : status === 'INSUFFICIENT_DATA' ? 3 : 4;
+    return result.rows.map((row) => {
+      const pauseUntil = row.pause_until == null ? null : new Date(String(row.pause_until));
+      const guardActive = pauseUntil != null && pauseUntil > now;
+      return {
+        id: String(row.id), version: String(row.audit_version), modelVersion: String(row.model_version),
+        predictionConfigHash: String(row.prediction_config_hash), configHash: String(row.config_hash),
+        inputHash: String(row.input_hash), scopeType: String(row.scope_type),
+        segmentKey: String(row.segment_key), competitionId: row.competition_id == null ? null : String(row.competition_id),
+        competitionName: row.competition_name == null ? null : String(row.competition_name),
+        marketType: row.market_type == null ? null : String(row.market_type),
+        evaluatedAt: new Date(String(row.evaluated_at)), status: String(row.status) as SelfAuditStatus,
+        settledSampleSize: Number(row.settled_sample_size), binarySampleSize: Number(row.binary_sample_size),
+        recentSampleSize: Number(row.recent_sample_size), recentBinarySampleSize: Number(row.recent_binary_sample_size),
+        recentPositiveRate: row.recent_positive_rate == null ? null : Number(row.recent_positive_rate),
+        recentReferencePaperRoi: row.recent_reference_paper_roi == null ? null : Number(row.recent_reference_paper_roi),
+        calibrationMae: row.calibration_mae == null ? null : Number(row.calibration_mae),
+        calibrationSampleSize: Number(row.calibration_sample_size), lossStreak: Number(row.loss_streak),
+        pauseUntil, guardActive, reasons: Array.isArray(row.reasons) ? row.reasons.map(String) : [],
+        metrics: row.metrics as Record<string, number>,
+      };
+    }).sort((a, b) => severity(a.status, a.guardActive) - severity(b.status, b.guardActive)
+      || b.recentSampleSize - a.recentSampleSize || a.segmentKey.localeCompare(b.segmentKey));
+  }
+
   async previews() {
     return (await this.pool.query(`SELECT DISTINCT ON(r.match_id) r.*,m.kickoff_at,l.name league,ht.name home_team,at.name away_team,
       CASE WHEN j.id IS NULL THEN 'PREVIEW' ELSE CASE WHEN j.decision='PREDICT' THEN 'LOCKED_PREDICTION' ELSE 'LOCKED_SKIP' END END state

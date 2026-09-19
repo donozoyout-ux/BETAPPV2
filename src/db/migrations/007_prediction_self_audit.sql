@@ -2,6 +2,7 @@ CREATE TABLE IF NOT EXISTS prediction_self_audits (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   audit_version text NOT NULL,
   model_version text NOT NULL,
+  prediction_config_hash text NOT NULL,
   config_hash text NOT NULL,
   input_hash text NOT NULL,
   evaluated_at timestamptz NOT NULL,
@@ -15,11 +16,12 @@ CREATE TABLE IF NOT EXISTS prediction_self_audits (
   calibration_mae numeric(10,8),
   calibration_sample_size integer NOT NULL,
   loss_streak integer NOT NULL,
+  pause_until timestamptz,
   reasons jsonb NOT NULL DEFAULT '[]'::jsonb,
   metrics jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE(audit_version,model_version,config_hash,input_hash)
+  UNIQUE(audit_version,model_version,prediction_config_hash,config_hash,input_hash)
 );
 
 CREATE INDEX IF NOT EXISTS prediction_self_audits_latest_idx
-  ON prediction_self_audits(model_version,evaluated_at DESC,created_at DESC);
+  ON prediction_self_audits(model_version,prediction_config_hash,evaluated_at DESC,created_at DESC);

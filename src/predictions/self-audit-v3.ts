@@ -145,7 +145,12 @@ function agreementBucket(value: number | null): string | null {
   return '90%+';
 }
 
-function factorValue(row: RootCauseRecord, dimension: RootCauseDimension): string | null {
+export const ROOT_CAUSE_DIMENSIONS: RootCauseDimension[] = [
+  'PREDICTION_SCORE','BOOKMAKER_COUNT','HISTORICAL_SAMPLE','DATA_QUALITY_GRADE',
+  'CONFIDENCE_GRADE','MOVEMENT_CLASS','AGREEMENT_RATIO',
+];
+
+export function rootCauseFactorValue(row: RootCauseRecord, dimension: RootCauseDimension): string | null {
   switch (dimension) {
     case 'PREDICTION_SCORE': return scoreBucket(row.predictionScore);
     case 'BOOKMAKER_COUNT': return bookmakerBucket(row.bookmakerCount);
@@ -157,7 +162,7 @@ function factorValue(row: RootCauseRecord, dimension: RootCauseDimension): strin
   }
 }
 
-function bucketLabel(dimension: RootCauseDimension, value: string): string {
+export function rootCauseBucketLabel(dimension: RootCauseDimension, value: string): string {
   const names: Record<RootCauseDimension, string> = {
     PREDICTION_SCORE: 'Prediction Score',
     BOOKMAKER_COUNT: 'Bookmaker',
@@ -186,16 +191,13 @@ export function evaluateRootCauses(
   const baselineBinary = recent.filter((row) => isBinary(row.outcome));
   const baselinePositiveRate = positiveRate(recent);
   const baselineReferencePaperRoi = paperRoi(recent);
-  const dimensions: RootCauseDimension[] = [
-    'PREDICTION_SCORE','BOOKMAKER_COUNT','HISTORICAL_SAMPLE','DATA_QUALITY_GRADE',
-    'CONFIDENCE_GRADE','MOVEMENT_CLASS','AGREEMENT_RATIO',
-  ];
+  const dimensions = ROOT_CAUSE_DIMENSIONS;
   const reports: RootCauseReport[] = [];
 
   for (const dimension of dimensions) {
     const groups = new Map<string, RootCauseRecord[]>();
     for (const row of recent) {
-      const value = factorValue(row, dimension);
+      const value = rootCauseFactorValue(row, dimension);
       if (value == null) continue;
       groups.set(value, [...(groups.get(value) ?? []), row]);
     }
@@ -249,7 +251,7 @@ export function evaluateRootCauses(
           outcome: row.outcome,
           referencePaperReturn: row.referencePaperReturn,
           historicalHitRate: row.historicalHitRate,
-          factor: factorValue(row, dimension),
+          factor: rootCauseFactorValue(row, dimension),
         })),
       }))).digest('hex');
 
@@ -260,7 +262,7 @@ export function evaluateRootCauses(
         evaluatedAt,
         dimension,
         bucketKey: value,
-        bucketLabel: bucketLabel(dimension, value),
+        bucketLabel: rootCauseBucketLabel(dimension, value),
         status,
         settledSampleSize: rows.length,
         binarySampleSize: binary.length,

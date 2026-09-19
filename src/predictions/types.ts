@@ -8,7 +8,7 @@ export type SkipReason = 'NO_ODDS_ANALYSIS' | 'ODDS_NOT_ELIGIBLE' | 'LOW_DATA_QU
   | 'LOW_MODEL_CONFIDENCE' | 'INSUFFICIENT_BOOKMAKERS' | 'INSUFFICIENT_COMPLETE_STATES'
   | 'MOVEMENT_NOT_SUPPORTED' | 'INSUFFICIENT_HISTORICAL_SAMPLE' | 'LOW_PREDICTION_SCORE'
   | 'CONFLICTING_CORNER_MODEL' | 'LOCK_WINDOW_MISSED' | 'UNSUPPORTED_MARKET' | 'NO_SETTLEMENT_DATA'
-  | 'SELF_AUDIT_PAUSED';
+  | 'SELF_AUDIT_PAUSED' | 'SELF_AUDIT_SEGMENT_PAUSED';
 
 export type HistoricalExample = {
   id: string; matchId: string; competitionId: string; kickoffAt: Date; oddsInputHash: string;
@@ -52,7 +52,8 @@ export type PredictionEvaluation = {
   inputHash: string; oddsAnalysisInputHash: string; generatedAt: Date; decision: PredictionDecision;
   selectedCandidate: PredictionCandidate | null; candidates: PredictionCandidate[]; skipReasons: SkipReason[];
   metadata: { executionAuthority: false; aiPredictionAuthority: false; historicalExamplesConsidered: number;
-    selfAuditStatus?: 'INSUFFICIENT_DATA' | 'HEALTHY' | 'WATCH' | 'PAUSED'; selfAuditId?: string | null };
+    selfAuditStatus?: 'INSUFFICIENT_DATA' | 'HEALTHY' | 'WATCH' | 'PAUSED'; selfAuditId?: string | null;
+    selfAuditSegmentKeys?: string[]; selfAuditSegmentStatuses?: Record<string,'INSUFFICIENT_DATA' | 'HEALTHY' | 'WATCH' | 'PAUSED'> };
 };
 
 export type PredictionTarget = {

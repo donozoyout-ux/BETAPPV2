@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { analyzeOdds } from '../odds-analysis/engine.js';
 import type { AnalysisItem, OddsSnapshot } from '../odds-analysis/types.js';
 import type { DatabasePool } from '../db/pool.js';
@@ -5,6 +6,7 @@ import { predictionConfig, predictionConfigHash, type PredictionConfig } from '.
 import { evaluatePrediction, lockWindowState } from './engine.js';
 import { buildPerformance, runPredictionBacktestFromSnapshots, type PerformanceRecord } from './history.js';
 import { referencePaperReturn, settlePrediction } from './settlement.js';
+import { evaluateSelfAudit, selfAuditConfig, type SelfAuditConfig, type SelfAuditRecord, type SelfAuditStatus } from './self-audit.js';
 import type { HistoricalExample, PredictionEvaluation, PredictionTarget, SettlementOutcome } from './types.js';
 
 function analysisItem(row: Record<string, unknown>): AnalysisItem {
@@ -219,6 +221,59 @@ export class PredictionRepository {
     return { candidates: result.rows.length, settled, unavailable };
   }
 
+  async runSelfAudit(config: SelfAuditConfig = selfAuditConfig) {
+    const result = await this.pool.query(`SELECT s.id settlement_id,s.settled_at,s.outcome,s.reference_paper_return,
+      j.historical_hit_rate FROM prediction_settlements s
+      JOIN prediction_journal j ON j.id=s.prediction_journal_id
+      WHERE j.decision='PREDICT' AND j.model_version=$1
+      ORDER BY s.settled_at DESC,s.id DESC`, [predictionConfig.modelVersion]);
+    const records = result.rows.map((row): SelfAuditRecord => ({
+      settlementId: String(row.settlement_id),
+      settledAt: new Date(String(row.settled_at)),
+      outcome: String(row.outcome) as SettlementOutcome,
+      referencePaperReturn: Number(row.reference_paper_return),
+      historicalHitRate: row.historical_hit_rate == null ? null : Number(row.historical_hit_rate),
+    }));
+    const report = evaluateSelfAudit(records, new Date(), config);
+    const inserted = await this.pool.query<{ id: string }>(`INSERT INTO prediction_self_audits(
+      audit_version,model_version,config_hash,input_hash,evaluated_at,status,settled_sample_size,binary_sample_size,
+      recent_sample_size,recent_binary_sample_size,recent_positive_rate,recent_reference_paper_roi,calibration_mae,
+      calibration_sample_size,loss_streak,reasons,metrics)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17::jsonb)
+      ON CONFLICT(audit_version,model_version,config_hash,input_hash) DO NOTHING RETURNING id`,
+    [report.version,predictionConfig.modelVersion,report.configHash,report.inputHash,report.evaluatedAt,report.status,
+      report.settledSampleSize,report.binarySampleSize,report.recentSampleSize,report.recentBinarySampleSize,
+      report.recentPositiveRate,report.recentReferencePaperRoi,report.calibrationMae,report.calibrationSampleSize,
+      report.lossStreak,JSON.stringify(report.reasons),JSON.stringify(report.metrics)]);
+    const id = inserted.rows[0]?.id ?? (await this.pool.query<{ id: string }>(`SELECT id FROM prediction_self_audits
+      WHERE audit_version=$1 AND model_version=$2 AND config_hash=$3 AND input_hash=$4`,
+    [report.version,predictionConfig.modelVersion,report.configHash,report.inputHash])).rows[0]!.id;
+    return { id, ...report };
+  }
+
+  async latestSelfAudit() {
+    const result = await this.pool.query(`SELECT id,audit_version,model_version,config_hash,input_hash,evaluated_at,status,
+      settled_sample_size,binary_sample_size,recent_sample_size,recent_binary_sample_size,recent_positive_rate,
+      recent_reference_paper_roi,calibration_mae,calibration_sample_size,loss_streak,reasons,metrics
+      FROM prediction_self_audits WHERE model_version=$1 ORDER BY evaluated_at DESC,created_at DESC,id DESC LIMIT 1`,
+    [predictionConfig.modelVersion]);
+    const row = result.rows[0];
+    if (!row) return null;
+    return {
+      id: String(row.id), version: String(row.audit_version), modelVersion: String(row.model_version),
+      configHash: String(row.config_hash), inputHash: String(row.input_hash),
+      evaluatedAt: new Date(String(row.evaluated_at)), status: String(row.status) as SelfAuditStatus,
+      settledSampleSize: Number(row.settled_sample_size), binarySampleSize: Number(row.binary_sample_size),
+      recentSampleSize: Number(row.recent_sample_size), recentBinarySampleSize: Number(row.recent_binary_sample_size),
+      recentPositiveRate: row.recent_positive_rate == null ? null : Number(row.recent_positive_rate),
+      recentReferencePaperRoi: row.recent_reference_paper_roi == null ? null : Number(row.recent_reference_paper_roi),
+      calibrationMae: row.calibration_mae == null ? null : Number(row.calibration_mae),
+      calibrationSampleSize: Number(row.calibration_sample_size), lossStreak: Number(row.loss_streak),
+      reasons: Array.isArray(row.reasons) ? row.reasons.map(String) : [],
+      metrics: row.metrics as Record<string, number>,
+    };
+  }
+
   async previews() {
     return (await this.pool.query(`SELECT DISTINCT ON(r.match_id) r.*,m.kickoff_at,l.name league,ht.name home_team,at.name away_team,
       CASE WHEN j.id IS NULL THEN 'PREVIEW' ELSE CASE WHEN j.decision='PREDICT' THEN 'LOCKED_PREDICTION' ELSE 'LOCKED_SKIP' END END state
@@ -292,12 +347,28 @@ export class PredictionRepository {
 export class PredictionService {
   constructor(private readonly repository: PredictionRepository, private readonly config: PredictionConfig = predictionConfig) {}
 
+  private attachSelfAudit(evaluation: PredictionEvaluation, audit: Awaited<ReturnType<PredictionRepository['latestSelfAudit']>>) {
+    if (!audit) return evaluation;
+    const warning = audit.status === 'WATCH' ? 'SELF_AUDIT_WATCH'
+      : audit.status === 'PAUSED' ? 'SELF_AUDIT_PAUSED' : null;
+    const selectedCandidate = evaluation.selectedCandidate && warning
+      ? { ...evaluation.selectedCandidate, warnings: [...new Set([...evaluation.selectedCandidate.warnings, warning])] }
+      : evaluation.selectedCandidate;
+    return {
+      ...evaluation,
+      inputHash: createHash('sha256').update(`${evaluation.inputHash}|self-audit:${audit.inputHash}:${audit.status}`).digest('hex'),
+      selectedCandidate,
+      metadata: { ...evaluation.metadata, selfAuditStatus: audit.status, selfAuditId: audit.id },
+    };
+  }
+
   async refreshPreviewsAndLocks(now = new Date()) {
-    const targets = await this.repository.loadTargets();
-    const examples = await this.repository.loadHistoricalExamples();
-    let previews = 0; let lockedPredictions = 0; let lockedSkips = 0; let missed = 0;
+    const [targets, examples, selfAudit] = await Promise.all([
+      this.repository.loadTargets(), this.repository.loadHistoricalExamples(), this.repository.latestSelfAudit(),
+    ]);
+    let previews = 0; let lockedPredictions = 0; let lockedSkips = 0; let missed = 0; let selfAuditBlocked = 0;
     for (const target of targets) {
-      let evaluation = evaluatePrediction(target, examples, now, this.config);
+      let evaluation = this.attachSelfAudit(evaluatePrediction(target, examples, now, this.config), selfAudit);
       const window = lockWindowState(target.kickoffAt, now, this.config);
       if (window.missed) {
         evaluation = { ...evaluation, decision: 'SKIP', selectedCandidate: null,
@@ -311,12 +382,22 @@ export class PredictionService {
         missed += 1;
         continue;
       }
+      if (window.eligible && selfAudit?.status === 'PAUSED' && evaluation.decision === 'PREDICT') {
+        evaluation = {
+          ...evaluation,
+          decision: 'SKIP',
+          selectedCandidate: null,
+          skipReasons: [...new Set([...evaluation.skipReasons, 'SELF_AUDIT_PAUSED' as const])],
+        };
+        selfAuditBlocked += 1;
+      }
       const runId = await this.repository.saveRun(evaluation, this.config);
       previews += 1;
       if (window.eligible && await this.repository.lock(evaluation, runId, now, window.minutesToKickoff, this.config)) {
         if (evaluation.decision === 'PREDICT') lockedPredictions += 1; else lockedSkips += 1;
       }
     }
-    return { matches: targets.length, previews, lockedPredictions, lockedSkips, missed };
+    return { matches: targets.length, previews, lockedPredictions, lockedSkips, missed, selfAuditBlocked,
+      selfAuditStatus: selfAudit?.status ?? 'NOT_AVAILABLE' };
   }
 }

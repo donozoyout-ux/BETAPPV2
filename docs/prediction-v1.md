@@ -97,3 +97,28 @@ Segment thresholds are engineering defaults, not scientifically optimized thresh
 API: `GET /api/predictions/self-audit/segments`
 
 CLI: `npm run predictions:self-audit` returns both global V1 and segmented V2 reports.
+
+
+## Self-Audit V3 — Root Cause Diagnostics
+
+`SELF_AUDIT_V3` is a diagnostic layer over settled official Prediction V1 decisions. It does not change, delete, or rewrite historical journal records, and it does not independently block new predictions.
+
+V3 compares factor buckets against the same recent-period global baseline to identify conditions associated with underperformance. Current dimensions are:
+
+- Prediction Score bucket
+- bookmaker count
+- historical settled sample size
+- Data Quality grade
+- Confidence grade
+- movement class
+- bookmaker agreement ratio
+
+Each factor report includes binary N, positive settlement rate, reference-paper ROI, calibration gap, the baseline values, the factor-vs-baseline gaps, evidence strength, a deterministic root-cause score, and stable reason codes.
+
+A factor needs at least 12 binary outcomes, while the shared baseline needs at least 30, before V3 can issue `WATCH` or `HIGH_RISK`. Smaller samples remain `INSUFFICIENT_DATA`. The recent diagnostic window is 60 settled official predictions.
+
+`HIGH_RISK` is descriptive evidence of a weak bucket, not proof of causation and not a betting recommendation. Because multiple correlated factors can describe the same prediction, V3 is intentionally diagnostic-only in this version. V1 remains the system-wide guard and V2 remains the scoped market/league guard.
+
+API: `GET /api/predictions/self-audit/root-causes`
+
+CLI: `npm run predictions:self-audit` returns global V1, segmented V2, and root-cause V3 reports.

@@ -225,8 +225,8 @@ export class PredictionRepository {
     const result = await this.pool.query(`SELECT s.id settlement_id,s.settled_at,s.outcome,s.reference_paper_return,
       j.historical_hit_rate FROM prediction_settlements s
       JOIN prediction_journal j ON j.id=s.prediction_journal_id
-      WHERE j.decision='PREDICT' AND j.model_version=$1
-      ORDER BY s.settled_at DESC,s.id DESC`, [predictionConfig.modelVersion]);
+      WHERE j.decision='PREDICT' AND j.model_version=$1 AND j.config_hash=$2
+      ORDER BY s.settled_at DESC,s.id DESC`, [predictionConfig.modelVersion,predictionConfigHash(predictionConfig)]);
     const records = result.rows.map((row): SelfAuditRecord => ({
       settlementId: String(row.settlement_id),
       settledAt: new Date(String(row.settled_at)),
@@ -235,33 +235,35 @@ export class PredictionRepository {
       historicalHitRate: row.historical_hit_rate == null ? null : Number(row.historical_hit_rate),
     }));
     const report = evaluateSelfAudit(records, new Date(), config);
+    const predictionConfigHashValue = predictionConfigHash(predictionConfig);
     const inserted = await this.pool.query<{ id: string }>(`INSERT INTO prediction_self_audits(
-      audit_version,model_version,config_hash,input_hash,evaluated_at,status,settled_sample_size,binary_sample_size,
+      audit_version,model_version,prediction_config_hash,config_hash,input_hash,evaluated_at,status,settled_sample_size,binary_sample_size,
       recent_sample_size,recent_binary_sample_size,recent_positive_rate,recent_reference_paper_roi,calibration_mae,
-      calibration_sample_size,loss_streak,reasons,metrics)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17::jsonb)
-      ON CONFLICT(audit_version,model_version,config_hash,input_hash) DO NOTHING RETURNING id`,
-    [report.version,predictionConfig.modelVersion,report.configHash,report.inputHash,report.evaluatedAt,report.status,
-      report.settledSampleSize,report.binarySampleSize,report.recentSampleSize,report.recentBinarySampleSize,
-      report.recentPositiveRate,report.recentReferencePaperRoi,report.calibrationMae,report.calibrationSampleSize,
-      report.lossStreak,JSON.stringify(report.reasons),JSON.stringify(report.metrics)]);
+      calibration_sample_size,loss_streak,pause_until,reasons,metrics)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18::jsonb,$19::jsonb)
+      ON CONFLICT(audit_version,model_version,prediction_config_hash,config_hash,input_hash) DO NOTHING RETURNING id`,
+    [report.version,predictionConfig.modelVersion,predictionConfigHashValue,report.configHash,report.inputHash,
+      report.evaluatedAt,report.status,report.settledSampleSize,report.binarySampleSize,report.recentSampleSize,
+      report.recentBinarySampleSize,report.recentPositiveRate,report.recentReferencePaperRoi,report.calibrationMae,
+      report.calibrationSampleSize,report.lossStreak,report.pauseUntil,JSON.stringify(report.reasons),JSON.stringify(report.metrics)]);
     const id = inserted.rows[0]?.id ?? (await this.pool.query<{ id: string }>(`SELECT id FROM prediction_self_audits
-      WHERE audit_version=$1 AND model_version=$2 AND config_hash=$3 AND input_hash=$4`,
-    [report.version,predictionConfig.modelVersion,report.configHash,report.inputHash])).rows[0]!.id;
-    return { id, ...report };
+      WHERE audit_version=$1 AND model_version=$2 AND prediction_config_hash=$3 AND config_hash=$4 AND input_hash=$5`,
+    [report.version,predictionConfig.modelVersion,predictionConfigHashValue,report.configHash,report.inputHash])).rows[0]!.id;
+    return { id, ...report, guardActive: report.pauseUntil != null && report.pauseUntil > new Date() };
   }
 
   async latestSelfAudit() {
-    const result = await this.pool.query(`SELECT id,audit_version,model_version,config_hash,input_hash,evaluated_at,status,
-      settled_sample_size,binary_sample_size,recent_sample_size,recent_binary_sample_size,recent_positive_rate,
-      recent_reference_paper_roi,calibration_mae,calibration_sample_size,loss_streak,reasons,metrics
-      FROM prediction_self_audits WHERE model_version=$1 ORDER BY evaluated_at DESC,created_at DESC,id DESC LIMIT 1`,
-    [predictionConfig.modelVersion]);
+    const result = await this.pool.query(`SELECT id,audit_version,model_version,prediction_config_hash,config_hash,input_hash,
+      evaluated_at,status,settled_sample_size,binary_sample_size,recent_sample_size,recent_binary_sample_size,recent_positive_rate,
+      recent_reference_paper_roi,calibration_mae,calibration_sample_size,loss_streak,pause_until,reasons,metrics
+      FROM prediction_self_audits WHERE model_version=$1 AND prediction_config_hash=$2
+      ORDER BY evaluated_at DESC,created_at DESC,id DESC LIMIT 1`,
+    [predictionConfig.modelVersion,predictionConfigHash(predictionConfig)]);
     const row = result.rows[0];
     if (!row) return null;
     return {
       id: String(row.id), version: String(row.audit_version), modelVersion: String(row.model_version),
-      configHash: String(row.config_hash), inputHash: String(row.input_hash),
+      predictionConfigHash: String(row.prediction_config_hash), configHash: String(row.config_hash), inputHash: String(row.input_hash),
       evaluatedAt: new Date(String(row.evaluated_at)), status: String(row.status) as SelfAuditStatus,
       settledSampleSize: Number(row.settled_sample_size), binarySampleSize: Number(row.binary_sample_size),
       recentSampleSize: Number(row.recent_sample_size), recentBinarySampleSize: Number(row.recent_binary_sample_size),
@@ -269,6 +271,8 @@ export class PredictionRepository {
       recentReferencePaperRoi: row.recent_reference_paper_roi == null ? null : Number(row.recent_reference_paper_roi),
       calibrationMae: row.calibration_mae == null ? null : Number(row.calibration_mae),
       calibrationSampleSize: Number(row.calibration_sample_size), lossStreak: Number(row.loss_streak),
+      pauseUntil: row.pause_until == null ? null : new Date(String(row.pause_until)),
+      guardActive: row.pause_until != null && new Date(String(row.pause_until)) > new Date(),
       reasons: Array.isArray(row.reasons) ? row.reasons.map(String) : [],
       metrics: row.metrics as Record<string, number>,
     };
@@ -387,7 +391,7 @@ export class PredictionService {
         missed += 1;
         continue;
       }
-      if (window.eligible && selfAudit?.status === 'PAUSED' && evaluation.decision === 'PREDICT') {
+      if (window.eligible && selfAudit?.status === 'PAUSED' && selfAudit.guardActive && evaluation.decision === 'PREDICT') {
         evaluation = this.rehashDecision({
           ...evaluation,
           decision: 'SKIP',
@@ -403,6 +407,6 @@ export class PredictionService {
       }
     }
     return { matches: targets.length, previews, lockedPredictions, lockedSkips, missed, selfAuditBlocked,
-      selfAuditStatus: selfAudit?.status ?? 'NOT_AVAILABLE' };
+      selfAuditStatus: selfAudit?.status ?? 'NOT_AVAILABLE', selfAuditGuardActive: selfAudit?.guardActive ?? false };
   }
 }

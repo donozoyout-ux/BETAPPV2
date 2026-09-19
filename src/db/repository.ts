@@ -15,15 +15,42 @@ function payloadHash(payload: unknown): string {
 }
 
 const MAX_INLINE_PAYLOAD_BYTES = 40_000;
+const MAX_ESTIMATED_JSONB_TEXT_BYTES = 50_000;
 const PAYLOAD_PREVIEW_CHARS = 8_000;
+
+function estimatedJsonbTextBytes(value: unknown): number {
+  if (value === null) return 4;
+  if (typeof value === 'string') return Buffer.byteLength(JSON.stringify(value));
+  if (typeof value === 'boolean') return value ? 4 : 5;
+  if (typeof value === 'number') {
+    const encoded = JSON.stringify(value);
+    // PostgreSQL jsonb may expand exponent notation into a much longer decimal
+    // representation. Compact such payloads rather than guessing the expansion.
+    return /[eE]/.test(encoded) ? Number.POSITIVE_INFINITY : Buffer.byteLength(encoded);
+  }
+  if (Array.isArray(value)) {
+    if (!value.length) return 2;
+    return 2 + value.reduce((sum, item) => sum + estimatedJsonbTextBytes(item), 0) + (value.length - 1) * 2;
+  }
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, item]) => JSON.stringify(item) !== undefined);
+    if (!entries.length) return 2;
+    return 2 + entries.reduce((sum, [key, item]) =>
+      sum + Buffer.byteLength(JSON.stringify(key)) + 2 + estimatedJsonbTextBytes(item), 0) + (entries.length - 1) * 2;
+  }
+  return 4;
+}
 
 export function compactPayloadForStorage(payload: unknown): unknown {
   const serialized = JSON.stringify(payload);
   const originalBytes = Buffer.byteLength(serialized);
-  if (originalBytes <= MAX_INLINE_PAYLOAD_BYTES) return payload;
+  const estimatedJsonbBytes = estimatedJsonbTextBytes(payload);
+  if (originalBytes <= MAX_INLINE_PAYLOAD_BYTES && estimatedJsonbBytes <= MAX_ESTIMATED_JSONB_TEXT_BYTES) return payload;
   return {
     truncated: true,
     originalBytes,
+    estimatedJsonbBytes: Number.isFinite(estimatedJsonbBytes) ? estimatedJsonbBytes : null,
     payloadSha256: createHash('sha256').update(serialized).digest('hex'),
     preview: serialized.slice(0, PAYLOAD_PREVIEW_CHARS),
   };

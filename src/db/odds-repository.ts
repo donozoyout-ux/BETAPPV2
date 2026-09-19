@@ -1,4 +1,5 @@
 import type { NormalizedOdds } from '../domain/odds.js';
+import { OddsAnalysisRepository } from './odds-analysis-repository.js';
 import type { DatabasePool } from './pool.js';
 
 export function oddsChanged(previous: number | null, current: number): boolean {
@@ -6,7 +7,11 @@ export function oddsChanged(previous: number | null, current: number): boolean {
 }
 
 export class OddsRepository {
-  constructor(private readonly pool: DatabasePool) {}
+  private readonly analysis: OddsAnalysisRepository;
+
+  constructor(private readonly pool: DatabasePool, private readonly onAnalysisError?: (error: unknown) => void) {
+    this.analysis = new OddsAnalysisRepository(pool);
+  }
 
   async append(matchId: string, odds: NormalizedOdds): Promise<boolean> {
     return this.pool.connect().then(async (client) => {
@@ -40,6 +45,20 @@ export class OddsRepository {
         client.release();
       }
     });
+  }
+
+  async appendManyAndAnalyze(matchId: string, odds: NormalizedOdds[]): Promise<{ inserted: number; analyzed: boolean }> {
+    let inserted = 0;
+    for (const item of odds) if (await this.append(matchId, item)) inserted += 1;
+    if (!inserted) return { inserted, analyzed: false };
+    try {
+      await this.analysis.analyzeAndSave(matchId);
+      return { inserted, analyzed: true };
+    } catch (error) {
+      // The collected snapshots remain durable even when secondary analysis fails.
+      this.onAnalysisError?.(error);
+      return { inserted, analyzed: false };
+    }
   }
 
   async summary(matchId: string) {

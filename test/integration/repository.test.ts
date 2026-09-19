@@ -4,6 +4,7 @@ import { migrationStatus, runMigrations } from '../../src/db/migrator.js';
 import { createPool, type DatabasePool } from '../../src/db/pool.js';
 import { FootballRepository } from '../../src/db/repository.js';
 import { OddsRepository } from '../../src/db/odds-repository.js';
+import { OddsAnalysisRepository } from '../../src/db/odds-analysis-repository.js';
 import { CornerRepository } from '../../src/db/corner-repository.js';
 import { configHash, cornerModelConfig } from '../../src/corners/config.js';
 import { buildAllTeamProfiles } from '../../src/corners/profiles.js';
@@ -100,6 +101,13 @@ describe('FootballRepository integration', () => {
     expect(summary[0]).toMatchObject({ snapshot_count: '2' });
     expect(Number(summary[0].opening_odds)).toBe(1.94);
     expect(Number(summary[0].current_odds)).toBe(1.84);
+    const oddsAnalysis = new OddsAnalysisRepository(pool);
+    const firstAnalysis = await oddsAnalysis.analyzeAndSave(sofaId, new Date('2026-09-19T00:00:00Z'));
+    const repeated = await oddsAnalysis.analyzeAndSave(sofaId, new Date('2026-09-19T00:00:00Z'));
+    expect(firstAnalysis?.inserted).toBe(true);
+    expect(repeated?.inserted).toBe(false);
+    const analysisRuns = await pool.query('SELECT count(DISTINCT input_hash) inputs,count(*) runs FROM odds_analysis_runs WHERE match_id=$1', [sofaId]);
+    expect(Number(analysisRuns.rows[0].inputs)).toBe(Number(analysisRuns.rows[0].runs));
 
     const cornerRepository = new CornerRepository(pool);
     const analysis = {
@@ -118,7 +126,7 @@ describe('FootballRepository integration', () => {
   it('validates migrations, checkpoint, profiles, replay, rollback and advisory locks', async () => {
     const migrations = await migrationStatus(pool);
     expect(migrations.pendingMigrations).toEqual([]);
-    expect(migrations.schemaVersion).toBe('004_database_validation.sql');
+    expect(migrations.schemaVersion).toBe('005_odds_analysis_v1.sql');
     const health = await repository.databaseHealth();
     expect(health.status).toBe('ok');
     await repository.markStarted('fotmob', 'integration-checkpoint', { index: 0 });

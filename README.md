@@ -21,6 +21,9 @@ SofascoreProvider -> dayanıklı HTTP istemcisi -> Collector Worker
                                       v                 v
                               Fastify API         Corner Engine V1
                               + Dashboard       profiles / backtest
+                                   ^
+                                   |
+ odds_snapshots -> ODDS_V1 fair probability / movement / consensus
 ```
 
 - `FootballDataProvider` bütün maç verisi kaynakları için ortak interface'tir. Sofascore ve FotMob collector'ları ayrı devre/cursor ile eşzamanlı çalışır; birinin arızası diğerini durdurmaz.
@@ -45,6 +48,16 @@ SofascoreProvider -> dayanıklı HTTP istemcisi -> Collector Worker
 - Data Quality kaynak/veri yeterliliğini, Model Confidence ise model kararlılığını ölçer; ikisi ayrı 0–100 skorudur. `POOR` kalitede olasılık hesaplanabilir fakat `analysisEligible=false` olur.
 - Her analiz `CORNER_V1`, merkezi config'in SHA-256 hash'i ve oluşturulma zamanı ile saklanır. Config değişince eski analiz overwrite edilmez.
 - Backtest her historical maçı yalnızca daha eski satırlarla yeniden oynatır; MAE, RMSE, Brier, log loss ve calibration bucket'larını raporlar.
+
+### Odds Analysis V1
+
+- `ODDS_V1`, aynı bookmaker/piyasa/line içindeki tüm seçimlerde `1 / decimalOdds` ham olasılığını hesaplar ve overround'a bölerek marjdan arındırılmış fair probability üretir. `1X2` için HOME + DRAW + AWAY, iki yönlü piyasalarda iki taraf yaklaşık `1` eder.
+- Açılış ve güncel durum, yalnızca tamamlanmış piyasa state'lerinden ve kesinlikle `captured_at < kickoff_at` satırlarından oluşturulur. Düşen oran ile yükselen piyasa olasılığı ayrı yönler olarak gösterilir.
+- Her bookmaker önce kendi içinde normalize edilir ve konsensüste yalnızca bir oy alır. Medyan ve MAD, uç değerlerin tek başına sonucu sürüklemesini sınırlar. `line`, piyasa anahtarının parçasıdır; 2.5 ile 3.5 birleştirilmez.
+- `STRONG_SUPPORT`, `SUPPORT`, `NEUTRAL`, `OPPOSE`, `STRONG_OPPOSE` yalnızca piyasa hareketi sınıflarıdır. Sonuç garantisi veya bahis önerisi değildir. V1 eşikleri merkezi `src/odds-analysis/config.ts` dosyasındadır ve bilimsel olarak optimize edilmiş sayılmaz.
+- Açıklanabilir 0–100 skorun movement, agreement, coverage, freshness ve stability bileşenleri ayrı saklanır. Data Quality verinin kullanılabilirliğini, Model Confidence ise hareketin büyüklük/tutarlılığını ölçer. `POOR` Data Quality her zaman `analysisEligible=false` üretir.
+- Her koşu config SHA-256 ve snapshot-set SHA-256 ile history olarak saklanır. Aynı config ve aynı snapshot seti tekrar yazılmaz. Total corners için Corner Engine olasılığı mevcut ve kaliteli ise yalnızca nötr `modelMarketGapPp` karşılaştırması sunulur; skorlar birleştirilmez.
+- Ayrıntılı yöntem, video inceleme notu ve sınırlar: [`docs/odds-analysis-v1.md`](docs/odds-analysis-v1.md).
 
 ## Yerel kurulum
 
@@ -90,7 +103,16 @@ npm run corners:backtest:stage1
 
 # Coverage, duplicate/invalid kayıt, sample ve dispersion audit'i üretir.
 npm run data:audit
+
+# Bugünün veya seçilen tarihin persist edilmiş oranlarını analiz eder.
+npm run odds:analyze
+npm run odds:analyze -- --date=2026-09-17
+
+# Mevcut historical odds coverage üzerinde kickoff-safe replay yapar.
+npm run odds:backtest
 ```
+
+Persist edilmiş ODDS_V1 sonuçları `GET /api/odds-analysis/upcoming` ve `GET /api/odds-analysis/:matchId` endpoint'lerinden okunur. Henüz analiz yoksa match endpoint'i HTTP 500 yerine `NOT_GENERATED` empty state döndürür. Dashboard'daki **ORAN ANALİZİ V1** bölümü açılış/güncel oranı, fair probability değişimini, bookmaker teyidini, açıklanabilir skoru, Data Quality ve Model Confidence değerlerini gösterir.
 
 Backfill lig/sezon checkpoint'i tuttuğundan restart sonrası kaldığı manifestten devam eder. `--resume=false` scope'u baştan idempotent olarak yeniden işler. Terminal ve dashboard; discovered/fetched/stored/corner-complete/partial/failed/retry/checkpoint sayaçlarını gösterir. İşlem sonunda profiller, lig baseline'ları ve dataset audit otomatik yenilenir. FotMob'a kontrollü yük bindirmek için provider rate limit, timeout ve retry ayarları geçerlidir. Tam backfill uzun sürebilir; production worker ile aynı anda başlatmadan önce bağlantı havuzu ve rate limit kapasitesini değerlendirin.
 

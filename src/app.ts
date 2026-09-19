@@ -2,10 +2,12 @@ import helmet from '@fastify/helmet';
 import Fastify from 'fastify';
 import type { AppConfig } from './config.js';
 import type { FootballRepository } from './db/repository.js';
+import type { OddsAnalysisRepository } from './db/odds-analysis-repository.js';
 import { renderCornerDetail, renderDashboard } from './dashboard.js';
 import type { Logger } from './logger.js';
 
-export function buildApp(config: AppConfig, repository: FootballRepository, logger: Logger) {
+export function buildApp(config: AppConfig, repository: FootballRepository, logger: Logger,
+  oddsAnalysis?: OddsAnalysisRepository) {
   const app = Fastify({ loggerInstance: logger });
   void app.register(helmet, { contentSecurityPolicy: false });
 
@@ -21,6 +23,12 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
 
   app.get('/api/dashboard', async () => repository.dashboardData('Europe/Istanbul'));
   app.get('/api/backfill/status', async () => repository.backfillStatus());
+  app.get('/api/odds-analysis/upcoming', async () => ({ modelVersion: 'ODDS_V1',
+    analyses: oddsAnalysis ? await oddsAnalysis.upcoming() : [] }));
+  app.get<{ Params: { matchId: string } }>('/api/odds-analysis/:matchId', async (request) => {
+    const analysis = oddsAnalysis ? await oddsAnalysis.byMatch(request.params.matchId) : null;
+    return analysis ?? { matchId: request.params.matchId, status: 'NOT_GENERATED', analysis: null };
+  });
   app.get('/', async (_request, reply) => {
     const data = await repository.dashboardData('Europe/Istanbul');
     return reply.type('text/html; charset=utf-8').send(renderDashboard(data));

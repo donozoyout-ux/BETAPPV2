@@ -6,6 +6,7 @@ import { createLogger } from './logger.js';
 import { SofascoreProvider } from './providers/sofascore.js';
 import { FotMobProvider } from './providers/fotmob.js';
 import { CornerRepository } from './db/corner-repository.js';
+import { OddsAnalysisRepository } from './db/odds-analysis-repository.js';
 import { buildAllLeagueBaselines, buildAllTeamProfiles } from './corners/profiles.js';
 
 const config = loadConfig();
@@ -13,15 +14,26 @@ const logger = createLogger(config, 'betapp-worker');
 const pool = createPool(config);
 const repository = new FootballRepository(pool);
 const cornerRepository = new CornerRepository(pool);
+const oddsAnalysisRepository = new OddsAnalysisRepository(pool);
 const sofascore = new SofascoreProvider(config, logger);
 const fotmob = new FotMobProvider(config, logger);
-const collectors = [new Collector(sofascore, repository, config, logger),
+async function refreshOddsAnalysis() {
+  try {
+    const result = await oddsAnalysisRepository.analyzeUpcoming();
+    logger.info(result, 'ODDS_V1 analysis refresh completed');
+  } catch (error) {
+    logger.warn({ err: error }, 'ODDS_V1 analysis refresh failed; collector remains active');
+  }
+}
+
+const collectors = [new Collector(sofascore, repository, config, logger, { onCycleComplete: refreshOddsAnalysis }),
   ...(config.FOTMOB_ENABLED ? [new Collector(fotmob, repository, config, logger, {
     onStatistics: (match, statistics) => cornerRepository.saveHistorical('fotmob', match, statistics),
     onCycleComplete: async () => {
       const history = await cornerRepository.loadHistory();
       await cornerRepository.saveProfiles(buildAllTeamProfiles(history));
       await cornerRepository.saveBaselines(buildAllLeagueBaselines(history));
+      await refreshOddsAnalysis();
     },
   })] : []),
 ];

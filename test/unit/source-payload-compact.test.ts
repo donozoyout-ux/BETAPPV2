@@ -8,6 +8,14 @@ describe('source payload compaction', () => {
     expect(compactPayloadForStorage(payload)).toBe(payload);
   });
 
+  it('compacts separator-heavy payloads even when raw JSON is below the inline limit', () => {
+    const payload = Array.from({ length: 19_000 }, () => 0);
+    expect(Buffer.byteLength(JSON.stringify(payload))).toBeLessThanOrEqual(40_000);
+    const compacted = compactPayloadForStorage(payload) as Record<string, unknown>;
+    expect(compacted.truncated).toBe(true);
+    expect(Number(compacted.estimatedJsonbBytes)).toBeGreaterThan(50_000);
+  });
+
   it('compacts quote-heavy payloads before PostgreSQL jsonb text can exceed the constraint', () => {
     const payload = { value: '"'.repeat(30_000), rows: Array.from({ length: 2_000 }, (_, i) => ({ i, value: '"x"' })) };
     const compacted = compactPayloadForStorage(payload) as Record<string, unknown>;

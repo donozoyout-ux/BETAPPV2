@@ -156,20 +156,31 @@ export function renderDashboard(data: DashboardData): string {
   const performanceSummary = predictionPerformance ? `<div class="grid"><article class="card"><strong>Resmi karar</strong><p>${escapeHtml(predictionPerformance.totalOfficialDecisions)} · PREDICT ${escapeHtml(predictionPerformance.predictCount)} · GEÇ ${escapeHtml(predictionPerformance.skipCount)}</p></article><article class="card"><strong>Settlement</strong><p>N=${escapeHtml(predictionPerformance.settled)} · WIN ${escapeHtml(predictionPerformance.win)} · LOSS ${escapeHtml(predictionPerformance.loss)}</p></article><article class="card"><strong>Reference Paper Units</strong><p>${escapeHtml(predictionPerformance.referencePaperUnits ?? 0)}</p><p style="color:var(--muted)">Gerçek/executable getiri değildir.</p></article></div>` : renderEmpty('◇', 'Performans verisi yok', 'Yalnız kilitli resmi kararlar performansa dahil edilir.');
   const selfAuditSummary = predictionSelfAudit ? (() => {
     const status = String(predictionSelfAudit.status ?? 'NOT_AVAILABLE');
-    const badgeClass = status === 'HEALTHY' ? 'ok' : status === 'WATCH' || status === 'INSUFFICIENT_DATA' ? 'partial' : status === 'PAUSED' ? 'bad' : 'neutral';
+    const guardActive = Boolean(predictionSelfAudit.guardActive);
+    const effectiveStatus = status === 'PAUSED' && !guardActive ? 'RECOVERY' : status;
+    const badgeClass = effectiveStatus === 'HEALTHY' ? 'ok'
+      : ['WATCH','INSUFFICIENT_DATA','RECOVERY'].includes(effectiveStatus) ? 'partial'
+      : effectiveStatus === 'PAUSED' ? 'bad' : 'neutral';
     const reasons = Array.isArray(predictionSelfAudit.reasons) ? predictionSelfAudit.reasons : [];
     const positiveRate = predictionSelfAudit.recentPositiveRate == null ? '—' : percent(predictionSelfAudit.recentPositiveRate);
     const roi = predictionSelfAudit.recentReferencePaperRoi == null ? '—'
       : `${(finiteNumber(predictionSelfAudit.recentReferencePaperRoi) * 100).toFixed(1)}%`;
     const calibration = predictionSelfAudit.calibrationMae == null ? '—'
       : finiteNumber(predictionSelfAudit.calibrationMae).toFixed(3);
+    const pauseUntil = predictionSelfAudit.pauseUntil == null ? null
+      : formatDate(predictionSelfAudit.pauseUntil, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    const guardText = status === 'PAUSED' && guardActive
+      ? `Koruma aktif${pauseUntil ? ` · ${pauseUntil} tarihine kadar` : ''}. Yeni resmi PREDICT yerine GEÇ kaydı oluşturulur.`
+      : status === 'PAUSED'
+        ? 'Koruma süresi doldu · recovery modunda yeni sonuç toplanmasına izin verilir.'
+        : 'Geçmiş kayıtlar değiştirilmez; audit yalnız yeni resmi tahmin kapısını kontrol eder.';
     return `<div class="grid"><article class="card"><div class="row"><strong>SELF-AUDIT V1</strong>
-      <span class="badge ${badgeClass}">${escapeHtml(status)}</span></div>
+      <span class="badge ${badgeClass}">${escapeHtml(effectiveStatus)}</span></div>
       <p>Son örnek N=${escapeHtml(predictionSelfAudit.recentSampleSize ?? 0)} · Binary N=${escapeHtml(predictionSelfAudit.recentBinarySampleSize ?? 0)}</p>
       <p>Positive rate: <strong>${escapeHtml(positiveRate)}</strong> · Reference Paper ROI: <strong>${escapeHtml(roi)}</strong></p>
       <p>Calibration MAE: ${escapeHtml(calibration)} · Kayıp serisi: ${escapeHtml(predictionSelfAudit.lossStreak ?? 0)}</p>
-      ${reasons.length ? `<p style="color:${status === 'PAUSED' ? 'var(--red)' : 'var(--amber)'}">Neden: ${reasons.map(escapeHtml).join(' · ')}</p>` : ''}
-      <p style="color:var(--muted)">PAUSED durumunda yeni resmi PREDICT kilitlenmez; sistem GEÇ kaydı oluşturur. Geçmiş kayıtlar değiştirilmez.</p>
+      ${reasons.length ? `<p style="color:${guardActive ? 'var(--red)' : 'var(--amber)'}">Neden: ${reasons.map(escapeHtml).join(' · ')}</p>` : ''}
+      <p style="color:var(--muted)">${escapeHtml(guardText)}</p>
       </article></div>`;
   })() : renderEmpty('◇', 'Self-Audit henüz çalışmadı', 'Worker ilk döngüsünde tahmin performansını otomatik kontrol edecek.');
 

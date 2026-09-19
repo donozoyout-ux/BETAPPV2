@@ -223,14 +223,28 @@ describe('FootballRepository integration', () => {
     expect(backfill.rejectedIneligible).toBeGreaterThan(0);
     expect((await predictionRepository.refreshHistoricalIncremental(config)).insertedExamples).toBe(0);
     const historical = await predictionRepository.loadHistoricalExamples(targetKickoff);
+    const historicalHome = historical.find((item) =>
+      item.marketType === 'MATCH_RESULT' && item.marketName === '1X2' && item.selection === 'HOME');
+    expect(historicalHome).toBeDefined();
     const league = await pool.query<{ league_id: string }>('SELECT league_id FROM matches WHERE id=$1', [targetId]);
     const targetItem: AnalysisItem = { marketType: 'MATCH_RESULT', marketName: '1X2', line: null, selection: 'HOME',
-      openingOdds: 2.1, currentOdds: 1.8, highestOdds: 2.1, lowestOdds: 1.8, snapshotCount: 6,
-      openingFairProbability: 0.45, currentFairProbability: 0.56, probabilityDeltaPp: 11, rawOddsMovementPercent: -14.3,
-      bookmakerCount: 3, completeStateBookmakerCount: 3, minimumCompleteStateCount: 2, agreeingBookmakerCount: 3,
-      disagreeingBookmakerCount: 0, movementAgreementRatio: 1, probabilityDispersion: 0, oddsDispersion: 0,
-      movementClass: 'SUPPORT', score: 80, scoreComponents: { movement: 30, agreement: 20, coverage: 20, freshness: 15, stability: 15 },
-      dataQuality: { score: 90, grade: 'GOOD', analysisEligible: true, warnings: [] }, modelConfidence: { score: 85, grade: 'GOOD' },
+      openingOdds: historicalHome!.openingOdds, currentOdds: historicalHome!.currentOdds,
+      highestOdds: Math.max(historicalHome!.openingOdds, historicalHome!.currentOdds),
+      lowestOdds: Math.min(historicalHome!.openingOdds, historicalHome!.currentOdds), snapshotCount: 6,
+      openingFairProbability: historicalHome!.openingFairProbability,
+      currentFairProbability: historicalHome!.currentFairProbability,
+      probabilityDeltaPp: historicalHome!.probabilityDeltaPp,
+      rawOddsMovementPercent: ((historicalHome!.currentOdds - historicalHome!.openingOdds) / historicalHome!.openingOdds) * 100,
+      bookmakerCount: historicalHome!.bookmakerCount,
+      completeStateBookmakerCount: historicalHome!.completeStateBookmakerCount,
+      minimumCompleteStateCount: historicalHome!.minimumCompleteStateCount,
+      agreeingBookmakerCount: historicalHome!.bookmakerCount, disagreeingBookmakerCount: 0,
+      movementAgreementRatio: historicalHome!.movementAgreementRatio, probabilityDispersion: 0, oddsDispersion: 0,
+      movementClass: historicalHome!.movementClass, score: historicalHome!.oddsAnalysisScore,
+      scoreComponents: { movement: 30, agreement: 20, coverage: 20, freshness: 15, stability: 15 },
+      dataQuality: { score: historicalHome!.dataQualityScore, grade: historicalHome!.dataQualityGrade,
+        analysisEligible: true, warnings: [] },
+      modelConfidence: { score: historicalHome!.confidenceScore, grade: historicalHome!.confidenceGrade },
       analysisEligible: true, reasons: [], warnings: [], modelMarketGapPp: null };
     const evaluation = evaluatePrediction({ matchId: targetId, competitionId: league.rows[0]!.league_id, kickoffAt: targetKickoff,
       oddsInputHash: 'prediction-integration-input', oddsItems: [targetItem] }, historical, new Date('2099-09-20T17:30:00Z'), config);

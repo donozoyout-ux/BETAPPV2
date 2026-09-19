@@ -70,6 +70,17 @@ async function runCycle(): Promise<void> {
     catch (error) { logger.error({ err: error }, 'Prediction self audit failed; continuing'); }
   }
   if (!stopped) {
+    try {
+      const segments = await predictionRepository.runSegmentSelfAudit();
+      logger.info({
+        segments: segments.length,
+        paused: segments.filter((item) => item.status === 'PAUSED' && item.guardActive).length,
+        watch: segments.filter((item) => item.status === 'WATCH').length,
+      }, 'Prediction segmented self audit completed');
+    }
+    catch (error) { logger.error({ err: error }, 'Prediction segmented self audit failed; continuing'); }
+  }
+  if (!stopped) {
     try { await predictionRepository.refreshHistoricalIncremental(); }
     catch (error) { logger.error({ err: error }, 'Prediction historical refresh failed; continuing'); }
   }

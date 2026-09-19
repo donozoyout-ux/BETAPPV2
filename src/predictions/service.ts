@@ -221,12 +221,12 @@ export class PredictionRepository {
     return { candidates: result.rows.length, settled, unavailable };
   }
 
-  async runSelfAudit(config: SelfAuditConfig = selfAuditConfig) {
+  async runSelfAudit(modelConfig: PredictionConfig = predictionConfig, auditConfig: SelfAuditConfig = selfAuditConfig) {
     const result = await this.pool.query(`SELECT s.id settlement_id,s.settled_at,s.outcome,s.reference_paper_return,
       j.historical_hit_rate FROM prediction_settlements s
       JOIN prediction_journal j ON j.id=s.prediction_journal_id
       WHERE j.decision='PREDICT' AND j.model_version=$1 AND j.config_hash=$2
-      ORDER BY s.settled_at DESC,s.id DESC`, [predictionConfig.modelVersion,predictionConfigHash(predictionConfig)]);
+      ORDER BY s.settled_at DESC,s.id DESC`, [modelConfig.modelVersion,predictionConfigHash(modelConfig)]);
     const records = result.rows.map((row): SelfAuditRecord => ({
       settlementId: String(row.settlement_id),
       settledAt: new Date(String(row.settled_at)),
@@ -234,31 +234,31 @@ export class PredictionRepository {
       referencePaperReturn: Number(row.reference_paper_return),
       historicalHitRate: row.historical_hit_rate == null ? null : Number(row.historical_hit_rate),
     }));
-    const report = evaluateSelfAudit(records, new Date(), config);
-    const predictionConfigHashValue = predictionConfigHash(predictionConfig);
+    const report = evaluateSelfAudit(records, new Date(), auditConfig);
+    const predictionConfigHashValue = predictionConfigHash(modelConfig);
     const inserted = await this.pool.query<{ id: string }>(`INSERT INTO prediction_self_audits(
       audit_version,model_version,prediction_config_hash,config_hash,input_hash,evaluated_at,status,settled_sample_size,binary_sample_size,
       recent_sample_size,recent_binary_sample_size,recent_positive_rate,recent_reference_paper_roi,calibration_mae,
       calibration_sample_size,loss_streak,pause_until,reasons,metrics)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18::jsonb,$19::jsonb)
       ON CONFLICT(audit_version,model_version,prediction_config_hash,config_hash,input_hash) DO NOTHING RETURNING id`,
-    [report.version,predictionConfig.modelVersion,predictionConfigHashValue,report.configHash,report.inputHash,
+    [report.version,modelConfig.modelVersion,predictionConfigHashValue,report.configHash,report.inputHash,
       report.evaluatedAt,report.status,report.settledSampleSize,report.binarySampleSize,report.recentSampleSize,
       report.recentBinarySampleSize,report.recentPositiveRate,report.recentReferencePaperRoi,report.calibrationMae,
       report.calibrationSampleSize,report.lossStreak,report.pauseUntil,JSON.stringify(report.reasons),JSON.stringify(report.metrics)]);
     const id = inserted.rows[0]?.id ?? (await this.pool.query<{ id: string }>(`SELECT id FROM prediction_self_audits
       WHERE audit_version=$1 AND model_version=$2 AND prediction_config_hash=$3 AND config_hash=$4 AND input_hash=$5`,
-    [report.version,predictionConfig.modelVersion,predictionConfigHashValue,report.configHash,report.inputHash])).rows[0]!.id;
+    [report.version,modelConfig.modelVersion,predictionConfigHashValue,report.configHash,report.inputHash])).rows[0]!.id;
     return { id, ...report, guardActive: report.pauseUntil != null && report.pauseUntil > new Date() };
   }
 
-  async latestSelfAudit() {
+  async latestSelfAudit(modelConfig: PredictionConfig = predictionConfig) {
     const result = await this.pool.query(`SELECT id,audit_version,model_version,prediction_config_hash,config_hash,input_hash,
       evaluated_at,status,settled_sample_size,binary_sample_size,recent_sample_size,recent_binary_sample_size,recent_positive_rate,
       recent_reference_paper_roi,calibration_mae,calibration_sample_size,loss_streak,pause_until,reasons,metrics
       FROM prediction_self_audits WHERE model_version=$1 AND prediction_config_hash=$2
       ORDER BY evaluated_at DESC,created_at DESC,id DESC LIMIT 1`,
-    [predictionConfig.modelVersion,predictionConfigHash(predictionConfig)]);
+    [modelConfig.modelVersion,predictionConfigHash(modelConfig)]);
     const row = result.rows[0];
     if (!row) return null;
     return {
@@ -373,7 +373,7 @@ export class PredictionService {
 
   async refreshPreviewsAndLocks(now = new Date()) {
     const [targets, examples, selfAudit] = await Promise.all([
-      this.repository.loadTargets(), this.repository.loadHistoricalExamples(), this.repository.latestSelfAudit(),
+      this.repository.loadTargets(), this.repository.loadHistoricalExamples(), this.repository.latestSelfAudit(this.config),
     ]);
     let previews = 0; let lockedPredictions = 0; let lockedSkips = 0; let missed = 0; let selfAuditBlocked = 0;
     for (const target of targets) {

@@ -11,6 +11,8 @@ import { evaluateSegmentSelfAudits, segmentKeysFor, selfAuditV2Config,
   type SegmentSelfAuditRecord } from './self-audit-v2.js';
 import { evaluateRootCauses, selfAuditV3Config,
   type RootCauseConfig, type RootCauseRecord, type RootCauseStatus } from './self-audit-v3.js';
+import { generateAdaptiveRuleProposals, selfAuditV4Config,
+  type AdaptiveRuleConfig } from './self-audit-v4.js';
 import type { HistoricalExample, PredictionEvaluation, PredictionTarget, SettlementOutcome } from './types.js';
 
 function analysisItem(row: Record<string, unknown>): AnalysisItem {
@@ -356,14 +358,14 @@ export class PredictionRepository {
       || b.recentSampleSize - a.recentSampleSize || a.segmentKey.localeCompare(b.segmentKey));
   }
 
-  async runRootCauseAudit(modelConfig: PredictionConfig = predictionConfig, auditConfig: RootCauseConfig = selfAuditV3Config) {
+  private async rootCauseRecords(modelConfig: PredictionConfig = predictionConfig): Promise<RootCauseRecord[]> {
     const result = await this.pool.query(`SELECT s.id settlement_id,s.settled_at,s.outcome,s.reference_paper_return,
       j.historical_hit_rate,j.prediction_score,j.bookmaker_count,j.historical_settled_sample_size,
       j.data_quality_grade,j.confidence_grade,j.movement_class,j.agreement_ratio
       FROM prediction_settlements s JOIN prediction_journal j ON j.id=s.prediction_journal_id
       WHERE j.decision='PREDICT' AND j.model_version=$1 AND j.config_hash=$2
       ORDER BY s.settled_at DESC,s.id DESC`, [modelConfig.modelVersion,predictionConfigHash(modelConfig)]);
-    const records = result.rows.map((row): RootCauseRecord => ({
+    return result.rows.map((row): RootCauseRecord => ({
       settlementId: String(row.settlement_id),
       settledAt: new Date(String(row.settled_at)),
       outcome: String(row.outcome) as SettlementOutcome,
@@ -377,6 +379,10 @@ export class PredictionRepository {
       movementClass: row.movement_class == null ? null : String(row.movement_class),
       agreementRatio: row.agreement_ratio == null ? null : Number(row.agreement_ratio),
     }));
+  }
+
+  async runRootCauseAudit(modelConfig: PredictionConfig = predictionConfig, auditConfig: RootCauseConfig = selfAuditV3Config) {
+    const records = await this.rootCauseRecords(modelConfig);
     const reports = evaluateRootCauses(records, new Date(), auditConfig);
     const predictionConfigHashValue = predictionConfigHash(modelConfig);
     for (const report of reports) {
@@ -427,6 +433,79 @@ export class PredictionRepository {
     })).sort((a, b) => severity(a.status) - severity(b.status)
       || b.rootCauseScore - a.rootCauseScore || b.binarySampleSize - a.binarySampleSize
       || a.bucketLabel.localeCompare(b.bucketLabel));
+  }
+
+  async runAdaptiveRuleProposals(
+    modelConfig: PredictionConfig = predictionConfig,
+    auditConfig: AdaptiveRuleConfig = selfAuditV4Config,
+  ) {
+    const records = await this.rootCauseRecords(modelConfig);
+    const proposals = generateAdaptiveRuleProposals(records, modelConfig, new Date(), auditConfig);
+    const predictionConfigHashValue = predictionConfigHash(modelConfig);
+    for (const proposal of proposals) {
+      await this.pool.query(`INSERT INTO prediction_adaptive_rule_proposals(
+        audit_version,model_version,prediction_config_hash,config_hash,input_hash,proposal_key,proposal_type,severity,
+        title,conditions,suggested_change,evaluated_at,binary_sample_size,positive_rate,reference_paper_roi,
+        baseline_binary_sample_size,baseline_positive_rate,baseline_reference_paper_roi,positive_rate_gap,
+        reference_paper_roi_gap,interaction_positive_rate_gap,interaction_reference_paper_roi_gap,evidence_strength,
+        proposal_score,reasons)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25::jsonb)
+        ON CONFLICT(audit_version,model_version,prediction_config_hash,config_hash,proposal_key,input_hash) DO NOTHING`,
+      [proposal.version,modelConfig.modelVersion,predictionConfigHashValue,proposal.configHash,proposal.inputHash,
+        proposal.proposalKey,proposal.proposalType,proposal.severity,proposal.title,JSON.stringify(proposal.conditions),
+        JSON.stringify(proposal.suggestedChange),proposal.evaluatedAt,proposal.binarySampleSize,proposal.positiveRate,
+        proposal.referencePaperRoi,proposal.baselineBinarySampleSize,proposal.baselinePositiveRate,
+        proposal.baselineReferencePaperRoi,proposal.positiveRateGap,proposal.referencePaperRoiGap,
+        proposal.interactionPositiveRateGap,proposal.interactionReferencePaperRoiGap,proposal.evidenceStrength,
+        proposal.proposalScore,JSON.stringify(proposal.reasons)]);
+    }
+    return this.latestAdaptiveRuleProposals(modelConfig);
+  }
+
+  async latestAdaptiveRuleProposals(modelConfig: PredictionConfig = predictionConfig) {
+    const result = await this.pool.query(`SELECT DISTINCT ON(p.proposal_key)
+      p.*,d.decision,d.note,d.decided_at
+      FROM prediction_adaptive_rule_proposals p
+      LEFT JOIN prediction_adaptive_rule_decisions d ON d.proposal_id=p.id
+      WHERE p.model_version=$1 AND p.prediction_config_hash=$2
+      ORDER BY p.proposal_key,p.evaluated_at DESC,p.created_at DESC,p.id DESC`,
+    [modelConfig.modelVersion,predictionConfigHash(modelConfig)]);
+    return result.rows.map((row) => ({
+      id: String(row.id), version: String(row.audit_version), modelVersion: String(row.model_version),
+      predictionConfigHash: String(row.prediction_config_hash), configHash: String(row.config_hash),
+      inputHash: String(row.input_hash), proposalKey: String(row.proposal_key),
+      proposalType: String(row.proposal_type), severity: String(row.severity), title: String(row.title),
+      conditions: Array.isArray(row.conditions) ? row.conditions : [],
+      suggestedChange: row.suggested_change as Record<string, unknown>,
+      evaluatedAt: new Date(String(row.evaluated_at)), binarySampleSize: Number(row.binary_sample_size),
+      positiveRate: Number(row.positive_rate), referencePaperRoi: Number(row.reference_paper_roi),
+      baselineBinarySampleSize: Number(row.baseline_binary_sample_size),
+      baselinePositiveRate: Number(row.baseline_positive_rate),
+      baselineReferencePaperRoi: Number(row.baseline_reference_paper_roi),
+      positiveRateGap: Number(row.positive_rate_gap), referencePaperRoiGap: Number(row.reference_paper_roi_gap),
+      interactionPositiveRateGap: row.interaction_positive_rate_gap == null ? null : Number(row.interaction_positive_rate_gap),
+      interactionReferencePaperRoiGap: row.interaction_reference_paper_roi_gap == null ? null : Number(row.interaction_reference_paper_roi_gap),
+      evidenceStrength: Number(row.evidence_strength), proposalScore: Number(row.proposal_score),
+      reasons: Array.isArray(row.reasons) ? row.reasons.map(String) : [],
+      decision: row.decision == null ? 'PROPOSED' : String(row.decision),
+      decisionNote: row.note == null ? null : String(row.note),
+      decidedAt: row.decided_at == null ? null : new Date(String(row.decided_at)),
+      autoApply: false,
+      executionAuthority: false,
+    })).sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH_RISK' ? -1 : 1)
+      || b.proposalScore - a.proposalScore || b.binarySampleSize - a.binarySampleSize
+      || a.proposalKey.localeCompare(b.proposalKey));
+  }
+
+  async decideAdaptiveRuleProposal(proposalId: string, decision: 'APPROVED' | 'REJECTED', note: string | null = null) {
+    if (!/^[0-9a-f-]{36}$/i.test(proposalId)) throw new Error('Invalid proposal id');
+    const exists = await this.pool.query<{ id: string }>(
+      'SELECT id FROM prediction_adaptive_rule_proposals WHERE id=$1', [proposalId]);
+    if (!exists.rows[0]) throw new Error('Adaptive rule proposal not found');
+    const inserted = await this.pool.query<{ id: string }>(`INSERT INTO prediction_adaptive_rule_decisions(proposal_id,decision,note)
+      VALUES($1,$2,$3) ON CONFLICT(proposal_id) DO NOTHING RETURNING id`, [proposalId,decision,note]);
+    if (!inserted.rows[0]) throw new Error('Adaptive rule proposal already decided');
+    return { proposalId, decision, note, autoApply: false, executionAuthority: false };
   }
 
   async previews() {

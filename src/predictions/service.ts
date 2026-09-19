@@ -359,7 +359,8 @@ export class PredictionService {
   private attachSelfAudit(evaluation: PredictionEvaluation, audit: Awaited<ReturnType<PredictionRepository['latestSelfAudit']>>) {
     if (!audit) return evaluation;
     const warning = audit.status === 'WATCH' ? 'SELF_AUDIT_WATCH'
-      : audit.status === 'PAUSED' ? 'SELF_AUDIT_PAUSED' : null;
+      : audit.status === 'PAUSED' && audit.guardActive ? 'SELF_AUDIT_PAUSED'
+      : audit.status === 'PAUSED' ? 'SELF_AUDIT_RECOVERY' : null;
     const selectedCandidate = evaluation.selectedCandidate && warning
       ? { ...evaluation.selectedCandidate, warnings: [...new Set([...evaluation.selectedCandidate.warnings, warning])] }
       : evaluation.selectedCandidate;

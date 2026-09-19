@@ -378,13 +378,13 @@ export class FootballRepository {
       'historical_match_stats','team_corner_profiles','league_corner_baselines','corner_model_versions','corner_analyses',
       'corner_backtests','backfill_runs','backfill_failures','dataset_audits','odds_analysis_model_versions',
       'odds_analysis_runs','odds_analysis_items','odds_analysis_backtests'];
-    requiredTables.push('prediction_model_versions','prediction_runs','prediction_historical_examples','prediction_historical_refreshes','prediction_journal','prediction_settlements');
+    requiredTables.push('prediction_model_versions','prediction_runs','prediction_historical_examples','prediction_historical_refreshes','prediction_journal','prediction_settlements','prediction_self_audits');
     const requiredIndexes = ['matches_kickoff_idx','provider_entities_internal_idx','historical_stats_competition_kickoff_idx',
       'historical_stats_home_kickoff_idx','historical_stats_away_kickoff_idx','backfill_runs_status_idx',
       'backfill_failures_retry_idx','dataset_audits_created_idx','corner_backtests_created_idx','odds_history_idx',
       'odds_analysis_runs_match_created_idx','odds_analysis_items_run_idx','odds_analysis_backtests_created_idx'];
     requiredIndexes.push('prediction_runs_match_created_idx','prediction_historical_examples_lookup_idx','prediction_historical_examples_eligible_idx',
-      'prediction_journal_kickoff_idx','prediction_settlements_outcome_idx');
+      'prediction_journal_kickoff_idx','prediction_settlements_outcome_idx','prediction_self_audits_latest_idx');
     const checks = { connection: false, read: false, write: false, transaction: false, advisoryLock: false,
       migrationTable: false, requiredTables: false, requiredIndexes: false };
     try {

@@ -11,7 +11,7 @@ import { evaluateSegmentSelfAudits, segmentKeysFor, selfAuditV2Config,
   type SegmentSelfAuditRecord } from './self-audit-v2.js';
 import { evaluateRootCauses, selfAuditV3Config,
   type RootCauseConfig, type RootCauseRecord, type RootCauseStatus } from './self-audit-v3.js';
-import { generateAdaptiveRuleProposals, selfAuditV4Config,
+import { adaptiveRuleConfigHash, adaptiveRuleEvaluationInputHash, generateAdaptiveRuleProposals, selfAuditV4Config,
   type AdaptiveRuleConfig } from './self-audit-v4.js';
 import type { HistoricalExample, PredictionEvaluation, PredictionTarget, SettlementOutcome } from './types.js';
 
@@ -440,18 +440,31 @@ export class PredictionRepository {
     auditConfig: AdaptiveRuleConfig = selfAuditV4Config,
   ) {
     const records = await this.rootCauseRecords(modelConfig);
-    const proposals = generateAdaptiveRuleProposals(records, modelConfig, new Date(), auditConfig);
+    const evaluatedAt = new Date();
+    const proposals = generateAdaptiveRuleProposals(records, modelConfig, evaluatedAt, auditConfig);
     const predictionConfigHashValue = predictionConfigHash(modelConfig);
+    const evaluationInputHash = adaptiveRuleEvaluationInputHash(records, modelConfig, auditConfig);
+    const runInsert = await this.pool.query<{ id: string }>(`INSERT INTO prediction_adaptive_rule_runs(
+      audit_version,model_version,prediction_config_hash,config_hash,input_hash,evaluated_at,proposal_count)
+      VALUES($1,$2,$3,$4,$5,$6,$7)
+      ON CONFLICT(audit_version,model_version,prediction_config_hash,config_hash,input_hash) DO NOTHING RETURNING id`,
+    [auditConfig.version,modelConfig.modelVersion,predictionConfigHashValue,
+      adaptiveRuleConfigHash(auditConfig),evaluationInputHash,evaluatedAt,proposals.length]);
+    const runId = runInsert.rows[0]?.id ?? (await this.pool.query<{ id: string }>(`SELECT id FROM prediction_adaptive_rule_runs
+      WHERE audit_version=$1 AND model_version=$2 AND prediction_config_hash=$3 AND config_hash=$4 AND input_hash=$5`,
+    [auditConfig.version,modelConfig.modelVersion,predictionConfigHashValue,
+      adaptiveRuleConfigHash(auditConfig),evaluationInputHash])).rows[0]!.id;
+
     for (const proposal of proposals) {
       await this.pool.query(`INSERT INTO prediction_adaptive_rule_proposals(
-        audit_version,model_version,prediction_config_hash,config_hash,input_hash,proposal_key,proposal_type,severity,
+        run_id,audit_version,model_version,prediction_config_hash,config_hash,input_hash,proposal_key,proposal_type,severity,
         title,conditions,suggested_change,evaluated_at,binary_sample_size,positive_rate,reference_paper_roi,
         baseline_binary_sample_size,baseline_positive_rate,baseline_reference_paper_roi,positive_rate_gap,
         reference_paper_roi_gap,interaction_positive_rate_gap,interaction_reference_paper_roi_gap,evidence_strength,
         proposal_score,reasons)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25::jsonb)
-        ON CONFLICT(audit_version,model_version,prediction_config_hash,config_hash,proposal_key,input_hash) DO NOTHING`,
-      [proposal.version,modelConfig.modelVersion,predictionConfigHashValue,proposal.configHash,proposal.inputHash,
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26::jsonb)
+        ON CONFLICT(run_id,proposal_key) DO NOTHING`,
+      [runId,proposal.version,modelConfig.modelVersion,predictionConfigHashValue,proposal.configHash,proposal.inputHash,
         proposal.proposalKey,proposal.proposalType,proposal.severity,proposal.title,JSON.stringify(proposal.conditions),
         JSON.stringify(proposal.suggestedChange),proposal.evaluatedAt,proposal.binarySampleSize,proposal.positiveRate,
         proposal.referencePaperRoi,proposal.baselineBinarySampleSize,proposal.baselinePositiveRate,
@@ -463,13 +476,17 @@ export class PredictionRepository {
   }
 
   async latestAdaptiveRuleProposals(modelConfig: PredictionConfig = predictionConfig) {
-    const result = await this.pool.query(`SELECT DISTINCT ON(p.proposal_key)
-      p.*,d.decision,d.note,d.decided_at
+    const run = await this.pool.query<{ id: string; evaluated_at: string; proposal_count: number }>(`SELECT id,evaluated_at,proposal_count
+      FROM prediction_adaptive_rule_runs WHERE model_version=$1 AND prediction_config_hash=$2
+      ORDER BY evaluated_at DESC,created_at DESC,id DESC LIMIT 1`,
+    [modelConfig.modelVersion,predictionConfigHash(modelConfig)]);
+    if (!run.rows[0] || Number(run.rows[0].proposal_count) === 0) return [];
+    const result = await this.pool.query(`SELECT p.*,d.decision,d.note,d.decided_at
       FROM prediction_adaptive_rule_proposals p
       LEFT JOIN prediction_adaptive_rule_decisions d ON d.proposal_id=p.id
-      WHERE p.model_version=$1 AND p.prediction_config_hash=$2
-      ORDER BY p.proposal_key,p.evaluated_at DESC,p.created_at DESC,p.id DESC`,
-    [modelConfig.modelVersion,predictionConfigHash(modelConfig)]);
+      WHERE p.run_id=$1
+      ORDER BY CASE p.severity WHEN 'HIGH_RISK' THEN 0 ELSE 1 END,p.proposal_score DESC,p.binary_sample_size DESC,p.proposal_key`,
+    [run.rows[0].id]);
     return result.rows.map((row) => ({
       id: String(row.id), version: String(row.audit_version), modelVersion: String(row.model_version),
       predictionConfigHash: String(row.prediction_config_hash), configHash: String(row.config_hash),
@@ -492,9 +509,7 @@ export class PredictionRepository {
       decidedAt: row.decided_at == null ? null : new Date(String(row.decided_at)),
       autoApply: false,
       executionAuthority: false,
-    })).sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'HIGH_RISK' ? -1 : 1)
-      || b.proposalScore - a.proposalScore || b.binarySampleSize - a.binarySampleSize
-      || a.proposalKey.localeCompare(b.proposalKey));
+    }));
   }
 
   async decideAdaptiveRuleProposal(proposalId: string, decision: 'APPROVED' | 'REJECTED', note: string | null = null) {

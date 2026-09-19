@@ -9,6 +9,8 @@ import { referencePaperReturn, settlePrediction } from './settlement.js';
 import { evaluateSelfAudit, selfAuditConfig, type SelfAuditConfig, type SelfAuditRecord, type SelfAuditStatus } from './self-audit.js';
 import { evaluateSegmentSelfAudits, segmentKeysFor, selfAuditV2Config,
   type SegmentSelfAuditRecord } from './self-audit-v2.js';
+import { evaluateRootCauses, selfAuditV3Config,
+  type RootCauseConfig, type RootCauseRecord, type RootCauseStatus } from './self-audit-v3.js';
 import type { HistoricalExample, PredictionEvaluation, PredictionTarget, SettlementOutcome } from './types.js';
 
 function analysisItem(row: Record<string, unknown>): AnalysisItem {
@@ -352,6 +354,79 @@ export class PredictionRepository {
       };
     }).sort((a, b) => severity(a.status, a.guardActive) - severity(b.status, b.guardActive)
       || b.recentSampleSize - a.recentSampleSize || a.segmentKey.localeCompare(b.segmentKey));
+  }
+
+  async runRootCauseAudit(modelConfig: PredictionConfig = predictionConfig, auditConfig: RootCauseConfig = selfAuditV3Config) {
+    const result = await this.pool.query(`SELECT s.id settlement_id,s.settled_at,s.outcome,s.reference_paper_return,
+      j.historical_hit_rate,j.prediction_score,j.bookmaker_count,j.historical_settled_sample_size,
+      j.data_quality_grade,j.confidence_grade,j.movement_class,j.agreement_ratio
+      FROM prediction_settlements s JOIN prediction_journal j ON j.id=s.prediction_journal_id
+      WHERE j.decision='PREDICT' AND j.model_version=$1 AND j.config_hash=$2
+      ORDER BY s.settled_at DESC,s.id DESC`, [modelConfig.modelVersion,predictionConfigHash(modelConfig)]);
+    const records = result.rows.map((row): RootCauseRecord => ({
+      settlementId: String(row.settlement_id),
+      settledAt: new Date(String(row.settled_at)),
+      outcome: String(row.outcome) as SettlementOutcome,
+      referencePaperReturn: Number(row.reference_paper_return),
+      historicalHitRate: row.historical_hit_rate == null ? null : Number(row.historical_hit_rate),
+      predictionScore: row.prediction_score == null ? null : Number(row.prediction_score),
+      bookmakerCount: row.bookmaker_count == null ? null : Number(row.bookmaker_count),
+      historicalSampleSize: Number(row.historical_settled_sample_size ?? 0),
+      dataQualityGrade: row.data_quality_grade == null ? null : String(row.data_quality_grade),
+      confidenceGrade: row.confidence_grade == null ? null : String(row.confidence_grade),
+      movementClass: row.movement_class == null ? null : String(row.movement_class),
+      agreementRatio: row.agreement_ratio == null ? null : Number(row.agreement_ratio),
+    }));
+    const reports = evaluateRootCauses(records, new Date(), auditConfig);
+    const predictionConfigHashValue = predictionConfigHash(modelConfig);
+    for (const report of reports) {
+      await this.pool.query(`INSERT INTO prediction_self_audit_factors(
+        audit_version,model_version,prediction_config_hash,config_hash,input_hash,dimension,bucket_key,bucket_label,
+        evaluated_at,status,settled_sample_size,binary_sample_size,positive_rate,reference_paper_roi,calibration_gap,
+        calibration_sample_size,baseline_binary_sample_size,baseline_positive_rate,baseline_reference_paper_roi,
+        positive_rate_gap,reference_paper_roi_gap,evidence_strength,root_cause_score,reasons)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24::jsonb)
+        ON CONFLICT(audit_version,model_version,prediction_config_hash,config_hash,dimension,bucket_key,input_hash) DO NOTHING`,
+      [report.version,modelConfig.modelVersion,predictionConfigHashValue,report.configHash,report.inputHash,
+        report.dimension,report.bucketKey,report.bucketLabel,report.evaluatedAt,report.status,report.settledSampleSize,
+        report.binarySampleSize,report.positiveRate,report.referencePaperRoi,report.calibrationGap,report.calibrationSampleSize,
+        report.baselineBinarySampleSize,report.baselinePositiveRate,report.baselineReferencePaperRoi,report.positiveRateGap,
+        report.referencePaperRoiGap,report.evidenceStrength,report.rootCauseScore,JSON.stringify(report.reasons)]);
+    }
+    return this.latestRootCauseAudits(modelConfig);
+  }
+
+  async latestRootCauseAudits(modelConfig: PredictionConfig = predictionConfig) {
+    const result = await this.pool.query(`SELECT DISTINCT ON(dimension,bucket_key)
+      id,audit_version,model_version,prediction_config_hash,config_hash,input_hash,dimension,bucket_key,bucket_label,
+      evaluated_at,status,settled_sample_size,binary_sample_size,positive_rate,reference_paper_roi,calibration_gap,
+      calibration_sample_size,baseline_binary_sample_size,baseline_positive_rate,baseline_reference_paper_roi,
+      positive_rate_gap,reference_paper_roi_gap,evidence_strength,root_cause_score,reasons
+      FROM prediction_self_audit_factors
+      WHERE model_version=$1 AND prediction_config_hash=$2
+      ORDER BY dimension,bucket_key,evaluated_at DESC,created_at DESC,id DESC`,
+    [modelConfig.modelVersion,predictionConfigHash(modelConfig)]);
+    const severity = (status: RootCauseStatus) =>
+      status === 'HIGH_RISK' ? 0 : status === 'WATCH' ? 1 : status === 'HEALTHY' ? 2 : 3;
+    return result.rows.map((row) => ({
+      id: String(row.id), version: String(row.audit_version), modelVersion: String(row.model_version),
+      predictionConfigHash: String(row.prediction_config_hash), configHash: String(row.config_hash),
+      inputHash: String(row.input_hash), dimension: String(row.dimension), bucketKey: String(row.bucket_key),
+      bucketLabel: String(row.bucket_label), evaluatedAt: new Date(String(row.evaluated_at)),
+      status: String(row.status) as RootCauseStatus, settledSampleSize: Number(row.settled_sample_size),
+      binarySampleSize: Number(row.binary_sample_size), positiveRate: row.positive_rate == null ? null : Number(row.positive_rate),
+      referencePaperRoi: row.reference_paper_roi == null ? null : Number(row.reference_paper_roi),
+      calibrationGap: row.calibration_gap == null ? null : Number(row.calibration_gap),
+      calibrationSampleSize: Number(row.calibration_sample_size), baselineBinarySampleSize: Number(row.baseline_binary_sample_size),
+      baselinePositiveRate: row.baseline_positive_rate == null ? null : Number(row.baseline_positive_rate),
+      baselineReferencePaperRoi: row.baseline_reference_paper_roi == null ? null : Number(row.baseline_reference_paper_roi),
+      positiveRateGap: row.positive_rate_gap == null ? null : Number(row.positive_rate_gap),
+      referencePaperRoiGap: row.reference_paper_roi_gap == null ? null : Number(row.reference_paper_roi_gap),
+      evidenceStrength: Number(row.evidence_strength), rootCauseScore: Number(row.root_cause_score),
+      reasons: Array.isArray(row.reasons) ? row.reasons.map(String) : [],
+    })).sort((a, b) => severity(a.status) - severity(b.status)
+      || b.rootCauseScore - a.rootCauseScore || b.binarySampleSize - a.binarySampleSize
+      || a.bucketLabel.localeCompare(b.bucketLabel));
   }
 
   async previews() {

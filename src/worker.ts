@@ -62,6 +62,14 @@ async function runCycle(): Promise<void> {
     catch (error) { logger.error({ err: error }, 'Prediction settlement failed; continuing'); }
   }
   if (!stopped) {
+    try {
+      const audit = await predictionRepository.runSelfAudit();
+      logger.info({ status: audit.status, recentN: audit.recentSampleSize, lossStreak: audit.lossStreak },
+        'Prediction self audit completed');
+    }
+    catch (error) { logger.error({ err: error }, 'Prediction self audit failed; continuing'); }
+  }
+  if (!stopped) {
     try { await predictionRepository.refreshHistoricalIncremental(); }
     catch (error) { logger.error({ err: error }, 'Prediction historical refresh failed; continuing'); }
   }

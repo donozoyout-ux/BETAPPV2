@@ -7,6 +7,7 @@ export type SelfAuditConfig = {
   version: 'SELF_AUDIT_V1';
   recentWindow: number;
   minimumBinarySample: number;
+  minimumRecentBinarySample: number;
   minimumCalibrationSample: number;
   watchPositiveRateBelow: number;
   pausePositiveRateBelow: number;
@@ -20,8 +21,9 @@ export type SelfAuditConfig = {
 
 export const selfAuditConfig: SelfAuditConfig = {
   version: 'SELF_AUDIT_V1',
-  recentWindow: 30,
+  recentWindow: 40,
   minimumBinarySample: 30,
+  minimumRecentBinarySample: 20,
   minimumCalibrationSample: 20,
   watchPositiveRateBelow: 0.48,
   pausePositiveRateBelow: 0.40,
@@ -105,9 +107,18 @@ export function evaluateSelfAudit(
     ? recent.reduce((sum, row) => sum + row.referencePaperReturn, 0) / recent.length
     : null;
   const calibrationRows = recentBinary.filter((row) => row.historicalHitRate != null);
+  const calibrationBuckets = new Map<number, SelfAuditRecord[]>();
+  for (const row of calibrationRows) {
+    const probability = Math.max(0, Math.min(1, row.historicalHitRate ?? 0));
+    const bucket = Math.min(9, Math.floor(probability * 10));
+    calibrationBuckets.set(bucket, [...(calibrationBuckets.get(bucket) ?? []), row]);
+  }
   const calibrationMae = calibrationRows.length
-    ? calibrationRows.reduce((sum, row) =>
-      sum + Math.abs((row.historicalHitRate ?? 0) - (isPositive(row.outcome) ? 1 : 0)), 0) / calibrationRows.length
+    ? [...calibrationBuckets.values()].reduce((weightedError, rows) => {
+      const predicted = rows.reduce((sum, row) => sum + (row.historicalHitRate ?? 0), 0) / rows.length;
+      const actual = rows.filter((row) => isPositive(row.outcome)).length / rows.length;
+      return weightedError + Math.abs(predicted - actual) * rows.length;
+    }, 0) / calibrationRows.length
     : null;
 
   let lossStreak = 0;
@@ -124,7 +135,8 @@ export function evaluateSelfAudit(
     status = 'INSUFFICIENT_DATA';
     reasons.push('SELF_AUDIT_MIN_SAMPLE_NOT_REACHED');
   } else {
-    const pauseForPerformance = recentPositiveRate != null && recentReferencePaperRoi != null
+    const recentPerformanceReady = recentBinary.length >= config.minimumRecentBinarySample;
+    const pauseForPerformance = recentPerformanceReady && recentPositiveRate != null && recentReferencePaperRoi != null
       && recentPositiveRate < config.pausePositiveRateBelow
       && recentReferencePaperRoi < config.pauseReferencePaperRoiBelow;
     const pauseForCalibration = calibrationRows.length >= config.minimumCalibrationSample
@@ -136,8 +148,8 @@ export function evaluateSelfAudit(
     if (reasons.length) {
       status = 'PAUSED';
     } else {
-      const watchForPerformance = (recentPositiveRate != null && recentPositiveRate < config.watchPositiveRateBelow)
-        || (recentReferencePaperRoi != null && recentReferencePaperRoi < config.watchReferencePaperRoiBelow);
+      const watchForPerformance = recentPerformanceReady && ((recentPositiveRate != null && recentPositiveRate < config.watchPositiveRateBelow)
+        || (recentReferencePaperRoi != null && recentReferencePaperRoi < config.watchReferencePaperRoiBelow));
       const watchForCalibration = calibrationRows.length >= config.minimumCalibrationSample
         && calibrationMae != null && calibrationMae > config.watchCalibrationMaeAbove;
       if (lossStreak >= config.watchLossStreak) reasons.push('SELF_AUDIT_LOSS_STREAK_WATCH');

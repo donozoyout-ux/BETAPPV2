@@ -35,6 +35,7 @@
     "predictions:settle": "tsx src/predictions/settle-cli.ts",
     "predictions:performance": "tsx src/predictions/performance-cli.ts",
     "predictions:backtest": "tsx src/predictions/backtest-cli.ts",
+    "predictions:self-audit": "tsx src/predictions/self-audit-cli.ts",
     "test:integration:db": "vitest run test/integration",
     "test": "vitest run",
     "test:unit": "vitest run test/unit",

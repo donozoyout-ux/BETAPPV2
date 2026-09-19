@@ -55,3 +55,24 @@ npm run predictions:backtest
 Backtest is chronological: each target is reconstructed from raw snapshots at `kickoff - officialWindowStartMinutes`, not from the latest stored ODDS analysis. It excludes and counts prices after that simulated lock and after kickoff, and calculates future-historical, decision-time, and post-kickoff leakage counters from actual inputs/selected IDs; they are never hardcoded claims. Sparse data yields `BACKTEST: PARTIAL` rather than fabricated performance.
 
 API endpoints: `GET /api/predictions/today`, `/previews`, `/history?limit=&offset=`, `/performance`, and `/:matchId`. States distinguish `PREVIEW`, `LOCKED_PREDICTION`, `LOCKED_SKIP`, `PENDING`, and `SETTLED` where applicable.
+
+
+## Self-Audit V1
+
+`SELF_AUDIT_V1` is a deterministic safety layer over the immutable Prediction V1 journal. It does not edit historical predictions or settlements. It evaluates only official locked `PREDICT` decisions produced by the current Prediction V1 config hash.
+
+States:
+
+- `INSUFFICIENT_DATA`: fewer than the minimum settled binary outcomes; predictions continue normally.
+- `HEALTHY`: recent performance and calibration checks are inside the engineering guardrails.
+- `WATCH`: degradation is visible on the dashboard, but official predictions are not blocked.
+- `PAUSED`: severe recent degradation or a configured loss streak activates a temporary guard. During the active guard window an otherwise valid official PREDICT becomes an immutable `SKIP / SELF_AUDIT_PAUSED`.
+- After the pause cooldown expires, the dashboard shows recovery mode and new results may be collected again. A pause cannot extend itself unless the underlying settlement input changes and a new audit is created.
+
+The audit tracks recent positive settlement rate, reference-paper ROI, a bucketed probability calibration gap, and consecutive negative settlements. PUSH and VOID are excluded from the binary hit-rate denominator. Calibration compares the mean historical estimate with the observed positive rate inside probability buckets rather than scoring individual outcomes as calibration errors.
+
+Initial thresholds are engineering defaults, not scientifically optimized thresholds. Self-Audit changes the prediction gate only; it has no real-bet execution authority and no AI authority.
+
+API: `GET /api/predictions/self-audit`
+
+CLI: `npm run predictions:self-audit`

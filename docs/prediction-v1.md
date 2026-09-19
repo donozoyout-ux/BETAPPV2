@@ -76,3 +76,24 @@ Initial thresholds are engineering defaults, not scientifically optimized thresh
 API: `GET /api/predictions/self-audit`
 
 CLI: `npm run predictions:self-audit`
+
+
+## Self-Audit V2 — Segment Guard
+
+`SELF_AUDIT_V2` extends the global V1 fail-safe with scoped performance checks. It never edits historical predictions or settlements.
+
+Every settled official Prediction V1 decision is evaluated in three independent scopes:
+
+- `MARKET`: for example `TOTAL_GOALS`, `MATCH_RESULT`, or `ASIAN_HANDICAP`.
+- `LEAGUE`: one supported competition across its prediction markets.
+- `LEAGUE_MARKET`: one market inside one competition.
+
+If a segment has too little evidence it remains `INSUFFICIENT_DATA`. A `WATCH` segment is visible but does not block predictions. An active `PAUSED` segment blocks only predictions matching that segment and records an immutable `SKIP / SELF_AUDIT_SEGMENT_PAUSED`. Unrelated leagues and markets continue normally.
+
+The global `SELF_AUDIT_V1` remains a system-wide emergency guard. V2 is the narrower first line of defence for localized degradation.
+
+Segment thresholds are engineering defaults, not scientifically optimized thresholds. V2 starts evaluating only after 12 binary settlements in a segment, uses a 24-result recent window, and has a 24-hour recoverable pause. A persisted pause is not extended merely because the worker runs again with unchanged settlement inputs.
+
+API: `GET /api/predictions/self-audit/segments`
+
+CLI: `npm run predictions:self-audit` returns both global V1 and segmented V2 reports.

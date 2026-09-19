@@ -1,5 +1,6 @@
 import type { OddsFixture, NormalizedOdds } from '../domain/odds.js';
 import { normalizeTeamAlias } from '../matching/team-alias.js';
+import { OddsAnalysisRepository } from './odds-analysis-repository.js';
 import type { DatabasePool } from './pool.js';
 
 export function oddsChanged(previous: number | null, current: number): boolean {
@@ -7,7 +8,15 @@ export function oddsChanged(previous: number | null, current: number): boolean {
 }
 
 export class OddsRepository {
-  constructor(private readonly pool: DatabasePool) {}
+  private readonly analysis: Pick<OddsAnalysisRepository, 'analyzeAndSave'>;
+
+  constructor(
+    private readonly pool: DatabasePool,
+    private readonly onAnalysisError?: (error: unknown, matchId: string) => void,
+    analysis?: Pick<OddsAnalysisRepository, 'analyzeAndSave'>,
+  ) {
+    this.analysis = analysis ?? new OddsAnalysisRepository(pool);
+  }
 
   async resolveMatch(fixture: OddsFixture): Promise<string | null> {
     const candidates = await this.pool.query<{ id: string; kickoff_at: Date; home_team: string; away_team: string }>(
@@ -61,6 +70,20 @@ export class OddsRepository {
 
   async append(matchId: string, odds: NormalizedOdds): Promise<boolean> {
     return (await this.appendMany(matchId, [odds])) === 1;
+  }
+
+  async appendManyAndAnalyze(matchId: string, oddsItems: NormalizedOdds[]): Promise<{
+    inserted: number; analysisGenerated: boolean; analysisFailed: boolean;
+  }> {
+    const inserted = await this.appendMany(matchId, oddsItems);
+    if (inserted === 0) return { inserted, analysisGenerated: false, analysisFailed: false };
+    try {
+      const result = await this.analysis.analyzeAndSave(matchId);
+      return { inserted, analysisGenerated: result?.inserted === true, analysisFailed: false };
+    } catch (error) {
+      this.onAnalysisError?.(error, matchId);
+      return { inserted, analysisGenerated: false, analysisFailed: true };
+    }
   }
 
   async summary(matchId: string) {

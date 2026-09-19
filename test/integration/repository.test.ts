@@ -4,6 +4,7 @@ import { migrationStatus, runMigrations } from '../../src/db/migrator.js';
 import { createPool, type DatabasePool } from '../../src/db/pool.js';
 import { FootballRepository } from '../../src/db/repository.js';
 import { OddsRepository } from '../../src/db/odds-repository.js';
+import { OddsAnalysisRepository } from '../../src/db/odds-analysis-repository.js';
 import { CornerRepository } from '../../src/db/corner-repository.js';
 import { configHash, cornerModelConfig } from '../../src/corners/config.js';
 import { buildAllTeamProfiles } from '../../src/corners/profiles.js';
@@ -100,6 +101,22 @@ describe('FootballRepository integration', () => {
     expect(summary[0]).toMatchObject({ snapshot_count: '2' });
     expect(Number(summary[0].opening_odds)).toBe(1.94);
     expect(Number(summary[0].current_odds)).toBe(1.84);
+    const openingAt = new Date('2026-09-16T12:10:00Z');
+    const currentAt = new Date('2026-09-16T12:20:00Z');
+    const oneXTwo = ['HOME','DRAW','AWAY'].flatMap((selection, index) => [{ provider: 'nowgoal:pinnacle',
+      providerMatchId: 'ng-1', marketType: 'MATCH_RESULT', marketName: '1X2', line: null, selection,
+      oddsDecimal: [2.1,3.3,3.6][index]!, capturedAt: openingAt }, { provider: 'nowgoal:pinnacle',
+      providerMatchId: 'ng-1', marketType: 'MATCH_RESULT', marketName: '1X2', line: null, selection,
+      oddsDecimal: [1.85,3.5,4.2][index]!, capturedAt: currentAt }]);
+    const automatic = await odds.appendManyAndAnalyze(sofaId, oneXTwo);
+    expect(automatic).toMatchObject({ inserted: 6, analysisGenerated: true, analysisFailed: false });
+    const unchanged = await odds.appendManyAndAnalyze(sofaId, oneXTwo.filter((item) => item.capturedAt === currentAt));
+    expect(unchanged).toMatchObject({ inserted: 0, analysisGenerated: false, analysisFailed: false });
+    const oddsAnalysis = new OddsAnalysisRepository(pool);
+    const repeated = await oddsAnalysis.analyzeAndSave(sofaId, new Date('2026-09-19T00:00:00Z'));
+    expect(repeated?.inserted).toBe(false);
+    const analysisRuns = await pool.query('SELECT count(DISTINCT input_hash) inputs,count(*) runs FROM odds_analysis_runs WHERE match_id=$1', [sofaId]);
+    expect(Number(analysisRuns.rows[0].inputs)).toBe(Number(analysisRuns.rows[0].runs));
 
     const cornerRepository = new CornerRepository(pool);
     const analysis = {
@@ -118,7 +135,7 @@ describe('FootballRepository integration', () => {
   it('validates migrations, checkpoint, profiles, replay, rollback and advisory locks', async () => {
     const migrations = await migrationStatus(pool);
     expect(migrations.pendingMigrations).toEqual([]);
-    expect(migrations.schemaVersion).toBe('004_database_validation.sql');
+    expect(migrations.schemaVersion).toBe('005_odds_analysis_v1.sql');
     const health = await repository.databaseHealth();
     expect(health.status).toBe('ok');
     await repository.markStarted('fotmob', 'integration-checkpoint', { index: 0 });

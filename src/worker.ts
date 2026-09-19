@@ -16,7 +16,9 @@ const logger = createLogger(config, 'betapp-worker');
 const pool = createPool(config);
 const repository = new FootballRepository(pool);
 const cornerRepository = new CornerRepository(pool);
-const oddsRepository = new OddsRepository(pool);
+const oddsRepository = new OddsRepository(pool, (error, matchId) => {
+  logger.warn({ err: error, matchId }, 'ODDS_V1 analysis failed after odds persistence; continuing');
+});
 const sofascore = new SofascoreProvider(config, logger);
 const fotmob = new FotMobProvider(config, logger);
 const footballCollectors = [new Collector(sofascore, repository, config, logger),

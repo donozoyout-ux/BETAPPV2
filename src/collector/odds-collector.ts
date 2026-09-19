@@ -37,6 +37,8 @@ export class OddsCollector {
     let matched = 0;
     let unmatched = 0;
     let snapshots = 0;
+    let analyses = 0;
+    let analysisFailures = 0;
     try {
       for (let day = 0; day <= this.config.NOWGOAL_FUTURE_DAYS && !this.stopped; day += 1) {
         const date = addDays(new Date(), day);
@@ -45,14 +47,18 @@ export class OddsCollector {
           const internalMatchId = await this.oddsRepository.resolveMatch(item.fixture);
           if (!internalMatchId) { unmatched += 1; continue; }
           matched += 1;
-          snapshots += await this.oddsRepository.appendMany(internalMatchId, item.odds);
+          const stored = await this.oddsRepository.appendManyAndAnalyze(internalMatchId, item.odds);
+          snapshots += stored.inserted;
+          if (stored.analysisGenerated) analyses += 1;
+          if (stored.analysisFailed) analysisFailures += 1;
         }
       }
-      const completed = { ...cursor, completedAt: new Date().toISOString(), matched, unmatched, snapshots,
+      const completed = { ...cursor, completedAt: new Date().toISOString(), matched, unmatched, snapshots, analyses, analysisFailures,
         retries: this.provider.consumeRetryCount() };
       await this.repository.markSucceeded(this.provider.name, scope, completed);
       await this.repository.markProviderFetch(this.provider.name);
-      this.logger.info({ provider: this.provider.name, matched, unmatched, snapshots }, 'Prematch odds cycle completed');
+      this.logger.info({ provider: this.provider.name, matched, unmatched, snapshots, analyses, analysisFailures },
+        'Prematch odds cycle completed');
     } catch (error) {
       await this.repository.markFailed(this.provider.name, scope, error);
       await this.repository.updateProviderStatus(this.provider.name, false, 0,

@@ -28,6 +28,8 @@
     "corners:backtest": "tsx src/corners/backtest-cli.ts",
     "corners:backtest:stage1": "tsx src/corners/backtest-cli.ts --stage=1",
     "corners:live-preview": "tsx src/corners/live-preview-cli.ts",
+    "odds:analyze": "tsx src/odds-analysis/analyze-cli.ts",
+    "odds:backtest": "tsx src/odds-analysis/backtest-cli.ts",
     "test:integration:db": "vitest run test/integration",
     "test": "vitest run",
     "test:unit": "vitest run test/unit",

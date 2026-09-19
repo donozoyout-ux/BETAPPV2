@@ -333,10 +333,12 @@ export class FootballRepository {
     const startedAt = Date.now();
     const requiredTables = ['leagues','teams','matches','provider_entities','match_statistics','collector_checkpoints','odds_snapshots',
       'historical_match_stats','team_corner_profiles','league_corner_baselines','corner_model_versions','corner_analyses',
-      'corner_backtests','backfill_runs','backfill_failures','dataset_audits'];
+      'corner_backtests','backfill_runs','backfill_failures','dataset_audits','odds_analysis_model_versions',
+      'odds_analysis_runs','odds_analysis_items','odds_analysis_backtests'];
     const requiredIndexes = ['matches_kickoff_idx','provider_entities_internal_idx','historical_stats_competition_kickoff_idx',
       'historical_stats_home_kickoff_idx','historical_stats_away_kickoff_idx','backfill_runs_status_idx',
-      'backfill_failures_retry_idx','dataset_audits_created_idx','corner_backtests_created_idx','odds_history_idx'];
+      'backfill_failures_retry_idx','dataset_audits_created_idx','corner_backtests_created_idx','odds_history_idx',
+      'odds_analysis_runs_match_created_idx','odds_analysis_items_run_idx','odds_analysis_backtests_created_idx'];
     const checks = { connection: false, read: false, write: false, transaction: false, advisoryLock: false,
       migrationTable: false, requiredTables: false, requiredIndexes: false };
     try {
@@ -416,7 +418,7 @@ export class FootballRepository {
   }
 
   async dashboardData(timeZone: string) {
-    const [matches, providers, qualification, cornerAnalyses, datasetAudit, validation, backfill, odds] = await Promise.all([
+    const [matches, providers, qualification, cornerAnalyses, oddsAnalyses, datasetAudit, validation, backfill, odds] = await Promise.all([
       this.pool.query(
         `SELECT m.id,m.kickoff_at,m.status,m.home_score,m.away_score,l.name AS league,
           ht.name AS home_team,at.name AS away_team,
@@ -436,13 +438,23 @@ export class FootballRepository {
          JOIN teams at ON at.id=m.away_team_id
          WHERE (m.kickoff_at AT TIME ZONE $1)::date >= (now() AT TIME ZONE $1)::date
          ORDER BY ca.match_id,ca.created_at DESC`, [timeZone]),
+      this.pool.query(`SELECT r.*,m.kickoff_at,l.name league,ht.name home_team,at.name away_team,
+        COALESCE(jsonb_agg(to_jsonb(i) ORDER BY i.score DESC) FILTER(WHERE i.id IS NOT NULL),'[]'::jsonb) items
+        FROM odds_analysis_runs r JOIN matches m ON m.id=r.match_id JOIN leagues l ON l.id=m.league_id
+        JOIN teams ht ON ht.id=m.home_team_id JOIN teams at ON at.id=m.away_team_id
+        LEFT JOIN odds_analysis_items i ON i.run_id=r.id
+        WHERE m.kickoff_at>=now() AND NOT EXISTS(SELECT 1 FROM odds_analysis_runs newer
+          WHERE newer.match_id=r.match_id AND newer.model_version=r.model_version
+          AND (newer.created_at,newer.id)>(r.created_at,r.id))
+        GROUP BY r.id,m.kickoff_at,l.name,ht.name,at.name ORDER BY m.kickoff_at`),
       this.pool.query('SELECT report,created_at FROM dataset_audits ORDER BY created_at DESC LIMIT 1'),
       this.pool.query('SELECT report,model_version,config_hash,created_at FROM corner_backtests ORDER BY created_at DESC LIMIT 1'),
       this.pool.query('SELECT * FROM backfill_runs ORDER BY updated_at DESC LIMIT 20'),
       this.upcomingOdds(300),
     ]);
-    return { matches: matches.rows, providers: providers.rows, qualification: qualification.rows, cornerAnalyses: cornerAnalyses.rows,
-      datasetAudit: datasetAudit.rows[0] ?? null, validation: validation.rows[0] ?? null, backfill: backfill.rows, odds };
+    return { matches: matches.rows, providers: providers.rows, qualification: qualification.rows,
+      cornerAnalyses: cornerAnalyses.rows, oddsAnalyses: oddsAnalyses.rows, datasetAudit: datasetAudit.rows[0] ?? null,
+      validation: validation.rows[0] ?? null, backfill: backfill.rows, odds };
   }
 
   async upcomingOdds(limit = 300) {

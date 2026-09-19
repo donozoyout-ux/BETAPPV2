@@ -1,8 +1,9 @@
 import type { PredictionConfig } from './config.js';
 import { predictionConfig } from './config.js';
+import { analyzeOdds } from '../odds-analysis/engine.js';
 import { evaluatePrediction } from './engine.js';
 import { referencePaperReturn } from './settlement.js';
-import type { HistoricalExample, PredictionTarget, SettlementOutcome } from './types.js';
+import type { HistoricalExample, PredictionBacktestTarget, PredictionTarget, SettlementOutcome } from './types.js';
 
 export type PerformanceRecord = {
   decision: 'PREDICT' | 'SKIP'; outcome: SettlementOutcome | null; marketType: string | null;
@@ -64,15 +65,16 @@ export function buildPerformance(records: PerformanceRecord[], smallSampleThresh
 export function runPredictionBacktest(targets: PredictionTarget[], examples: HistoricalExample[],
   config: PredictionConfig = predictionConfig) {
   const sorted = [...targets].sort((a, b) => a.kickoffAt.getTime() - b.kickoffAt.getTime());
+  const eligibleExamples = examples.filter((example) => example.analysisEligible);
   let futureLeakageViolations = 0;
   const records: PerformanceRecord[] = [];
   const evaluations = sorted.map((target) => {
-    const available = examples.filter((example) => example.kickoffAt < target.kickoffAt);
+    const available = eligibleExamples.filter((example) => example.kickoffAt < target.kickoffAt);
     const evaluation = evaluatePrediction(target, available, target.kickoffAt, config);
     const used = new Set(evaluation.candidates.flatMap((candidate) => candidate.historical.exampleIds));
-    futureLeakageViolations += examples.filter((example) => used.has(example.id) && example.kickoffAt >= target.kickoffAt).length;
+    futureLeakageViolations += eligibleExamples.filter((example) => used.has(example.id) && example.kickoffAt >= target.kickoffAt).length;
     const selected = evaluation.selectedCandidate;
-    const settled = selected == null ? null : examples.find((example) => example.matchId === target.matchId
+    const settled = selected == null ? null : eligibleExamples.find((example) => example.matchId === target.matchId
       && example.marketType === selected.marketType && example.marketName === selected.marketName
       && example.line === selected.line && example.selection === selected.selection)?.settlementResult ?? null;
     records.push({ decision: evaluation.decision, outcome: settled, marketType: selected?.marketType ?? null,
@@ -86,9 +88,41 @@ export function runPredictionBacktest(targets: PredictionTarget[], examples: His
   const performance = buildPerformance(records);
   return {
     status: performance.predictCount > 0 && performance.settled > 0 ? 'PASS' : 'PARTIAL',
-    matchesEvaluated: evaluations.length, officialSimulatedPredictions: evaluations.filter((item) => item.decision === 'PREDICT').length,
+    matchesEvaluated: evaluations.length, targetsEvaluated: evaluations.length,
+    targetsWithOddsAtLock: evaluations.filter((item) => item.candidates.some((candidate) => candidate.analysisEligible)).length,
+    targetsWithoutOddsAtLock: evaluations.filter((item) => !item.candidates.some((candidate) => candidate.analysisEligible)).length,
+    officialSimulatedPredictions: evaluations.filter((item) => item.decision === 'PREDICT').length,
     simulatedSkips: evaluations.filter((item) => item.decision === 'SKIP').length,
     settledPredictions: performance.settled, win: performance.win, halfWin: performance.halfWin, push: performance.push,
-    halfLoss: performance.halfLoss, loss: performance.loss, futureLeakageViolations, performance, evaluations,
+    halfLoss: performance.halfLoss, loss: performance.loss, futureLeakageViolations,
+    historicalExamplesEligible: eligibleExamples.length, historicalExamplesRejectedIneligible: examples.length - eligibleExamples.length,
+    postKickoffSnapshotsExcluded: 0, afterSimulatedLockSnapshotsExcluded: 0,
+    postKickoffLeakageViolations: 0, decisionTimeLeakageViolations: 0, performance, evaluations,
   };
+}
+
+export function runPredictionBacktestFromSnapshots(targets: PredictionBacktestTarget[], examples: HistoricalExample[],
+  config: PredictionConfig = predictionConfig) {
+  let postKickoffSnapshotsExcluded = 0;
+  let afterSimulatedLockSnapshotsExcluded = 0;
+  let postKickoffLeakageViolations = 0;
+  let decisionTimeLeakageViolations = 0;
+  const reconstructed = [...targets].sort((a, b) => a.kickoffAt.getTime() - b.kickoffAt.getTime()).map((target) => {
+    const simulatedLockAt = new Date(target.kickoffAt.getTime() - config.officialWindowStartMinutes * 60_000);
+    const preKickoff = target.snapshots.filter((snapshot) => snapshot.capturedAt < target.kickoffAt);
+    const safeAtLock = preKickoff.filter((snapshot) => snapshot.capturedAt <= simulatedLockAt
+      && Number.isFinite(snapshot.oddsDecimal) && snapshot.oddsDecimal > 1);
+    postKickoffSnapshotsExcluded += target.snapshots.length - preKickoff.length;
+    afterSimulatedLockSnapshotsExcluded += preKickoff.length - safeAtLock.length;
+    const analysis = analyzeOdds(target.matchId, target.kickoffAt, target.snapshots, { generatedAt: simulatedLockAt });
+    // Both counters are evidence-based audits of the reconstructed target input.
+    postKickoffLeakageViolations += analysis.metadata.unsafeSnapshotsUsed;
+    if (analysis.metadata.safeSnapshotCount !== safeAtLock.length) decisionTimeLeakageViolations += 1;
+    return { matchId: target.matchId, competitionId: target.competitionId, kickoffAt: target.kickoffAt,
+      oddsInputHash: analysis.inputHash, oddsItems: analysis.items } satisfies PredictionTarget;
+  });
+  const report = runPredictionBacktest(reconstructed, examples, config);
+  return { ...report, postKickoffSnapshotsExcluded, afterSimulatedLockSnapshotsExcluded,
+    postKickoffLeakageViolations, decisionTimeLeakageViolations,
+    status: report.officialSimulatedPredictions > 0 && report.settledPredictions > 0 ? 'PASS' : 'PARTIAL' };
 }

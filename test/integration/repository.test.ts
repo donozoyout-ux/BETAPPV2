@@ -173,13 +173,13 @@ describe('FootballRepository integration', () => {
   });
 
   it('persists an immutable prediction journal and idempotently settles it', async () => {
-    const observedAt = new Date('2026-09-10T12:00:00Z');
+    const observedAt = new Date('2026-09-12T14:00:00Z');
     const historicalKickoff = new Date('2026-09-12T18:00:00Z');
     const targetKickoff = new Date('2099-09-20T18:00:00Z');
     const raw = {};
     const fixture = (externalId: string, kickoffAt: Date, status: 'scheduled' | 'finished', homeScore: number | null, awayScore: number | null) => ({
       providerExternalId: externalId,
-      league: { providerExternalId: 'prediction-league', name: 'Prediction League', country: 'Test', logoUrl: null, sourceUpdatedAt: observedAt, raw },
+      league: { providerExternalId: '17', name: 'Premier League', country: 'England', logoUrl: null, sourceUpdatedAt: observedAt, raw },
       homeTeam: { providerExternalId: `${externalId}-home`, name: `${externalId} Home`, shortName: null, country: 'Test', logoUrl: null, sourceUpdatedAt: observedAt, raw },
       awayTeam: { providerExternalId: `${externalId}-away`, name: `${externalId} Away`, shortName: null, country: 'Test', logoUrl: null, sourceUpdatedAt: observedAt, raw },
       kickoffAt, status, round: null, season: '2099', homeScore, awayScore, sourceUpdatedAt: observedAt, raw,
@@ -196,12 +196,32 @@ describe('FootballRepository integration', () => {
           line: null, selection, oddsDecimal: [1.8, 3.5, 4.2][index]!, capturedAt: new Date(observedAt.getTime() + 60_000) });
       }
     }
+    // A single-bookmaker total market is otherwise valid-looking but cannot
+    // satisfy ODDS_V1's historical eligibility gate.
+    for (const [selection, opening, current] of [['OVER', 2, 1.8], ['UNDER', 1.9, 2.1]] as const) {
+      await odds.append(historicalId, { provider: 'nowgoal:thin', providerMatchId: 'thin-history', marketType: 'TOTAL_GOALS',
+        marketName: 'Total Goals', line: 2.5, selection, oddsDecimal: opening, capturedAt: observedAt });
+      await odds.append(historicalId, { provider: 'nowgoal:thin', providerMatchId: 'thin-history', marketType: 'TOTAL_GOALS',
+        marketName: 'Total Goals', line: 2.5, selection, oddsDecimal: current, capturedAt: new Date(observedAt.getTime() + 60_000) });
+    }
+    const targetOpening = new Date(targetKickoff.getTime() - 100 * 60_000);
+    const targetCurrent = new Date(targetKickoff.getTime() - 95 * 60_000);
+    for (const provider of ['nowgoal:one', 'nowgoal:two', 'nowgoal:three']) {
+      for (const [index, selection] of selections.entries()) {
+        await odds.append(targetId, { provider, providerMatchId: `${provider}-target`, marketType: 'MATCH_RESULT', marketName: '1X2',
+          line: null, selection, oddsDecimal: [2.1, 3.3, 3.6][index]!, capturedAt: targetOpening });
+        await odds.append(targetId, { provider, providerMatchId: `${provider}-target`, marketType: 'MATCH_RESULT', marketName: '1X2',
+          line: null, selection, oddsDecimal: [1.8, 3.5, 4.2][index]!, capturedAt: targetCurrent });
+      }
+    }
     const predictionRepository = new PredictionRepository(pool);
     const config = { ...predictionConfig, minimumHistoricalSample: 1, targetHistoricalSample: 1,
       minimumPredictionScore: 0, minimumDataQualityScore: 0, minimumConfidenceScore: 0,
       minimumBookmakerCount: 1, minimumCompleteStateCount: 1 };
-    const backfill = await predictionRepository.backfillHistorical(config);
+    const backfill = await predictionRepository.refreshHistoricalIncremental(config);
     expect(backfill.insertedExamples).toBeGreaterThan(0);
+    expect(backfill.rejectedIneligible).toBeGreaterThan(0);
+    expect((await predictionRepository.refreshHistoricalIncremental(config)).insertedExamples).toBe(0);
     const historical = await predictionRepository.loadHistoricalExamples(targetKickoff);
     const league = await pool.query<{ league_id: string }>('SELECT league_id FROM matches WHERE id=$1', [targetId]);
     const targetItem: AnalysisItem = { marketType: 'MATCH_RESULT', marketName: '1X2', line: null, selection: 'HOME',
@@ -216,12 +236,17 @@ describe('FootballRepository integration', () => {
       oddsInputHash: 'prediction-integration-input', oddsItems: [targetItem] }, historical, new Date('2099-09-20T17:30:00Z'), config);
     expect(evaluation.decision).toBe('PREDICT');
     const runId = await predictionRepository.saveRun(evaluation, config);
-    expect(await predictionRepository.lock(evaluation, runId, new Date('2099-09-20T17:30:00Z'), 30)).toBe(true);
-    expect(await predictionRepository.lock(evaluation, runId, new Date('2099-09-20T17:31:00Z'), 29)).toBe(false);
+    expect(await predictionRepository.lock(evaluation, runId, new Date('2099-09-20T16:00:00Z'), 120, config)).toBe(false);
+    expect(await predictionRepository.lock(evaluation, runId, new Date('2099-09-20T18:00:00Z'), 0, config)).toBe(false);
+    expect(await predictionRepository.lock(evaluation, runId, new Date('2099-09-20T17:30:00Z'), 30, config)).toBe(true);
+    expect(await predictionRepository.lock(evaluation, runId, new Date('2099-09-20T17:31:00Z'), 29, config)).toBe(false);
     await expect(pool.query('UPDATE prediction_journal SET locked_at=now() WHERE match_id=$1', [targetId])).rejects.toThrow(/immutable/);
     await repository.upsertMatch('prediction-source', fixture('prediction-target', targetKickoff, 'finished', 2, 0));
     expect((await predictionRepository.settlePending()).settled).toBe(1);
     expect((await predictionRepository.settlePending()).settled).toBe(0);
+    expect((await predictionRepository.refreshHistoricalIncremental(config)).insertedExamples).toBeGreaterThan(0);
+    const settlement = await pool.query<{ id: string }>('SELECT id FROM prediction_settlements WHERE prediction_journal_id=(SELECT id FROM prediction_journal WHERE match_id=$1)', [targetId]);
+    await expect(pool.query('UPDATE prediction_settlements SET outcome=\'LOSS\' WHERE id=$1', [settlement.rows[0]!.id])).rejects.toThrow(/immutable/);
     const performance = await predictionRepository.performance();
     expect(performance).toMatchObject({ predictCount: 1, settled: 1, win: 1 });
   });

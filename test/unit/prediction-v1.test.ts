@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { predictionConfig, predictionConfigHash } from '../../src/predictions/config.js';
 import { evaluatePrediction, lockWindowState } from '../../src/predictions/engine.js';
-import { buildPerformance, runPredictionBacktest } from '../../src/predictions/history.js';
+import { buildPerformance, runPredictionBacktest, runPredictionBacktestFromSnapshots } from '../../src/predictions/history.js';
 import { scorePrediction } from '../../src/predictions/scoring.js';
 import { findHistoricalEvidence, sameMarketIdentity, wilsonInterval } from '../../src/predictions/similarity.js';
 import { referencePaperReturn, settleAsianHandicap, settlePrediction, settleTotal } from '../../src/predictions/settlement.js';
@@ -28,6 +28,9 @@ function item(overrides: Partial<AnalysisItem> = {}): AnalysisItem {
 function example(index: number, overrides: Partial<HistoricalExample> = {}): HistoricalExample {
   return { id: `h${index}`, matchId: `historic-${index}`, competitionId: 'league-a',
     kickoffAt: new Date(kickoff.getTime() - (index + 1) * 86_400_000), oddsInputHash: `odds-${index}`,
+    featureCutoffAt: new Date(kickoff.getTime() - (index + 1) * 86_400_000 - 90 * 60_000), featureLeadMinutes: 90,
+    analysisEligible: true, dataQualityGrade: 'GOOD', confidenceGrade: 'GOOD', completeStateBookmakerCount: 3,
+    minimumCompleteStateCount: 2,
     marketType: 'TOTAL_GOALS', marketName: 'Total Goals', line: 2.5, selection: 'OVER', openingOdds: 2,
     currentOdds: 1.8, openingFairProbability: 0.45, currentFairProbability: 0.56, probabilityDeltaPp: 11,
     bookmakerCount: 3, movementAgreementRatio: 1, oddsAnalysisScore: 80, dataQualityScore: 90, confidenceScore: 85,
@@ -53,6 +56,13 @@ describe('PREDICTION_V1 similarity and scoring', () => {
     const evidence = findHistoricalEvidence(item(), 'league-a', kickoff, [example(1), future], predictionConfig);
     expect(evidence.exampleIds).toEqual(['h1']);
     expect(evidence.status).toBe('INSUFFICIENT_SAMPLE');
+  });
+
+  it('excludes otherwise similar ineligible historical examples from N', () => {
+    const evidence = findHistoricalEvidence(item(), 'league-a', kickoff,
+      [example(1), example(2, { analysisEligible: false })], looseConfig);
+    expect(evidence.sampleSize).toBe(1);
+    expect(evidence.exampleIds).toEqual(['h1']);
   });
 
   it('uses a deterministic Wilson interval and deterministic config hash', () => {
@@ -143,5 +153,20 @@ describe('PREDICTION_V1 performance and chronological backtest', () => {
       example(3, { kickoffAt: new Date(kickoff.getTime() + 86_400_000), settlementResult: 'LOSS' })], looseConfig);
     expect(report.futureLeakageViolations).toBe(0);
     expect(report.matchesEvaluated).toBe(2);
+  });
+
+  it('reconstructs target odds at the simulated lock and ignores later prices', () => {
+    const target = { matchId: 'historic-2', competitionId: 'league-a', kickoffAt: kickoff, snapshots: [
+      { matchId: 'historic-2', provider: 'p1', marketType: 'MATCH_RESULT', marketName: '1X2', line: null, selection: 'HOME', oddsDecimal: 2.1, capturedAt: new Date('2026-09-20T16:20:00Z') },
+      { matchId: 'historic-2', provider: 'p1', marketType: 'MATCH_RESULT', marketName: '1X2', line: null, selection: 'DRAW', oddsDecimal: 3.3, capturedAt: new Date('2026-09-20T16:20:00Z') },
+      { matchId: 'historic-2', provider: 'p1', marketType: 'MATCH_RESULT', marketName: '1X2', line: null, selection: 'AWAY', oddsDecimal: 3.6, capturedAt: new Date('2026-09-20T16:20:00Z') },
+      { matchId: 'historic-2', provider: 'p1', marketType: 'MATCH_RESULT', marketName: '1X2', line: null, selection: 'HOME', oddsDecimal: 1.01, capturedAt: new Date('2026-09-20T17:40:00Z') },
+      { matchId: 'historic-2', provider: 'p1', marketType: 'MATCH_RESULT', marketName: '1X2', line: null, selection: 'DRAW', oddsDecimal: 50, capturedAt: new Date('2026-09-20T18:01:00Z') },
+    ] };
+    const report = runPredictionBacktestFromSnapshots([target], [example(1), example(2, { kickoffAt: kickoff })], looseConfig);
+    expect(report.targetsWithoutOddsAtLock).toBe(1);
+    expect(report.afterSimulatedLockSnapshotsExcluded).toBe(1);
+    expect(report.postKickoffSnapshotsExcluded).toBe(1);
+    expect(report).toMatchObject({ postKickoffLeakageViolations: 0, decisionTimeLeakageViolations: 0 });
   });
 });

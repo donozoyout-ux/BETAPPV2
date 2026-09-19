@@ -38,10 +38,12 @@ function candidate(item: AnalysisItem, competitionId: string, kickoffAt: Date, e
     predictionScore: scored.score, scoreComponents: scored.components, bookmakerCount: item.bookmakerCount,
     agreementRatio: item.movementAgreementRatio, dataQualityScore: item.dataQuality.score,
     dataQualityGrade: item.dataQuality.grade, confidenceScore: item.modelConfidence.score,
-    confidenceGrade: item.modelConfidence.grade, movementClass: item.movementClass, historical,
+    confidenceGrade: item.modelConfidence.grade, movementClass: item.movementClass, analysisEligible: item.analysisEligible, historical,
     cornerModelProbability: gap == null ? null : item.currentFairProbability + gap / 100,
     marketFairProbability: item.currentFairProbability, modelMarketGapPp: gap,
-    cornerQuality: corner ? item.dataQuality.grade : null, cornerConfirmation: confirmation,
+    // ODDS data quality is not Corner Engine quality. The latter is unavailable
+    // here unless an actual corner-analysis row is explicitly loaded.
+    cornerQuality: null, cornerConfirmation: confirmation,
     reasons: ['ODDS_STRONG_SUPPORT', 'BOOKMAKER_AGREEMENT', ...(historical.status === 'SUFFICIENT'
       ? ['HISTORICAL_SAMPLE_OK', 'HISTORICAL_RATE_SUPPORT'] : [])],
     warnings: [...item.warnings, ...(historical.status === 'INSUFFICIENT_SAMPLE' ? ['HISTORICAL_SAMPLE_SMALL'] : []),

@@ -36,7 +36,7 @@ function binary(outcome: SettlementOutcome): boolean { return !['PUSH', 'VOID'].
 
 export function findHistoricalEvidence(item: AnalysisItem, competitionId: string, kickoffAt: Date,
   examples: HistoricalExample[], config: PredictionConfig): HistoricalEvidence {
-  const matches = examples.filter((example) => example.kickoffAt < kickoffAt && sameMarketIdentity(item, example))
+  const matches = examples.filter((example) => example.analysisEligible && example.kickoffAt < kickoffAt && sameMarketIdentity(item, example))
     .map((example) => ({ example, distance: distance(item, example, config) }))
     .filter((entry): entry is { example: HistoricalExample; distance: number } => entry.distance != null)
     .sort((a, b) => a.distance - b.distance || a.example.kickoffAt.getTime() - b.example.kickoffAt.getTime());

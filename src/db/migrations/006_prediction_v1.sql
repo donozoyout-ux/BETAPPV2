@@ -14,6 +14,13 @@ CREATE TABLE IF NOT EXISTS prediction_historical_examples (
   model_version text NOT NULL,
   config_hash text NOT NULL,
   odds_input_hash text NOT NULL,
+  feature_cutoff_at timestamptz NOT NULL,
+  feature_lead_minutes numeric(10,3) NOT NULL CHECK(feature_lead_minutes > 0),
+  analysis_eligible boolean NOT NULL,
+  data_quality_grade text NOT NULL,
+  confidence_grade text NOT NULL,
+  complete_state_bookmaker_count integer NOT NULL,
+  minimum_complete_state_count integer NOT NULL,
   market_type text NOT NULL,
   market_name text NOT NULL,
   line numeric,
@@ -45,6 +52,20 @@ CREATE INDEX IF NOT EXISTS prediction_historical_examples_lookup_idx ON predicti
 );
 CREATE INDEX IF NOT EXISTS prediction_historical_examples_competition_idx ON prediction_historical_examples(
   competition_id,market_type,market_name,line,selection,kickoff_at
+);
+CREATE INDEX IF NOT EXISTS prediction_historical_examples_eligible_idx ON prediction_historical_examples(
+  analysis_eligible,market_type,market_name,line,selection,kickoff_at
+);
+
+CREATE TABLE IF NOT EXISTS prediction_historical_refreshes (
+  match_id uuid NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+  model_version text NOT NULL,
+  config_hash text NOT NULL,
+  examples_inserted integer NOT NULL DEFAULT 0,
+  rejected_ineligible integer NOT NULL DEFAULT 0,
+  refreshed_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY(match_id,model_version,config_hash),
+  FOREIGN KEY(model_version,config_hash) REFERENCES prediction_model_versions(model_version,config_hash)
 );
 
 CREATE TABLE IF NOT EXISTS prediction_runs (
@@ -107,6 +128,8 @@ CREATE TABLE IF NOT EXISTS prediction_journal (
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE(match_id,model_version),
   FOREIGN KEY(model_version,config_hash) REFERENCES prediction_model_versions(model_version,config_hash),
+  CHECK(locked_at < kickoff_at),
+  CHECK(minutes_to_kickoff > 0),
   CHECK((decision='SKIP' AND market_type IS NULL AND selection IS NULL)
     OR (decision='PREDICT' AND market_type IS NOT NULL AND selection IS NOT NULL))
 );
@@ -135,3 +158,12 @@ $$ LANGUAGE plpgsql;
 DROP TRIGGER IF EXISTS prediction_journal_immutable ON prediction_journal;
 CREATE TRIGGER prediction_journal_immutable BEFORE UPDATE OR DELETE ON prediction_journal
 FOR EACH ROW EXECUTE FUNCTION prevent_prediction_journal_mutation();
+
+CREATE OR REPLACE FUNCTION prevent_prediction_settlement_mutation() RETURNS trigger AS $$
+BEGIN
+  RAISE EXCEPTION 'prediction_settlements are immutable';
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS prediction_settlement_immutable ON prediction_settlements;
+CREATE TRIGGER prediction_settlement_immutable BEFORE UPDATE OR DELETE ON prediction_settlements
+FOR EACH ROW EXECUTE FUNCTION prevent_prediction_settlement_mutation();

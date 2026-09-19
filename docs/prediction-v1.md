@@ -17,9 +17,9 @@ Every analysis carries `PREDICTION_V1`, the SHA-256 hash of centrally defined co
 
 ## Historical similarity and leakage prevention
 
-Historical examples are produced idempotently by `npm run predictions:history:backfill`. For each finished/cancelled match with odds snapshots, ODDS_V1 is reconstructed at the historical kickoff. Its input uses only snapshots with `captured_at < historical kickoff`; post-kickoff and in-play prices are excluded. A match result is only used as the settlement label after feature reconstruction.
+Historical examples are produced idempotently by `npm run predictions:history:backfill` and incrementally refreshed by the worker after every result/settlement cycle. For each finished/cancelled match with odds snapshots, ODDS_V1 is reconstructed at the same deterministic V1 decision time: `historical kickoff - officialWindowStartMinutes` (default 90 minutes). `feature_cutoff_at` and `feature_lead_minutes` are stored with the example. Its input uses only snapshots at or before that cutoff and strictly before historical kickoff; post-kickoff and in-play prices are excluded. A match result is only used as the settlement label after feature reconstruction.
 
-For target match `M`, a historical example `H` is eligible only if `H.kickoff_at < M.kickoff_at`. Identity requires the same market type, market name, selection, and exact line. This prevents mixing 1X2 with totals, goals with corners, Asian handicap with totals, or lines such as 2.5/3.5. Similarity is a transparent, configurable band/distance over opening/current fair probability, movement, opening/current odds, and bookmaker agreement.
+For target match `M`, a historical example `H` is eligible only if `H.kickoff_at < M.kickoff_at` and its reconstructed ODDS_V1 item was analysis-eligible. The feature store records eligibility, data-quality/confidence grades, and complete-state counts; similarity defensively filters ineligible rows too. Identity requires the same market type, market name, selection, and exact line. This prevents mixing 1X2 with totals, goals with corners, Asian handicap with totals, or lines such as 2.5/3.5. Similarity is a transparent, configurable band/distance over opening/current fair probability, movement, opening/current odds, and bookmaker agreement.
 
 The engine first uses the same competition; it only records `GLOBAL_SUPPORTED_COMPETITIONS` when that sample is insufficient. Evidence always includes N, settled N, outcome counts, rate, Wilson 95% interval, average similarity, scope, and market-frequency gap. `PUSH` and `VOID` are excluded from the binary hit-rate denominator; `WIN`/`HALF_WIN` are positive and `LOSS`/`HALF_LOSS` negative. Fewer than the configured historical minimum normally produces `SKIP`.
 
@@ -52,6 +52,6 @@ npm run predictions:performance
 npm run predictions:backtest
 ```
 
-Backtest is chronological: each target can use only historical examples strictly before its kickoff. It calculates `futureLeakageViolations` from the actual selected example IDs; it is not a hardcoded claim. Sparse data yields `BACKTEST: PARTIAL` rather than fabricated performance.
+Backtest is chronological: each target is reconstructed from raw snapshots at `kickoff - officialWindowStartMinutes`, not from the latest stored ODDS analysis. It excludes and counts prices after that simulated lock and after kickoff, and calculates future-historical, decision-time, and post-kickoff leakage counters from actual inputs/selected IDs; they are never hardcoded claims. Sparse data yields `BACKTEST: PARTIAL` rather than fabricated performance.
 
 API endpoints: `GET /api/predictions/today`, `/previews`, `/history?limit=&offset=`, `/performance`, and `/:matchId`. States distinguish `PREVIEW`, `LOCKED_PREDICTION`, `LOCKED_SKIP`, `PENDING`, and `SETTLED` where applicable.

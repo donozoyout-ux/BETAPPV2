@@ -1,4 +1,4 @@
-import type { AnalysisItem, MovementClass, QualityGrade } from '../odds-analysis/types.js';
+import type { AnalysisItem, MovementClass, OddsSnapshot, QualityGrade } from '../odds-analysis/types.js';
 
 export type PredictionDecision = 'PREDICT' | 'SKIP';
 export type PredictionState = 'PREVIEW' | 'LOCKED_PREDICTION' | 'LOCKED_SKIP';
@@ -11,6 +11,9 @@ export type SkipReason = 'NO_ODDS_ANALYSIS' | 'ODDS_NOT_ELIGIBLE' | 'LOW_DATA_QU
 
 export type HistoricalExample = {
   id: string; matchId: string; competitionId: string; kickoffAt: Date; oddsInputHash: string;
+  featureCutoffAt: Date; featureLeadMinutes: number; analysisEligible: boolean;
+  dataQualityGrade: QualityGrade; confidenceGrade: QualityGrade; completeStateBookmakerCount: number;
+  minimumCompleteStateCount: number;
   marketType: string; marketName: string; line: number | null; selection: string;
   openingOdds: number; currentOdds: number; openingFairProbability: number; currentFairProbability: number;
   probabilityDeltaPp: number; bookmakerCount: number; movementAgreementRatio: number;
@@ -37,6 +40,7 @@ export type PredictionCandidate = {
   predictionScore: number; scoreComponents: PredictionScoreComponents; bookmakerCount: number;
   agreementRatio: number; dataQualityScore: number; dataQualityGrade: QualityGrade;
   confidenceScore: number; confidenceGrade: QualityGrade; movementClass: MovementClass;
+  analysisEligible: boolean;
   historical: HistoricalEvidence; cornerModelProbability: number | null; marketFairProbability: number;
   modelMarketGapPp: number | null; cornerQuality: QualityGrade | null; cornerConfirmation: 'CONFIRM' | 'CONFLICT' | 'UNAVAILABLE';
   reasons: string[]; warnings: string[];
@@ -51,6 +55,10 @@ export type PredictionEvaluation = {
 
 export type PredictionTarget = {
   matchId: string; competitionId: string; kickoffAt: Date; oddsInputHash: string; oddsItems: AnalysisItem[];
+};
+
+export type PredictionBacktestTarget = {
+  matchId: string; competitionId: string; kickoffAt: Date; snapshots: OddsSnapshot[];
 };
 
 export type SettlementInput = {

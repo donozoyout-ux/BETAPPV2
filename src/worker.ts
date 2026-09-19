@@ -62,6 +62,10 @@ async function runCycle(): Promise<void> {
     catch (error) { logger.error({ err: error }, 'Prediction settlement failed; continuing'); }
   }
   if (!stopped) {
+    try { await predictionRepository.refreshHistoricalIncremental(); }
+    catch (error) { logger.error({ err: error }, 'Prediction historical refresh failed; continuing'); }
+  }
+  if (!stopped) {
     try { await oddsCollector?.runCycle(); }
     catch (error) { logger.error({ err: error }, 'Odds collector cycle failed'); }
   }

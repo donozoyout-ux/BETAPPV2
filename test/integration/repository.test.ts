@@ -249,6 +249,12 @@ describe('FootballRepository integration', () => {
     await expect(pool.query('UPDATE prediction_settlements SET outcome=\'LOSS\' WHERE id=$1', [settlement.rows[0]!.id])).rejects.toThrow(/immutable/);
     const performance = await predictionRepository.performance();
     expect(performance).toMatchObject({ predictCount: 1, settled: 1, win: 1 });
+    const selfAudit = await predictionRepository.runSelfAudit();
+    expect(selfAudit).toMatchObject({ status: 'INSUFFICIENT_DATA', settledSampleSize: 1, binarySampleSize: 1 });
+    expect((await predictionRepository.latestSelfAudit())?.status).toBe('INSUFFICIENT_DATA');
+    await predictionRepository.runSelfAudit();
+    const auditCount = await pool.query('SELECT count(*)::integer count FROM prediction_self_audits');
+    expect(auditCount.rows[0].count).toBe(1);
   });
 
   it('stores compacted source payloads below the PostgreSQL jsonb size constraint', async () => {

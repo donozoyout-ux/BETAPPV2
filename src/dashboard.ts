@@ -6,7 +6,8 @@ type DashboardData = { matches: Array<Record<string, unknown>>; providers: Array
   predictionPreviews?: Array<Record<string, unknown>>; predictionHistory?: Array<Record<string, unknown>>;
   predictionPerformance?: Record<string, unknown> | null; predictionSelfAudit?: Record<string, unknown> | null;
   predictionSelfAuditSegments?: Array<Record<string, unknown>>;
-  predictionSelfAuditRootCauses?: Array<Record<string, unknown>> };
+  predictionSelfAuditRootCauses?: Array<Record<string, unknown>>;
+  predictionAdaptiveRuleProposals?: Array<Record<string, unknown>> };
 type ValidationMetric = { count?: unknown; sample?: unknown; averagePredictedProbability?: unknown; actualHitRate?: unknown;
   absoluteCalibrationError?: unknown; mae?: unknown; brier?: unknown };
 type DatasetAuditView = { totalMatches?: unknown; cornerCoverage?: { complete?: { rate?: unknown } };
@@ -74,6 +75,7 @@ export function renderDashboard(data: DashboardData): string {
   const predictionSelfAudit = data.predictionSelfAudit;
   const predictionSelfAuditSegments = data.predictionSelfAuditSegments ?? [];
   const predictionSelfAuditRootCauses = data.predictionSelfAuditRootCauses ?? [];
+  const predictionAdaptiveRuleProposals = data.predictionAdaptiveRuleProposals ?? [];
   const healthyProviders = data.providers.filter((provider) => provider.status === 'healthy').length;
   const percent = (value: unknown) => `${(finiteNumber(value) * 100).toFixed(1)}%`;
   const sources = data.providers.length ? data.providers : [
@@ -247,6 +249,37 @@ export function renderDashboard(data: DashboardData): string {
   })() : `<details><summary>SELF-AUDIT V3 · Kök neden analizi</summary><div class="details-body">${renderEmpty('◇',
     'Kök neden verisi henüz yok', 'Yeterli resmi settlement oluşunca hangi koşulların performansı aşağı çektiği burada görünecek.')}</div></details>`;
 
+  const adaptiveRuleSummary = predictionAdaptiveRuleProposals.length ? (() => {
+    const proposed = predictionAdaptiveRuleProposals.filter((item) => item.decision === 'PROPOSED').length;
+    const approved = predictionAdaptiveRuleProposals.filter((item) => item.decision === 'APPROVED').length;
+    const rejected = predictionAdaptiveRuleProposals.filter((item) => item.decision === 'REJECTED').length;
+    const rows = predictionAdaptiveRuleProposals.slice(0, 20).map((item) => {
+      const severity = String(item.severity ?? 'WATCH');
+      const decision = String(item.decision ?? 'PROPOSED');
+      const severityClass = severity === 'HIGH_RISK' ? 'bad' : 'partial';
+      const decisionClass = decision === 'APPROVED' ? 'ok' : decision === 'REJECTED' ? 'neutral' : 'partial';
+      const conditions = Array.isArray(item.conditions) ? item.conditions as Array<Record<string, unknown>> : [];
+      const label = conditions.map((condition) => String(condition.bucketLabel ?? condition.bucketKey ?? '')).join(' + ');
+      const rateGap = `${finiteNumber(item.positiveRateGap) >= 0 ? '+' : ''}${(finiteNumber(item.positiveRateGap) * 100).toFixed(1)} pp`;
+      const roiGap = `${finiteNumber(item.referencePaperRoiGap) >= 0 ? '+' : ''}${(finiteNumber(item.referencePaperRoiGap) * 100).toFixed(1)} pp`;
+      const interaction = item.interactionPositiveRateGap == null ? '—'
+        : `${finiteNumber(item.interactionPositiveRateGap) >= 0 ? '+' : ''}${(finiteNumber(item.interactionPositiveRateGap) * 100).toFixed(1)} pp`;
+      const evidence = `${(finiteNumber(item.evidenceStrength) * 100).toFixed(0)}%`;
+      return `<tr><td><span class="badge ${severityClass}">${escapeHtml(severity)}</span></td>
+        <td><strong>${escapeHtml(item.proposalType)}</strong><br><span style="color:var(--muted)">${escapeHtml(label)}</span></td>
+        <td>${escapeHtml(item.binarySampleSize ?? 0)}</td><td>${escapeHtml(rateGap)}</td><td>${escapeHtml(roiGap)}</td>
+        <td>${escapeHtml(interaction)}</td><td>${escapeHtml(evidence)}</td><td>${escapeHtml(item.proposalScore ?? 0)}</td>
+        <td><span class="badge ${decisionClass}">${escapeHtml(decision)}</span></td></tr>`;
+    }).join('');
+    return `<details><summary>SELF-AUDIT V4 · Adaptive Rule Proposals · PROPOSED ${proposed} · APPROVED ${approved} · REJECTED ${rejected}</summary>
+      <div class="details-body"><p style="color:var(--muted)">V4 yalnız öneri üretir. autoApply=false ve executionAuthority=false.
+      APPROVED durumu bile PredictionConfig'i veya tahmin motorunu otomatik değiştirmez.</p>
+      <div class="scroll"><table><thead><tr><th>Risk</th><th>Önerilen koşul</th><th>N</th><th>Rate farkı</th>
+      <th>ROI farkı</th><th>Interaction</th><th>Kanıt</th><th>Proposal score</th><th>Karar</th></tr></thead>
+      <tbody>${rows}</tbody></table></div></div></details>`;
+  })() : `<details><summary>SELF-AUDIT V4 · Adaptive Rule Proposals</summary><div class="details-body">${renderEmpty('◇',
+    'Güncel kural önerisi yok', 'V4 yeterli ve tekrarlanabilir zayıflık görürse burada insan onayına sunulan öneriler oluşacak.')}</div></details>`;
+
   const backfillRows = (data.backfill ?? []).length ? (data.backfill ?? []).map((run) => `<tr><td>${escapeHtml(run.competition_name)}</td><td>${escapeHtml(run.season)}</td><td>${escapeHtml(run.status)}</td><td>${escapeHtml(run.fixtures_discovered)}</td><td>${escapeHtml(run.matches_stored)}</td><td>${escapeHtml(run.corner_complete)}</td><td>${escapeHtml(run.partial)}</td><td>${escapeHtml(run.failed)}</td><td>${escapeHtml(run.retries)}</td></tr>`).join('') : '<tr><td colspan="9">Henüz backfill çalıştırılmadı.</td></tr>';
   const datasetHealth = audit ? `<div class="grid"><article class="card"><strong>Geçmiş maç</strong><p>${escapeHtml(audit.totalMatches)}</p></article><article class="card"><strong>Korner kapsaması</strong><p>${percent(audit.cornerCoverage?.complete?.rate)}</p></article><article class="card"><strong>Lig</strong><p>${escapeHtml(audit.perCompetition?.length ?? 0)}</p></article><article class="card"><strong>Sezon</strong><p>${escapeHtml(audit.perSeason?.length ?? 0)}</p></article></div>` : renderEmpty('◫', 'Dataset henüz hazır değil', 'Historical backfill ve audit tamamlandığında kalite özeti burada görünecek.');
   const calibrationRows = validation ? Object.entries(validation.calibration ?? {}).map(([bucket, item]) => `<tr><td>${escapeHtml(bucket)}</td><td>${escapeHtml(item.count)}</td><td>${percent(item.averagePredictedProbability)}</td><td>${percent(item.actualHitRate)}</td><td>${percent(item.absoluteCalibrationError)}</td></tr>`).join('') : '';
@@ -259,7 +292,7 @@ export function renderDashboard(data: DashboardData): string {
     ${waitingNotice}<section class="workspace"><article class="panel" id="matches"><div class="panel-head"><h2>Bugünün maçları</h2><span class="count">${matches.length}</span></div><div class="panel-body match-list">${matchCards}</div></article><article class="panel" id="odds"><div class="panel-head"><h2>Nowgoal oran panosu</h2><span class="count">${odds.length}</span></div><div class="panel-body odds-list">${oddsRows}</div></article></section>
     <section class="section" id="odds-analysis"><div class="section-title"><h2>ORAN ANALİZİ V1</h2><p>Deterministik piyasa hareketi · bahis önerisi değildir</p></div><div class="grid">${oddsAnalysisCards}</div></section>
     <section class="section" id="predictions"><div class="section-title"><h2>BUGÜNÜN TAHMİNLERİ</h2><p>PREDICTION V1 · resmi kayıt veya değişebilir önizleme</p></div><div class="grid">${predictionCards}</div></section>
-    <section class="section" id="prediction-self-audit"><div class="section-title"><h2>KENDİNİ KONTROL</h2><p>SELF-AUDIT V1 + V2 + V3 · güvenlik ve kök neden analizi</p></div>${selfAuditSummary}${segmentAuditSummary}${rootCauseSummary}</section>
+    <section class="section" id="prediction-self-audit"><div class="section-title"><h2>KENDİNİ KONTROL</h2><p>SELF-AUDIT V1 + V2 + V3 + V4 · güvenlik, teşhis ve insan onaylı adaptasyon</p></div>${selfAuditSummary}${segmentAuditSummary}${rootCauseSummary}${adaptiveRuleSummary}</section>
     <section class="section" id="prediction-history"><div class="section-title"><h2>TAHMİN GEÇMİŞİ</h2><p>Yalnız kilitli resmi kararlar · her oran N ile değerlendirilir</p></div><div class="scroll"><table><thead><tr><th>Tarih</th><th>Maç</th><th>Karar</th><th>Score</th><th>Sonuç</th></tr></thead><tbody>${predictionHistoryRows}</tbody></table></div><details><summary>PERFORMANCE LAB</summary><div class="details-body">${performanceSummary}</div></details></section>
     <section class="section" id="sources"><div class="section-title"><h2>Veri kaynakları</h2><p>Sağlık ve son senkronizasyon durumu</p></div><div class="source-grid">${providerCards}</div></section>
     <section class="section" id="system"><div class="section-title"><h2>Analiz ve sistem</h2><p>İleri seviye veri panelleri</p></div><details><summary>Provider qualification matrisi</summary><div class="details-body">${matrix}</div></details><details><summary>Dataset sağlığı ve backfill</summary><div class="details-body">${datasetHealth}<div class="scroll" style="margin-top:10px"><table><thead><tr><th>Lig</th><th>Sezon</th><th>Durum</th><th>Bulunan</th><th>Kaydedilen</th><th>Tam</th><th>Kısmi</th><th>Hata</th><th>Retry</th></tr></thead><tbody>${backfillRows}</tbody></table></div></div></details><details><summary>Korner modeli ve doğrulama</summary><div class="details-body">${modelValidation}<div class="scroll" style="margin-top:10px"><table><thead><tr><th>Maç</th><th>Beklenen</th><th>O8.5</th><th>O9.5</th><th>O10.5</th><th>Veri kalitesi</th><th>Güven</th></tr></thead><tbody>${cornerRows}</tbody></table></div></div></details></section>

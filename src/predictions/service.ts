@@ -246,10 +246,10 @@ export class PredictionRepository {
       report.evaluatedAt,report.status,report.settledSampleSize,report.binarySampleSize,report.recentSampleSize,
       report.recentBinarySampleSize,report.recentPositiveRate,report.recentReferencePaperRoi,report.calibrationMae,
       report.calibrationSampleSize,report.lossStreak,report.pauseUntil,JSON.stringify(report.reasons),JSON.stringify(report.metrics)]);
-    const id = inserted.rows[0]?.id ?? (await this.pool.query<{ id: string }>(`SELECT id FROM prediction_self_audits
-      WHERE audit_version=$1 AND model_version=$2 AND prediction_config_hash=$3 AND config_hash=$4 AND input_hash=$5`,
-    [report.version,modelConfig.modelVersion,predictionConfigHashValue,report.configHash,report.inputHash])).rows[0]!.id;
-    return { id, ...report, guardActive: report.pauseUntil != null && report.pauseUntil > new Date() };
+    void inserted;
+    const persisted = await this.latestSelfAudit(modelConfig);
+    if (!persisted) throw new Error('SELF_AUDIT_V1 persistence failed');
+    return persisted;
   }
 
   async latestSelfAudit(modelConfig: PredictionConfig = predictionConfig) {

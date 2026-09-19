@@ -448,13 +448,51 @@ export class PredictionService {
     };
   }
 
+  private matchingSegmentAudits(
+    evaluation: PredictionEvaluation,
+    audits: Awaited<ReturnType<PredictionRepository['latestSegmentSelfAudits']>>,
+  ) {
+    if (!evaluation.selectedCandidate) return [];
+    const keys = new Set(segmentKeysFor(evaluation.competitionId, evaluation.selectedCandidate.marketType));
+    return audits.filter((audit) => keys.has(audit.segmentKey));
+  }
+
+  private attachSegmentSelfAudit(
+    evaluation: PredictionEvaluation,
+    audits: Awaited<ReturnType<PredictionRepository['latestSegmentSelfAudits']>>,
+  ): PredictionEvaluation {
+    const relevant = this.matchingSegmentAudits(evaluation, audits);
+    if (!relevant.length || !evaluation.selectedCandidate) return evaluation;
+    const warnings = relevant.flatMap((audit) => audit.status === 'WATCH'
+      ? [`SELF_AUDIT_SEGMENT_WATCH:${audit.segmentKey}`]
+      : audit.status === 'PAUSED' && audit.guardActive
+        ? [`SELF_AUDIT_SEGMENT_PAUSED:${audit.segmentKey}`]
+        : audit.status === 'PAUSED'
+          ? [`SELF_AUDIT_SEGMENT_RECOVERY:${audit.segmentKey}`]
+          : []);
+    const statusMap = Object.fromEntries(relevant.map((audit) => [audit.segmentKey, audit.status]));
+    const auditFingerprint = relevant.slice().sort((a, b) => a.segmentKey.localeCompare(b.segmentKey))
+      .map((audit) => `${audit.segmentKey}:${audit.inputHash}:${audit.status}:${audit.guardActive}`).join('|');
+    return {
+      ...evaluation,
+      inputHash: createHash('sha256').update(`${evaluation.inputHash}|segment-audit:${auditFingerprint}`).digest('hex'),
+      selectedCandidate: { ...evaluation.selectedCandidate,
+        warnings: [...new Set([...evaluation.selectedCandidate.warnings, ...warnings])] },
+      metadata: { ...evaluation.metadata, selfAuditSegmentKeys: relevant.map((audit) => audit.segmentKey),
+        selfAuditSegmentStatuses: statusMap },
+    };
+  }
+
   async refreshPreviewsAndLocks(now = new Date()) {
-    const [targets, examples, selfAudit] = await Promise.all([
+    const [targets, examples, selfAudit, segmentAudits] = await Promise.all([
       this.repository.loadTargets(), this.repository.loadHistoricalExamples(), this.repository.latestSelfAudit(this.config),
+      this.repository.latestSegmentSelfAudits(this.config),
     ]);
-    let previews = 0; let lockedPredictions = 0; let lockedSkips = 0; let missed = 0; let selfAuditBlocked = 0;
+    let previews = 0; let lockedPredictions = 0; let lockedSkips = 0; let missed = 0;
+    let selfAuditBlocked = 0; let selfAuditSegmentBlocked = 0;
     for (const target of targets) {
       let evaluation = this.attachSelfAudit(evaluatePrediction(target, examples, now, this.config), selfAudit);
+      evaluation = this.attachSegmentSelfAudit(evaluation, segmentAudits);
       const window = lockWindowState(target.kickoffAt, now, this.config);
       if (window.missed) {
         evaluation = this.rehashDecision({ ...evaluation, decision: 'SKIP', selectedCandidate: null,
@@ -476,6 +514,18 @@ export class PredictionService {
           skipReasons: [...new Set([...evaluation.skipReasons, 'SELF_AUDIT_PAUSED' as const])],
         }, 'SELF_AUDIT_PAUSED');
         selfAuditBlocked += 1;
+      } else if (window.eligible && evaluation.decision === 'PREDICT') {
+        const pausedSegments = this.matchingSegmentAudits(evaluation, segmentAudits)
+          .filter((audit) => audit.status === 'PAUSED' && audit.guardActive).map((audit) => audit.segmentKey).sort();
+        if (pausedSegments.length) {
+          evaluation = this.rehashDecision({
+            ...evaluation,
+            decision: 'SKIP',
+            selectedCandidate: null,
+            skipReasons: [...new Set([...evaluation.skipReasons, 'SELF_AUDIT_SEGMENT_PAUSED' as const])],
+          }, `SELF_AUDIT_SEGMENT_PAUSED:${pausedSegments.join(',')}`);
+          selfAuditSegmentBlocked += 1;
+        }
       }
       const runId = await this.repository.saveRun(evaluation, this.config);
       previews += 1;
@@ -483,7 +533,8 @@ export class PredictionService {
         if (evaluation.decision === 'PREDICT') lockedPredictions += 1; else lockedSkips += 1;
       }
     }
-    return { matches: targets.length, previews, lockedPredictions, lockedSkips, missed, selfAuditBlocked,
-      selfAuditStatus: selfAudit?.status ?? 'NOT_AVAILABLE', selfAuditGuardActive: selfAudit?.guardActive ?? false };
+    return { matches: targets.length, previews, lockedPredictions, lockedSkips, missed, selfAuditBlocked, selfAuditSegmentBlocked,
+      selfAuditStatus: selfAudit?.status ?? 'NOT_AVAILABLE', selfAuditGuardActive: selfAudit?.guardActive ?? false,
+      activePausedSegments: segmentAudits.filter((audit) => audit.status === 'PAUSED' && audit.guardActive).length };
   }
 }

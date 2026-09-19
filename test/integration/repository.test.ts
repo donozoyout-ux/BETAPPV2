@@ -139,7 +139,7 @@ describe('FootballRepository integration', () => {
   it('validates migrations, checkpoint, profiles, replay, rollback and advisory locks', async () => {
     const migrations = await migrationStatus(pool);
     expect(migrations.pendingMigrations).toEqual([]);
-    expect(migrations.schemaVersion).toBe('008_prediction_self_audit_v2.sql');
+    expect(migrations.schemaVersion).toBe('009_prediction_self_audit_v3.sql');
     const health = await repository.databaseHealth();
     expect(health.status).toBe('ok');
     await repository.markStarted('fotmob', 'integration-checkpoint', { index: 0 });
@@ -276,6 +276,12 @@ describe('FootballRepository integration', () => {
     await predictionRepository.runSegmentSelfAudit(config);
     const segmentCount = await pool.query('SELECT count(*)::integer count FROM prediction_self_audit_segments');
     expect(segmentCount.rows[0].count).toBe(3);
+    const rootCauses = await predictionRepository.runRootCauseAudit(config);
+    expect(rootCauses).toHaveLength(7);
+    expect(rootCauses.every((item) => item.status === 'INSUFFICIENT_DATA')).toBe(true);
+    await predictionRepository.runRootCauseAudit(config);
+    const factorCount = await pool.query('SELECT count(*)::integer count FROM prediction_self_audit_factors');
+    expect(factorCount.rows[0].count).toBe(7);
   });
 
   it('stores compacted source payloads below the PostgreSQL jsonb size constraint', async () => {

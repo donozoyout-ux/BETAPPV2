@@ -5,7 +5,8 @@ type DashboardData = { matches: Array<Record<string, unknown>>; providers: Array
   oddsAnalyses?: Array<Record<string, unknown>>; predictions?: Array<Record<string, unknown>>;
   predictionPreviews?: Array<Record<string, unknown>>; predictionHistory?: Array<Record<string, unknown>>;
   predictionPerformance?: Record<string, unknown> | null; predictionSelfAudit?: Record<string, unknown> | null;
-  predictionSelfAuditSegments?: Array<Record<string, unknown>> };
+  predictionSelfAuditSegments?: Array<Record<string, unknown>>;
+  predictionSelfAuditRootCauses?: Array<Record<string, unknown>> };
 type ValidationMetric = { count?: unknown; sample?: unknown; averagePredictedProbability?: unknown; actualHitRate?: unknown;
   absoluteCalibrationError?: unknown; mae?: unknown; brier?: unknown };
 type DatasetAuditView = { totalMatches?: unknown; cornerCoverage?: { complete?: { rate?: unknown } };
@@ -72,6 +73,7 @@ export function renderDashboard(data: DashboardData): string {
   const predictionPerformance = data.predictionPerformance;
   const predictionSelfAudit = data.predictionSelfAudit;
   const predictionSelfAuditSegments = data.predictionSelfAuditSegments ?? [];
+  const predictionSelfAuditRootCauses = data.predictionSelfAuditRootCauses ?? [];
   const healthyProviders = data.providers.filter((provider) => provider.status === 'healthy').length;
   const percent = (value: unknown) => `${(finiteNumber(value) * 100).toFixed(1)}%`;
   const sources = data.providers.length ? data.providers : [
@@ -214,6 +216,37 @@ export function renderDashboard(data: DashboardData): string {
   })() : `<details><summary>SELF-AUDIT V2 · Segment kontrolü</summary><div class="details-body">${renderEmpty('◇',
     'Segment verisi henüz yok', 'İlk resmi tahmin sonuçları oluştukça market ve lig bazlı audit burada başlayacak.')}</div></details>`;
 
+  const rootCauseSummary = predictionSelfAuditRootCauses.length ? (() => {
+    const highRisk = predictionSelfAuditRootCauses.filter((item) => item.status === 'HIGH_RISK').length;
+    const watch = predictionSelfAuditRootCauses.filter((item) => item.status === 'WATCH').length;
+    const rows = predictionSelfAuditRootCauses.slice(0, 30).map((item) => {
+      const status = String(item.status ?? 'NOT_AVAILABLE');
+      const badgeClass = status === 'HEALTHY' ? 'ok'
+        : status === 'WATCH' || status === 'INSUFFICIENT_DATA' ? 'partial'
+        : status === 'HIGH_RISK' ? 'bad' : 'neutral';
+      const rate = item.positiveRate == null ? '—' : percent(item.positiveRate);
+      const roi = item.referencePaperRoi == null ? '—'
+        : `${(finiteNumber(item.referencePaperRoi) * 100).toFixed(1)}%`;
+      const rateGap = item.positiveRateGap == null ? '—'
+        : `${finiteNumber(item.positiveRateGap) >= 0 ? '+' : ''}${(finiteNumber(item.positiveRateGap) * 100).toFixed(1)} pp`;
+      const roiGap = item.referencePaperRoiGap == null ? '—'
+        : `${finiteNumber(item.referencePaperRoiGap) >= 0 ? '+' : ''}${(finiteNumber(item.referencePaperRoiGap) * 100).toFixed(1)} pp`;
+      const evidence = `${(finiteNumber(item.evidenceStrength) * 100).toFixed(0)}%`;
+      return `<tr><td>${escapeHtml(item.dimension)}</td><td><strong>${escapeHtml(item.bucketLabel)}</strong></td>
+        <td><span class="badge ${badgeClass}">${escapeHtml(status)}</span></td>
+        <td>${escapeHtml(item.binarySampleSize ?? 0)}</td><td>${escapeHtml(rate)}</td><td>${escapeHtml(roi)}</td>
+        <td>${escapeHtml(rateGap)}</td><td>${escapeHtml(roiGap)}</td>
+        <td>${escapeHtml(evidence)}</td><td>${escapeHtml(item.rootCauseScore ?? 0)}</td></tr>`;
+    }).join('');
+    return `<details><summary>SELF-AUDIT V3 · Kök neden analizi · HIGH RISK ${highRisk} · WATCH ${watch}</summary>
+      <div class="details-body"><p style="color:var(--muted)">Teşhis katmanıdır; tek başına resmi tahmini durdurmaz.
+      Faktör performansı aynı dönem genel baseline ile karşılaştırılır.</p>
+      <div class="scroll"><table><thead><tr><th>Faktör</th><th>Bucket</th><th>Durum</th><th>Binary N</th>
+      <th>Positive rate</th><th>Ref. ROI</th><th>Rate farkı</th><th>ROI farkı</th><th>Kanıt</th><th>Cause score</th>
+      </tr></thead><tbody>${rows}</tbody></table></div></div></details>`;
+  })() : `<details><summary>SELF-AUDIT V3 · Kök neden analizi</summary><div class="details-body">${renderEmpty('◇',
+    'Kök neden verisi henüz yok', 'Yeterli resmi settlement oluşunca hangi koşulların performansı aşağı çektiği burada görünecek.')}</div></details>`;
+
   const backfillRows = (data.backfill ?? []).length ? (data.backfill ?? []).map((run) => `<tr><td>${escapeHtml(run.competition_name)}</td><td>${escapeHtml(run.season)}</td><td>${escapeHtml(run.status)}</td><td>${escapeHtml(run.fixtures_discovered)}</td><td>${escapeHtml(run.matches_stored)}</td><td>${escapeHtml(run.corner_complete)}</td><td>${escapeHtml(run.partial)}</td><td>${escapeHtml(run.failed)}</td><td>${escapeHtml(run.retries)}</td></tr>`).join('') : '<tr><td colspan="9">Henüz backfill çalıştırılmadı.</td></tr>';
   const datasetHealth = audit ? `<div class="grid"><article class="card"><strong>Geçmiş maç</strong><p>${escapeHtml(audit.totalMatches)}</p></article><article class="card"><strong>Korner kapsaması</strong><p>${percent(audit.cornerCoverage?.complete?.rate)}</p></article><article class="card"><strong>Lig</strong><p>${escapeHtml(audit.perCompetition?.length ?? 0)}</p></article><article class="card"><strong>Sezon</strong><p>${escapeHtml(audit.perSeason?.length ?? 0)}</p></article></div>` : renderEmpty('◫', 'Dataset henüz hazır değil', 'Historical backfill ve audit tamamlandığında kalite özeti burada görünecek.');
   const calibrationRows = validation ? Object.entries(validation.calibration ?? {}).map(([bucket, item]) => `<tr><td>${escapeHtml(bucket)}</td><td>${escapeHtml(item.count)}</td><td>${percent(item.averagePredictedProbability)}</td><td>${percent(item.actualHitRate)}</td><td>${percent(item.absoluteCalibrationError)}</td></tr>`).join('') : '';
@@ -226,7 +259,7 @@ export function renderDashboard(data: DashboardData): string {
     ${waitingNotice}<section class="workspace"><article class="panel" id="matches"><div class="panel-head"><h2>Bugünün maçları</h2><span class="count">${matches.length}</span></div><div class="panel-body match-list">${matchCards}</div></article><article class="panel" id="odds"><div class="panel-head"><h2>Nowgoal oran panosu</h2><span class="count">${odds.length}</span></div><div class="panel-body odds-list">${oddsRows}</div></article></section>
     <section class="section" id="odds-analysis"><div class="section-title"><h2>ORAN ANALİZİ V1</h2><p>Deterministik piyasa hareketi · bahis önerisi değildir</p></div><div class="grid">${oddsAnalysisCards}</div></section>
     <section class="section" id="predictions"><div class="section-title"><h2>BUGÜNÜN TAHMİNLERİ</h2><p>PREDICTION V1 · resmi kayıt veya değişebilir önizleme</p></div><div class="grid">${predictionCards}</div></section>
-    <section class="section" id="prediction-self-audit"><div class="section-title"><h2>KENDİNİ KONTROL</h2><p>SELF-AUDIT V1 + V2 · genel ve segment bazlı güvenlik</p></div>${selfAuditSummary}${segmentAuditSummary}</section>
+    <section class="section" id="prediction-self-audit"><div class="section-title"><h2>KENDİNİ KONTROL</h2><p>SELF-AUDIT V1 + V2 + V3 · güvenlik ve kök neden analizi</p></div>${selfAuditSummary}${segmentAuditSummary}${rootCauseSummary}</section>
     <section class="section" id="prediction-history"><div class="section-title"><h2>TAHMİN GEÇMİŞİ</h2><p>Yalnız kilitli resmi kararlar · her oran N ile değerlendirilir</p></div><div class="scroll"><table><thead><tr><th>Tarih</th><th>Maç</th><th>Karar</th><th>Score</th><th>Sonuç</th></tr></thead><tbody>${predictionHistoryRows}</tbody></table></div><details><summary>PERFORMANCE LAB</summary><div class="details-body">${performanceSummary}</div></details></section>
     <section class="section" id="sources"><div class="section-title"><h2>Veri kaynakları</h2><p>Sağlık ve son senkronizasyon durumu</p></div><div class="source-grid">${providerCards}</div></section>
     <section class="section" id="system"><div class="section-title"><h2>Analiz ve sistem</h2><p>İleri seviye veri panelleri</p></div><details><summary>Provider qualification matrisi</summary><div class="details-body">${matrix}</div></details><details><summary>Dataset sağlığı ve backfill</summary><div class="details-body">${datasetHealth}<div class="scroll" style="margin-top:10px"><table><thead><tr><th>Lig</th><th>Sezon</th><th>Durum</th><th>Bulunan</th><th>Kaydedilen</th><th>Tam</th><th>Kısmi</th><th>Hata</th><th>Retry</th></tr></thead><tbody>${backfillRows}</tbody></table></div></div></details><details><summary>Korner modeli ve doğrulama</summary><div class="details-body">${modelValidation}<div class="scroll" style="margin-top:10px"><table><thead><tr><th>Maç</th><th>Beklenen</th><th>O8.5</th><th>O9.5</th><th>O10.5</th><th>Veri kalitesi</th><th>Güven</th></tr></thead><tbody>${cornerRows}</tbody></table></div></div></details></section>

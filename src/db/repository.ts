@@ -88,7 +88,9 @@ export class FootballRepository {
       }
       await client.query(
         `INSERT INTO provider_entities(provider,entity_type,external_id,internal_id,source_updated_at)
-         VALUES ($1,'league',$2,$3,$4)`,
+         VALUES ($1,'league',$2,$3,$4)
+         ON CONFLICT(provider,entity_type,internal_id) DO UPDATE SET
+         external_id=excluded.external_id,source_updated_at=excluded.source_updated_at,last_seen_at=now()`,
         [provider, league.providerExternalId, id, league.sourceUpdatedAt],
       );
     } else {
@@ -126,7 +128,9 @@ export class FootballRepository {
       );
       await client.query(
         `INSERT INTO provider_entities(provider,entity_type,external_id,internal_id,source_updated_at)
-         VALUES ($1,'team',$2,$3,$4)`,
+         VALUES ($1,'team',$2,$3,$4)
+         ON CONFLICT(provider,entity_type,internal_id) DO UPDATE SET
+         external_id=excluded.external_id,source_updated_at=excluded.source_updated_at,last_seen_at=now()`,
         [provider, team.providerExternalId, id, team.sourceUpdatedAt],
       );
     } else {
@@ -193,7 +197,10 @@ export class FootballRepository {
         }
         await client.query(
           `INSERT INTO provider_entities(provider,entity_type,external_id,internal_id,source_updated_at,match_confidence)
-           VALUES ($1,'match',$2,$3,$4,$5)`,
+           VALUES ($1,'match',$2,$3,$4,$5)
+           ON CONFLICT(provider,entity_type,internal_id) DO UPDATE SET
+           external_id=excluded.external_id,source_updated_at=excluded.source_updated_at,
+           match_confidence=excluded.match_confidence,last_seen_at=now()`,
           [provider, match.providerExternalId, id, match.sourceUpdatedAt, matchConfidence],
         );
       } else {

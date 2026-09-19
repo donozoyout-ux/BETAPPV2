@@ -17,6 +17,7 @@ export type SelfAuditConfig = {
   pauseCalibrationMaeAbove: number;
   watchLossStreak: number;
   pauseLossStreak: number;
+  pauseCooldownHours: number;
 };
 
 export const selfAuditConfig: SelfAuditConfig = {
@@ -33,6 +34,7 @@ export const selfAuditConfig: SelfAuditConfig = {
   pauseCalibrationMaeAbove: 0.35,
   watchLossStreak: 5,
   pauseLossStreak: 8,
+  pauseCooldownHours: 24,
 };
 
 export type SelfAuditRecord = {
@@ -58,6 +60,7 @@ export type SelfAuditReport = {
   calibrationMae: number | null;
   calibrationSampleSize: number;
   lossStreak: number;
+  pauseUntil: Date | null;
   reasons: string[];
   metrics: {
     recentWins: number;
@@ -170,6 +173,10 @@ export function evaluateSelfAudit(
     })),
   }))).digest('hex');
 
+  const pauseUntil = status === 'PAUSED'
+    ? new Date(evaluatedAt.getTime() + config.pauseCooldownHours * 60 * 60 * 1000)
+    : null;
+
   return {
     version: config.version,
     configHash: selfAuditConfigHash(config),
@@ -185,6 +192,7 @@ export function evaluateSelfAudit(
     calibrationMae,
     calibrationSampleSize: calibrationRows.length,
     lossStreak,
+    pauseUntil,
     reasons,
     metrics: {
       recentWins: outcomeCount(recent, 'WIN'),

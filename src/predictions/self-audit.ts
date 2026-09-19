@@ -2,9 +2,10 @@ import { createHash } from 'node:crypto';
 import type { SettlementOutcome } from './types.js';
 
 export type SelfAuditStatus = 'INSUFFICIENT_DATA' | 'HEALTHY' | 'WATCH' | 'PAUSED';
+export type SelfAuditVersion = 'SELF_AUDIT_V1' | 'SELF_AUDIT_V2';
 
 export type SelfAuditConfig = {
-  version: 'SELF_AUDIT_V1';
+  version: SelfAuditVersion;
   recentWindow: number;
   minimumBinarySample: number;
   minimumRecentBinarySample: number;
@@ -46,7 +47,7 @@ export type SelfAuditRecord = {
 };
 
 export type SelfAuditReport = {
-  version: 'SELF_AUDIT_V1';
+  version: SelfAuditVersion;
   configHash: string;
   inputHash: string;
   evaluatedAt: Date;

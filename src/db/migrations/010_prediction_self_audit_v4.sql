@@ -61,7 +61,17 @@ CREATE TABLE IF NOT EXISTS prediction_adaptive_rule_decisions (
   decided_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE OR REPLACE FUNCTION prevent_prediction_adaptive_proposal_mutation() RETURNS trigger AS $$
+CREATE OR REPLACE FUNCTION prevent_prediction_adaptive_run_mutation() RETURNS trigger AS $
+BEGIN
+  RAISE EXCEPTION 'prediction_adaptive_rule_runs are immutable';
+END;
+$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS prediction_adaptive_rule_runs_immutable ON prediction_adaptive_rule_runs;
+CREATE TRIGGER prediction_adaptive_rule_runs_immutable
+BEFORE UPDATE OR DELETE ON prediction_adaptive_rule_runs
+FOR EACH ROW EXECUTE FUNCTION prevent_prediction_adaptive_run_mutation();
+
+CREATE OR REPLACE FUNCTION prevent_prediction_adaptive_proposal_mutation() RETURNS trigger AS $
 BEGIN
   RAISE EXCEPTION 'prediction_adaptive_rule_proposals are immutable';
 END;

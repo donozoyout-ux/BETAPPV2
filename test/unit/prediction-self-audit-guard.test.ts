@@ -53,6 +53,7 @@ describe('PredictionService self audit guard', () => {
         pauseUntil: new Date('2026-09-21T17:00:00Z'), guardActive: true,
         reasons: ['SELF_AUDIT_RECENT_PERFORMANCE_PAUSE'], metrics: {},
       }),
+      latestSegmentSelfAudits: async () => [],
       saveRun: async (evaluation: PredictionEvaluation) => { savedEvaluations.push(evaluation); return 'run-1'; },
       lock: async (evaluation: PredictionEvaluation) => { lockedEvaluations.push(evaluation); return true; },
     } as unknown as PredictionRepository;
@@ -67,4 +68,44 @@ describe('PredictionService self audit guard', () => {
     expect(locked.decision).toBe('SKIP');
     expect(result).toMatchObject({ lockedPredictions: 0, lockedSkips: 1, selfAuditBlocked: 1, selfAuditStatus: 'PAUSED' });
   });
+  it('blocks only a paused league-market segment while the global audit remains healthy', async () => {
+    const target: PredictionTarget = { matchId: 'target-v2', competitionId: 'league-a', kickoffAt: kickoff,
+      oddsInputHash: 'odds-input-v2', oddsItems: [item()] };
+    const savedEvaluations: PredictionEvaluation[] = [];
+    const lockedEvaluations: PredictionEvaluation[] = [];
+    const repository = {
+      loadTargets: async () => [target],
+      loadHistoricalExamples: async () => [historical()],
+      latestSelfAudit: async () => ({
+        id: 'audit-global', version: 'SELF_AUDIT_V1', modelVersion: 'PREDICTION_V1', configHash: 'cfg',
+        inputHash: 'global-input', evaluatedAt: now, status: 'HEALTHY' as const, settledSampleSize: 40,
+        binarySampleSize: 40, recentSampleSize: 40, recentBinarySampleSize: 40, recentPositiveRate: 0.6,
+        recentReferencePaperRoi: 0.1, calibrationMae: 0.1, calibrationSampleSize: 30, lossStreak: 0,
+        pauseUntil: null, guardActive: false, reasons: [], metrics: {},
+      }),
+      latestSegmentSelfAudits: async () => [{
+        id: 'segment-1', version: 'SELF_AUDIT_V2', modelVersion: 'PREDICTION_V1',
+        predictionConfigHash: 'cfg', configHash: 'segment-cfg', inputHash: 'segment-input',
+        scopeType: 'LEAGUE_MARKET', segmentKey: 'LEAGUE_MARKET:league-a:TOTAL_GOALS',
+        competitionId: 'league-a', competitionName: 'League A', marketType: 'TOTAL_GOALS',
+        evaluatedAt: now, status: 'PAUSED' as const, settledSampleSize: 14, binarySampleSize: 14,
+        recentSampleSize: 14, recentBinarySampleSize: 14, recentPositiveRate: 0.28,
+        recentReferencePaperRoi: -0.3, calibrationMae: 0.2, calibrationSampleSize: 12, lossStreak: 5,
+        pauseUntil: new Date('2026-09-21T17:00:00Z'), guardActive: true,
+        reasons: ['SELF_AUDIT_RECENT_PERFORMANCE_PAUSE'], metrics: {},
+      }],
+      saveRun: async (evaluation: PredictionEvaluation) => { savedEvaluations.push(evaluation); return 'run-2'; },
+      lock: async (evaluation: PredictionEvaluation) => { lockedEvaluations.push(evaluation); return true; },
+    } as unknown as PredictionRepository;
+
+    const result = await new PredictionService(repository, looseConfig).refreshPreviewsAndLocks(now);
+    const saved = savedEvaluations[0]!;
+    expect(saved.decision).toBe('SKIP');
+    expect(saved.skipReasons).toContain('SELF_AUDIT_SEGMENT_PAUSED');
+    expect(saved.metadata.selfAuditStatus).toBe('HEALTHY');
+    expect(saved.metadata.selfAuditSegmentKeys).toContain('LEAGUE_MARKET:league-a:TOTAL_GOALS');
+    expect(lockedEvaluations[0]!.decision).toBe('SKIP');
+    expect(result).toMatchObject({ selfAuditBlocked: 0, selfAuditSegmentBlocked: 1, activePausedSegments: 1 });
+  });
+
 });

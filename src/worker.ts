@@ -92,6 +92,17 @@ async function runCycle(): Promise<void> {
     catch (error) { logger.error({ err: error }, 'Prediction root cause self audit failed; continuing'); }
   }
   if (!stopped) {
+    try {
+      const proposals = await predictionRepository.runAdaptiveRuleProposals();
+      logger.info({
+        proposals: proposals.length,
+        highRisk: proposals.filter((item) => item.severity === 'HIGH_RISK').length,
+        pending: proposals.filter((item) => item.decision === 'PROPOSED').length,
+      }, 'Prediction adaptive rule proposals refreshed');
+    }
+    catch (error) { logger.error({ err: error }, 'Prediction adaptive rule proposal refresh failed; continuing'); }
+  }
+  if (!stopped) {
     try { await predictionRepository.refreshHistoricalIncremental(); }
     catch (error) { logger.error({ err: error }, 'Prediction historical refresh failed; continuing'); }
   }

@@ -40,8 +40,8 @@ describe('PredictionService self audit guard', () => {
   it('turns an otherwise valid official prediction into an immutable SKIP when self audit is PAUSED', async () => {
     const target: PredictionTarget = { matchId: 'target', competitionId: 'league-a', kickoffAt: kickoff,
       oddsInputHash: 'odds-input', oddsItems: [item()] };
-    let saved: PredictionEvaluation | null = null;
-    let locked: PredictionEvaluation | null = null;
+    const savedEvaluations: PredictionEvaluation[] = [];
+    const lockedEvaluations: PredictionEvaluation[] = [];
     const repository = {
       loadTargets: async () => [target],
       loadHistoricalExamples: async () => [historical()],
@@ -52,16 +52,18 @@ describe('PredictionService self audit guard', () => {
         recentReferencePaperRoi: -0.25, calibrationMae: 0.1, calibrationSampleSize: 30, lossStreak: 3,
         reasons: ['SELF_AUDIT_RECENT_PERFORMANCE_PAUSE'], metrics: {},
       }),
-      saveRun: async (evaluation: PredictionEvaluation) => { saved = evaluation; return 'run-1'; },
-      lock: async (evaluation: PredictionEvaluation) => { locked = evaluation; return true; },
+      saveRun: async (evaluation: PredictionEvaluation) => { savedEvaluations.push(evaluation); return 'run-1'; },
+      lock: async (evaluation: PredictionEvaluation) => { lockedEvaluations.push(evaluation); return true; },
     } as unknown as PredictionRepository;
 
     const result = await new PredictionService(repository, looseConfig).refreshPreviewsAndLocks(now);
-    expect(saved?.decision).toBe('SKIP');
-    expect(saved?.skipReasons).toContain('SELF_AUDIT_PAUSED');
-    expect(saved?.metadata.selfAuditStatus).toBe('PAUSED');
-    expect(saved?.inputHash).not.toBe('odds-input');
-    expect(locked?.decision).toBe('SKIP');
+    const saved = savedEvaluations[0]!;
+    const locked = lockedEvaluations[0]!;
+    expect(saved.decision).toBe('SKIP');
+    expect(saved.skipReasons).toContain('SELF_AUDIT_PAUSED');
+    expect(saved.metadata.selfAuditStatus).toBe('PAUSED');
+    expect(saved.inputHash).not.toBe('odds-input');
+    expect(locked.decision).toBe('SKIP');
     expect(result).toMatchObject({ lockedPredictions: 0, lockedSkips: 1, selfAuditBlocked: 1, selfAuditStatus: 'PAUSED' });
   });
 });

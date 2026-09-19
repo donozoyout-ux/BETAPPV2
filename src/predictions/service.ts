@@ -1,0 +1,268 @@
+import { analyzeOdds } from '../odds-analysis/engine.js';
+import type { AnalysisItem, OddsSnapshot } from '../odds-analysis/types.js';
+import type { DatabasePool } from '../db/pool.js';
+import { predictionConfig, predictionConfigHash, type PredictionConfig } from './config.js';
+import { evaluatePrediction, lockWindowState } from './engine.js';
+import { buildPerformance, runPredictionBacktest, type PerformanceRecord } from './history.js';
+import { referencePaperReturn, settlePrediction } from './settlement.js';
+import type { HistoricalExample, PredictionEvaluation, PredictionTarget, SettlementOutcome } from './types.js';
+
+function analysisItem(row: Record<string, unknown>): AnalysisItem {
+  return {
+    marketType: String(row.market_type), marketName: String(row.market_name), line: row.line == null ? null : Number(row.line),
+    selection: String(row.selection), openingOdds: Number(row.opening_odds), currentOdds: Number(row.current_odds),
+    highestOdds: Number(row.highest_odds), lowestOdds: Number(row.lowest_odds), snapshotCount: Number(row.snapshot_count),
+    openingFairProbability: Number(row.opening_fair_probability), currentFairProbability: Number(row.current_fair_probability),
+    probabilityDeltaPp: Number(row.probability_delta_pp), rawOddsMovementPercent: Number(row.raw_odds_movement_percent),
+    bookmakerCount: Number(row.bookmaker_count), completeStateBookmakerCount: Number(row.complete_state_bookmaker_count),
+    minimumCompleteStateCount: Number(row.minimum_complete_state_count), agreeingBookmakerCount: Number(row.agreeing_bookmaker_count),
+    disagreeingBookmakerCount: Number(row.disagreeing_bookmaker_count), movementAgreementRatio: Number(row.movement_agreement_ratio),
+    probabilityDispersion: Number(row.probability_dispersion), oddsDispersion: Number(row.odds_dispersion),
+    movementClass: String(row.movement_class) as AnalysisItem['movementClass'], score: Number(row.score),
+    scoreComponents: row.score_components as AnalysisItem['scoreComponents'],
+    dataQuality: { score: Number(row.data_quality_score), grade: String(row.data_quality_grade) as AnalysisItem['dataQuality']['grade'],
+      analysisEligible: Boolean(row.analysis_eligible), warnings: Array.isArray(row.warnings) ? row.warnings.map(String) : [] },
+    modelConfidence: { score: Number(row.confidence_score), grade: String(row.confidence_grade) as AnalysisItem['modelConfidence']['grade'] },
+    analysisEligible: Boolean(row.analysis_eligible), reasons: Array.isArray(row.reasons) ? row.reasons.map(String) : [],
+    warnings: Array.isArray(row.warnings) ? row.warnings.map(String) : [],
+    modelMarketGapPp: row.model_market_gap_pp == null ? null : Number(row.model_market_gap_pp),
+  };
+}
+
+function historicalExample(row: Record<string, unknown>): HistoricalExample {
+  return {
+    id: String(row.id), matchId: String(row.match_id), competitionId: String(row.competition_id),
+    kickoffAt: new Date(String(row.kickoff_at)), oddsInputHash: String(row.odds_input_hash),
+    marketType: String(row.market_type), marketName: String(row.market_name), line: row.line == null ? null : Number(row.line),
+    selection: String(row.selection), openingOdds: Number(row.opening_odds), currentOdds: Number(row.current_odds),
+    openingFairProbability: Number(row.opening_fair_probability), currentFairProbability: Number(row.current_fair_probability),
+    probabilityDeltaPp: Number(row.probability_delta_pp), bookmakerCount: Number(row.bookmaker_count),
+    movementAgreementRatio: Number(row.movement_agreement_ratio), oddsAnalysisScore: Number(row.odds_analysis_score),
+    dataQualityScore: Number(row.data_quality_score), confidenceScore: Number(row.confidence_score),
+    movementClass: String(row.movement_class) as HistoricalExample['movementClass'],
+    settlementResult: String(row.settlement_result) as SettlementOutcome,
+    homeScore: row.home_score == null ? null : Number(row.home_score), awayScore: row.away_score == null ? null : Number(row.away_score),
+    homeCorners: row.home_corners == null ? null : Number(row.home_corners), awayCorners: row.away_corners == null ? null : Number(row.away_corners),
+  };
+}
+
+export class PredictionRepository {
+  constructor(private readonly pool: DatabasePool) {}
+
+  async ensureModel(config: PredictionConfig = predictionConfig) {
+    await this.pool.query(`INSERT INTO prediction_model_versions(model_version,config_hash,config)
+      VALUES($1,$2,$3::jsonb) ON CONFLICT DO NOTHING`, [config.modelVersion,predictionConfigHash(config),JSON.stringify(config)]);
+  }
+
+  async loadHistoricalExamples(before?: Date): Promise<HistoricalExample[]> {
+    const result = await this.pool.query(`SELECT * FROM prediction_historical_examples
+      WHERE ($1::timestamptz IS NULL OR kickoff_at<$1) ORDER BY kickoff_at,id`, [before ?? null]);
+    return result.rows.map(historicalExample);
+  }
+
+  async loadTargets(whereSql = "m.status='scheduled' AND m.kickoff_at>now()", params: unknown[] = []): Promise<PredictionTarget[]> {
+    const result = await this.pool.query(`SELECT m.id match_id,m.league_id competition_id,m.kickoff_at,
+      r.input_hash odds_input_hash,COALESCE(jsonb_agg(to_jsonb(i) ORDER BY i.score DESC)
+      FILTER(WHERE i.id IS NOT NULL),'[]'::jsonb) items
+      FROM matches m JOIN LATERAL(SELECT * FROM odds_analysis_runs ar WHERE ar.match_id=m.id
+        ORDER BY ar.created_at DESC,ar.id DESC LIMIT 1) r ON true
+      LEFT JOIN odds_analysis_items i ON i.run_id=r.id WHERE ${whereSql}
+      GROUP BY m.id,r.id ORDER BY m.kickoff_at`, params);
+    return result.rows.map((row) => ({ matchId: row.match_id, competitionId: row.competition_id,
+      kickoffAt: new Date(row.kickoff_at), oddsInputHash: row.odds_input_hash,
+      oddsItems: (row.items as Array<Record<string, unknown>>).map(analysisItem) }));
+  }
+
+  async saveRun(evaluation: PredictionEvaluation, config: PredictionConfig = predictionConfig): Promise<string> {
+    await this.ensureModel(config);
+    const result = await this.pool.query<{ id: string }>(`INSERT INTO prediction_runs(match_id,model_version,config_hash,input_hash,
+      odds_analysis_input_hash,generated_at,decision,selected_candidate,candidates,skip_reasons,metadata)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10::jsonb,$11::jsonb)
+      ON CONFLICT(match_id,model_version,config_hash,input_hash) DO UPDATE SET input_hash=excluded.input_hash RETURNING id`,
+    [evaluation.matchId,evaluation.modelVersion,evaluation.configHash,evaluation.inputHash,evaluation.oddsAnalysisInputHash,
+      evaluation.generatedAt,evaluation.decision,evaluation.selectedCandidate ? JSON.stringify(evaluation.selectedCandidate) : null,
+      JSON.stringify(evaluation.candidates),JSON.stringify(evaluation.skipReasons),JSON.stringify(evaluation.metadata)]);
+    return result.rows[0]!.id;
+  }
+
+  async lock(evaluation: PredictionEvaluation, runId: string, lockedAt: Date, minutesToKickoff: number): Promise<boolean> {
+    const item = evaluation.selectedCandidate;
+    const historical = item?.historical;
+    const result = await this.pool.query(`INSERT INTO prediction_journal(match_id,prediction_run_id,model_version,config_hash,
+      locked_at,kickoff_at,minutes_to_kickoff,decision,market_type,market_name,line,selection,reference_odds,opening_odds,
+      current_odds,current_fair_probability,probability_delta_pp,prediction_score,score_components,bookmaker_count,
+      agreement_ratio,data_quality_score,data_quality_grade,confidence_score,confidence_grade,movement_class,
+      historical_sample_size,historical_settled_sample_size,historical_hit_rate,historical_wilson_lower95,
+      historical_wilson_upper95,historical_scope,historical_frequency_gap_pp,reasons,warnings,metadata)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19::jsonb,$20,$21,$22,$23,$24,$25,
+      $26,$27,$28,$29,$30,$31,$32,$33,$34::jsonb,$35::jsonb,$36::jsonb)
+      ON CONFLICT(match_id,model_version) DO NOTHING`,
+    [evaluation.matchId,runId,evaluation.modelVersion,evaluation.configHash,lockedAt,evaluation.kickoffAt,minutesToKickoff,
+      evaluation.decision,item?.marketType ?? null,item?.marketName ?? null,item?.line ?? null,item?.selection ?? null,
+      item?.referenceOdds ?? null,item?.openingOdds ?? null,item?.currentOdds ?? null,item?.currentFairProbability ?? null,
+      item?.probabilityDeltaPp ?? null,item?.predictionScore ?? null,item ? JSON.stringify(item.scoreComponents) : null,
+      item?.bookmakerCount ?? null,item?.agreementRatio ?? null,item?.dataQualityScore ?? null,item?.dataQualityGrade ?? null,
+      item?.confidenceScore ?? null,item?.confidenceGrade ?? null,item?.movementClass ?? null,historical?.sampleSize ?? 0,
+      historical?.settledSampleSize ?? 0,historical?.historicalHitRate ?? null,historical?.wilsonLower95 ?? null,
+      historical?.wilsonUpper95 ?? null,historical?.scope ?? null,historical?.historicalFrequencyGapPp ?? null,
+      JSON.stringify(item?.reasons ?? evaluation.skipReasons),JSON.stringify(item?.warnings ?? []),JSON.stringify(evaluation.metadata)]);
+    return (result.rowCount ?? 0) === 1;
+  }
+
+  async backfillHistorical(config: PredictionConfig = predictionConfig) {
+    await this.ensureModel(config);
+    const result = await this.pool.query(`SELECT m.id,m.league_id,m.kickoff_at,m.status,m.home_score,m.away_score,
+      h.home_corners,h.away_corners,COALESCE(jsonb_agg(to_jsonb(os) ORDER BY os.captured_at,os.id)
+      FILTER(WHERE os.id IS NOT NULL),'[]'::jsonb) snapshots
+      FROM matches m JOIN odds_snapshots os ON os.match_id=m.id
+      LEFT JOIN historical_match_stats h ON h.match_id=m.id
+      WHERE m.status IN('finished','cancelled') GROUP BY m.id,h.home_corners,h.away_corners ORDER BY m.kickoff_at`);
+    let examples = 0;
+    let usableMatches = 0;
+    for (const row of result.rows) {
+      const snapshots = (row.snapshots as Array<Record<string, unknown>>).map((item): OddsSnapshot => ({
+        matchId: row.id, provider: String(item.provider), marketType: String(item.market_type), marketName: String(item.market_name),
+        line: item.line == null ? null : Number(item.line), selection: String(item.selection), oddsDecimal: Number(item.odds_decimal),
+        capturedAt: new Date(String(item.captured_at)),
+      }));
+      const analysis = analyzeOdds(row.id, new Date(row.kickoff_at), snapshots, { generatedAt: new Date(row.kickoff_at) });
+      let matchExamples = 0;
+      for (const item of analysis.items) {
+        const settled = settlePrediction({ marketType: item.marketType, marketName: item.marketName, line: item.line,
+          selection: item.selection, matchStatus: row.status, homeScore: row.home_score, awayScore: row.away_score,
+          homeCorners: row.home_corners, awayCorners: row.away_corners });
+        if (!settled.outcome) continue;
+        const saved = await this.pool.query(`INSERT INTO prediction_historical_examples(match_id,competition_id,kickoff_at,
+          model_version,config_hash,odds_input_hash,market_type,market_name,line,selection,opening_odds,current_odds,
+          opening_fair_probability,current_fair_probability,probability_delta_pp,bookmaker_count,movement_agreement_ratio,
+          odds_analysis_score,data_quality_score,confidence_score,movement_class,settlement_result,home_score,away_score,
+          home_corners,away_corners) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
+          $21,$22,$23,$24,$25,$26) ON CONFLICT DO NOTHING`,
+        [row.id,row.league_id,row.kickoff_at,config.modelVersion,predictionConfigHash(config),analysis.inputHash,item.marketType,
+          item.marketName,item.line,item.selection,item.openingOdds,item.currentOdds,item.openingFairProbability,
+          item.currentFairProbability,item.probabilityDeltaPp,item.bookmakerCount,item.movementAgreementRatio,item.score,
+          item.dataQuality.score,item.modelConfidence.score,item.movementClass,settled.outcome,row.home_score,row.away_score,
+          row.home_corners,row.away_corners]);
+        matchExamples += saved.rowCount ?? 0;
+      }
+      if (analysis.items.length) usableMatches += 1;
+      examples += matchExamples;
+    }
+    const totals = await this.pool.query('SELECT count(DISTINCT match_id) matches,count(*) examples FROM prediction_historical_examples');
+    return { inspectedMatches: result.rows.length, usableMatches, insertedExamples: examples,
+      historicalMatchesAvailable: Number(totals.rows[0].matches), historicalExamplesAvailable: Number(totals.rows[0].examples) };
+  }
+
+  async settlePending() {
+    const result = await this.pool.query(`SELECT j.*,m.status,m.home_score,m.away_score,h.home_corners,h.away_corners
+      FROM prediction_journal j JOIN matches m ON m.id=j.match_id
+      LEFT JOIN historical_match_stats h ON h.match_id=m.id LEFT JOIN prediction_settlements s ON s.prediction_journal_id=j.id
+      WHERE j.decision='PREDICT' AND s.id IS NULL AND m.status IN('finished','cancelled')`);
+    let settled = 0;
+    let unavailable = 0;
+    for (const row of result.rows) {
+      const resolution = settlePrediction({ marketType: row.market_type, marketName: row.market_name, line: row.line == null ? null : Number(row.line),
+        selection: row.selection, matchStatus: row.status, homeScore: row.home_score, awayScore: row.away_score,
+        homeCorners: row.home_corners, awayCorners: row.away_corners });
+      if (!resolution.outcome) { unavailable += 1; continue; }
+      const saved = await this.pool.query(`INSERT INTO prediction_settlements(prediction_journal_id,outcome,home_score,
+        away_score,home_corners,away_corners,reference_paper_return,metadata) VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb)
+        ON CONFLICT(prediction_journal_id) DO NOTHING`, [row.id,resolution.outcome,row.home_score,row.away_score,
+        row.home_corners,row.away_corners,referencePaperReturn(resolution.outcome,Number(row.reference_odds)),JSON.stringify({ reason: resolution.reason })]);
+      settled += saved.rowCount ?? 0;
+    }
+    return { candidates: result.rows.length, settled, unavailable };
+  }
+
+  async previews() {
+    return (await this.pool.query(`SELECT DISTINCT ON(r.match_id) r.*,m.kickoff_at,l.name league,ht.name home_team,at.name away_team,
+      CASE WHEN j.id IS NULL THEN 'PREVIEW' ELSE CASE WHEN j.decision='PREDICT' THEN 'LOCKED_PREDICTION' ELSE 'LOCKED_SKIP' END END state
+      FROM prediction_runs r JOIN matches m ON m.id=r.match_id JOIN leagues l ON l.id=m.league_id
+      JOIN teams ht ON ht.id=m.home_team_id JOIN teams at ON at.id=m.away_team_id
+      LEFT JOIN prediction_journal j ON j.match_id=r.match_id AND j.model_version=r.model_version
+      WHERE m.kickoff_at>now() AND j.id IS NULL ORDER BY r.match_id,r.created_at DESC,r.id DESC`)).rows;
+  }
+
+  async today(timeZone = 'Europe/Istanbul') {
+    return (await this.pool.query(`SELECT j.*,m.kickoff_at,l.name league,ht.name home_team,at.name away_team,s.outcome,
+      CASE WHEN j.decision='PREDICT' THEN 'LOCKED_PREDICTION' ELSE 'LOCKED_SKIP' END state,
+      CASE WHEN s.id IS NULL AND j.decision='PREDICT' THEN 'PENDING' WHEN s.id IS NULL THEN NULL ELSE 'SETTLED' END settlement_state
+      FROM prediction_journal j JOIN matches m ON m.id=j.match_id JOIN leagues l ON l.id=m.league_id
+      JOIN teams ht ON ht.id=m.home_team_id JOIN teams at ON at.id=m.away_team_id
+      LEFT JOIN prediction_settlements s ON s.prediction_journal_id=j.id
+      WHERE (m.kickoff_at AT TIME ZONE $1)::date=(now() AT TIME ZONE $1)::date ORDER BY m.kickoff_at`, [timeZone])).rows;
+  }
+
+  async history(limit = 50, offset = 0) {
+    const safeLimit = Math.max(1, Math.min(200, Math.trunc(limit)));
+    const safeOffset = Math.max(0, Math.trunc(offset));
+    return (await this.pool.query(`SELECT j.*,m.kickoff_at,l.name league,ht.name home_team,at.name away_team,s.outcome,
+      s.reference_paper_return,CASE WHEN j.decision='PREDICT' THEN 'LOCKED_PREDICTION' ELSE 'LOCKED_SKIP' END state
+      FROM prediction_journal j JOIN matches m ON m.id=j.match_id JOIN leagues l ON l.id=m.league_id
+      JOIN teams ht ON ht.id=m.home_team_id JOIN teams at ON at.id=m.away_team_id
+      LEFT JOIN prediction_settlements s ON s.prediction_journal_id=j.id ORDER BY j.kickoff_at DESC LIMIT $1 OFFSET $2`,
+    [safeLimit,safeOffset])).rows;
+  }
+
+  async detail(matchId: string) {
+    const [runs, journal] = await Promise.all([
+      this.pool.query('SELECT * FROM prediction_runs WHERE match_id=$1 ORDER BY generated_at DESC,id DESC', [matchId]),
+      this.pool.query(`SELECT j.*,s.outcome,s.reference_paper_return FROM prediction_journal j
+        LEFT JOIN prediction_settlements s ON s.prediction_journal_id=j.id WHERE j.match_id=$1`, [matchId]),
+    ]);
+    return { matchId, state: journal.rows[0] ? (journal.rows[0].decision === 'PREDICT' ? 'LOCKED_PREDICTION' : 'LOCKED_SKIP')
+      : runs.rows.length ? 'PREVIEW' : 'NOT_GENERATED', journal: journal.rows[0] ?? null, runs: runs.rows };
+  }
+
+  async performance() {
+    const result = await this.pool.query(`SELECT j.decision,s.outcome,j.market_type,l.name league,j.prediction_score,
+      j.confidence_score,j.data_quality_grade,j.bookmaker_count,j.historical_sample_size,j.historical_hit_rate,
+      j.movement_class,s.reference_paper_return FROM prediction_journal j JOIN matches m ON m.id=j.match_id
+      JOIN leagues l ON l.id=m.league_id LEFT JOIN prediction_settlements s ON s.prediction_journal_id=j.id`);
+    return buildPerformance(result.rows.map((row): PerformanceRecord => ({ decision: row.decision, outcome: row.outcome,
+      marketType: row.market_type, league: row.league, predictionScore: row.prediction_score == null ? null : Number(row.prediction_score),
+      confidenceScore: row.confidence_score == null ? null : Number(row.confidence_score), dataQualityGrade: row.data_quality_grade,
+      bookmakerCount: row.bookmaker_count == null ? null : Number(row.bookmaker_count),
+      historicalSampleSize: Number(row.historical_sample_size), historicalHitRate: row.historical_hit_rate == null ? null : Number(row.historical_hit_rate),
+      movementClass: row.movement_class, referencePaperReturn: row.reference_paper_return == null ? null : Number(row.reference_paper_return) })));
+  }
+
+  async backtest(config: PredictionConfig = predictionConfig) {
+    const [targets, examples] = await Promise.all([
+      this.loadTargets("m.status='finished'", []), this.loadHistoricalExamples(),
+    ]);
+    return runPredictionBacktest(targets, examples, config);
+  }
+}
+
+export class PredictionService {
+  constructor(private readonly repository: PredictionRepository, private readonly config: PredictionConfig = predictionConfig) {}
+
+  async refreshPreviewsAndLocks(now = new Date()) {
+    const targets = await this.repository.loadTargets();
+    const examples = await this.repository.loadHistoricalExamples();
+    let previews = 0; let lockedPredictions = 0; let lockedSkips = 0; let missed = 0;
+    for (const target of targets) {
+      let evaluation = evaluatePrediction(target, examples, now, this.config);
+      const window = lockWindowState(target.kickoffAt, now, this.config);
+      if (window.missed) {
+        evaluation = { ...evaluation, decision: 'SKIP', selectedCandidate: null,
+          skipReasons: [...new Set([...evaluation.skipReasons, 'LOCK_WINDOW_MISSED' as const])],
+        };
+        const runId = await this.repository.saveRun(evaluation, this.config);
+        // A missed pre-kickoff window is itself an official, auditable SKIP. The
+        // unique journal constraint preserves the first decision if another worker
+        // observes the same match concurrently.
+        if (target.kickoffAt > now && await this.repository.lock(evaluation, runId, now, window.minutesToKickoff)) lockedSkips += 1;
+        missed += 1;
+        continue;
+      }
+      const runId = await this.repository.saveRun(evaluation, this.config);
+      previews += 1;
+      if (window.eligible && await this.repository.lock(evaluation, runId, now, window.minutesToKickoff)) {
+        if (evaluation.decision === 'PREDICT') lockedPredictions += 1; else lockedSkips += 1;
+      }
+    }
+    return { matches: targets.length, previews, lockedPredictions, lockedSkips, missed };
+  }
+}

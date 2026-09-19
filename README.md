@@ -63,6 +63,14 @@ SofascoreProvider -> dayanıklı HTTP istemcisi -> Collector Worker
 - Odds backtest'inde HOME/DRAW/AWAY binary event'leri probability calibration için ayrı tutulur; sinyal hit-rate raporları yalnız `SUPPORT` ve `STRONG_SUPPORT` sınıflarını kullanır. Leakage audit toplam girdi, kullanılan pre-kickoff, dışlanan kickoff-sonrası ve unsafe kullanılan snapshot sayılarını ayrı raporlar.
 - Ayrıntılı yöntem, video inceleme notu ve sınırlar: [`docs/odds-analysis-v1.md`](docs/odds-analysis-v1.md).
 
+### Prediction V1
+
+- `PREDICTION_V1` ODDS_V1'dan aday üretir, benzer historical maçları yalnız kickoff öncesi oranlarla yeniden kurar, açıklanabilir skor üretir ve her maç için en fazla bir immutable resmi `PREDICT` veya `SKIP` kararı kilitler. Bu bir otomatik bahis motoru değildir: gerçek bahis yerleştirme ve AI prediction authority **false**'tur.
+- Historical benzerlik aynı market/selection/line kimliğiyle çalışır; aynı lig örneklemini önce dener, gerektiğinde açıkça global kapsama geçer. Future leakage engeli hem canlı değerlendirmede hem chronological backtest'te zorunludur.
+- Settlement 1X2, total goals/corners ve Nowgoal HOME-side Asian handicap convention'ını integer/half/quarter-line split ile destekler. Resmi journal değişmez; settlement ayrı tabloda tek idempotent satırdır.
+- Dashboard ve API, değişebilir `ADAY TAHMİN`, kilitli resmi tahmin, `GEÇ`, sonuç ve yalnız locked kayıtları kullanan performans/kalibrasyon verilerini ayırır. Her yüzde N ile birlikte gösterilir; “Reference Paper Return” stored reference odds'a dayalı teorik ölçümdür, executable return değildir.
+- Ayrıntılı pipeline, SKIP, settlement, lock, calibration ve sınırlar: [`docs/prediction-v1.md`](docs/prediction-v1.md).
+
 ## Yerel kurulum
 
 Gereksinimler: Node.js 22+, npm ve PostgreSQL 16+.
@@ -114,6 +122,13 @@ npm run odds:analyze -- --date=2026-09-17
 
 # Mevcut historical odds coverage üzerinde kickoff-safe replay yapar.
 npm run odds:backtest
+
+# Prediction V1: historical feature store, preview/lock, settlement, performance and chronological backtest.
+npm run predictions:history:backfill
+npm run predictions:analyze
+npm run predictions:settle
+npm run predictions:performance
+npm run predictions:backtest
 ```
 
 Persist edilmiş ODDS_V1 sonuçları `GET /api/odds-analysis/upcoming` ve `GET /api/odds-analysis/:matchId` endpoint'lerinden okunur. Henüz analiz yoksa match endpoint'i HTTP 500 yerine `NOT_GENERATED` empty state döndürür. Dashboard'daki **ORAN ANALİZİ V1** bölümü açılış/güncel oranı, fair probability değişimini, bookmaker teyidini, açıklanabilir skoru, Data Quality ve Model Confidence değerlerini gösterir.

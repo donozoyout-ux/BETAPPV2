@@ -10,6 +10,7 @@ import { buildAllLeagueBaselines, buildAllTeamProfiles } from './corners/profile
 import { NowgoalProvider } from './providers/nowgoal.js';
 import { OddsRepository } from './db/odds-repository.js';
 import { OddsCollector } from './collector/odds-collector.js';
+import { PredictionRepository, PredictionService } from './predictions/service.js';
 
 const config = loadConfig();
 const logger = createLogger(config, 'betapp-worker');
@@ -35,6 +36,8 @@ const nowgoal = new NowgoalProvider(config, logger);
 const oddsCollector = config.NOWGOAL_ENABLED
   ? new OddsCollector(nowgoal, oddsRepository, repository, config, logger)
   : null;
+const predictionRepository = new PredictionRepository(pool);
+const predictionService = new PredictionService(predictionRepository);
 const collectors = [...footballCollectors, ...(oddsCollector ? [oddsCollector] : [])];
 let stopped = false;
 let wakeSleep: (() => void) | undefined;
@@ -55,8 +58,16 @@ async function runCycle(): Promise<void> {
     if (result.status === 'rejected') logger.error({ err: result.reason }, 'Football collector cycle failed');
   }
   if (!stopped) {
+    try { await predictionRepository.settlePending(); }
+    catch (error) { logger.error({ err: error }, 'Prediction settlement failed; continuing'); }
+  }
+  if (!stopped) {
     try { await oddsCollector?.runCycle(); }
     catch (error) { logger.error({ err: error }, 'Odds collector cycle failed'); }
+  }
+  if (!stopped) {
+    try { await predictionService.refreshPreviewsAndLocks(); }
+    catch (error) { logger.error({ err: error }, 'Prediction preview/lock cycle failed; continuing'); }
   }
 }
 

@@ -5,9 +5,10 @@ import type { FootballRepository } from './db/repository.js';
 import type { OddsAnalysisRepository } from './db/odds-analysis-repository.js';
 import { renderCornerDetail, renderDashboard } from './dashboard.js';
 import type { Logger } from './logger.js';
+import type { PredictionRepository } from './predictions/service.js';
 
 export function buildApp(config: AppConfig, repository: FootballRepository, logger: Logger,
-  oddsAnalysis?: OddsAnalysisRepository) {
+  oddsAnalysis?: OddsAnalysisRepository, predictions?: PredictionRepository) {
   const app = Fastify({ loggerInstance: logger });
   void app.register(helmet, { contentSecurityPolicy: false });
 
@@ -21,7 +22,11 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
       timestamp: new Date().toISOString() });
   });
 
-  app.get('/api/dashboard', async () => repository.dashboardData('Europe/Istanbul'));
+  app.get('/api/dashboard', async () => {
+    const [data, today, previews, history, performance] = await Promise.all([repository.dashboardData('Europe/Istanbul'),
+      predictions?.today() ?? [], predictions?.previews() ?? [], predictions?.history(20) ?? [], predictions?.performance() ?? null]);
+    return { ...data, predictions: today, predictionPreviews: previews, predictionHistory: history, predictionPerformance: performance };
+  });
   app.get('/api/odds/upcoming', async () => ({ odds: await repository.upcomingOdds(1000) }));
   app.get('/api/backfill/status', async () => repository.backfillStatus());
   app.get('/api/odds-analysis/upcoming', async () => ({ modelVersion: 'ODDS_V1',
@@ -30,9 +35,21 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
     const analysis = oddsAnalysis ? await oddsAnalysis.byMatch(request.params.matchId) : null;
     return analysis ?? { matchId: request.params.matchId, status: 'NOT_GENERATED', analysis: null };
   });
+  app.get('/api/predictions/today', async () => ({ predictions: predictions ? await predictions.today() : [] }));
+  app.get('/api/predictions/previews', async () => ({ previews: predictions ? await predictions.previews() : [] }));
+  app.get<{ Querystring: { limit?: string; offset?: string } }>('/api/predictions/history', async (request) => ({
+    history: predictions ? await predictions.history(Number(request.query.limit ?? 50), Number(request.query.offset ?? 0)) : [],
+  }));
+  app.get('/api/predictions/performance', async () => predictions ? predictions.performance() : {
+    totalOfficialDecisions: 0, predictCount: 0, skipCount: 0, pending: 0, settled: 0,
+  });
+  app.get<{ Params: { matchId: string } }>('/api/predictions/:matchId', async (request) => predictions
+    ? predictions.detail(request.params.matchId) : { matchId: request.params.matchId, state: 'NOT_GENERATED', journal: null, runs: [] });
   app.get('/', async (_request, reply) => {
-    const data = await repository.dashboardData('Europe/Istanbul');
-    return reply.type('text/html; charset=utf-8').send(renderDashboard(data));
+    const [data, today, previews, history, performance] = await Promise.all([repository.dashboardData('Europe/Istanbul'),
+      predictions?.today() ?? [], predictions?.previews() ?? [], predictions?.history(20) ?? [], predictions?.performance() ?? null]);
+    return reply.type('text/html; charset=utf-8').send(renderDashboard({ ...data, predictions: today,
+      predictionPreviews: previews, predictionHistory: history, predictionPerformance: performance }));
   });
   app.get<{ Params: { matchId: string } }>('/matches/:matchId/corners', async (request, reply) => {
     const detail = await repository.cornerAnalysisDetail(request.params.matchId);

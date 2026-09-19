@@ -9,6 +9,10 @@ import { CornerRepository } from '../../src/db/corner-repository.js';
 import { configHash, cornerModelConfig } from '../../src/corners/config.js';
 import { buildAllTeamProfiles } from '../../src/corners/profiles.js';
 import { runBacktest } from '../../src/corners/backtest.js';
+import { predictionConfig } from '../../src/predictions/config.js';
+import { evaluatePrediction } from '../../src/predictions/engine.js';
+import { PredictionRepository } from '../../src/predictions/service.js';
+import type { AnalysisItem } from '../../src/odds-analysis/types.js';
 
 describe('FootballRepository integration', () => {
   let container: Awaited<ReturnType<PostgreSqlContainer['start']>> | undefined;
@@ -135,7 +139,7 @@ describe('FootballRepository integration', () => {
   it('validates migrations, checkpoint, profiles, replay, rollback and advisory locks', async () => {
     const migrations = await migrationStatus(pool);
     expect(migrations.pendingMigrations).toEqual([]);
-    expect(migrations.schemaVersion).toBe('005_odds_analysis_v1.sql');
+    expect(migrations.schemaVersion).toBe('006_prediction_v1.sql');
     const health = await repository.databaseHealth();
     expect(health.status).toBe('ok');
     await repository.markStarted('fotmob', 'integration-checkpoint', { index: 0 });
@@ -166,5 +170,59 @@ describe('FootballRepository integration', () => {
     const lock = await pool.query<{ locked: boolean }>("SELECT pg_try_advisory_lock(hashtext('betapp-integration-lock')) locked");
     expect(lock.rows[0]?.locked).toBe(true);
     await pool.query("SELECT pg_advisory_unlock(hashtext('betapp-integration-lock'))");
+  });
+
+  it('persists an immutable prediction journal and idempotently settles it', async () => {
+    const observedAt = new Date('2026-09-10T12:00:00Z');
+    const historicalKickoff = new Date('2026-09-12T18:00:00Z');
+    const targetKickoff = new Date('2099-09-20T18:00:00Z');
+    const raw = {};
+    const fixture = (externalId: string, kickoffAt: Date, status: 'scheduled' | 'finished', homeScore: number | null, awayScore: number | null) => ({
+      providerExternalId: externalId,
+      league: { providerExternalId: 'prediction-league', name: 'Prediction League', country: 'Test', logoUrl: null, sourceUpdatedAt: observedAt, raw },
+      homeTeam: { providerExternalId: `${externalId}-home`, name: `${externalId} Home`, shortName: null, country: 'Test', logoUrl: null, sourceUpdatedAt: observedAt, raw },
+      awayTeam: { providerExternalId: `${externalId}-away`, name: `${externalId} Away`, shortName: null, country: 'Test', logoUrl: null, sourceUpdatedAt: observedAt, raw },
+      kickoffAt, status, round: null, season: '2099', homeScore, awayScore, sourceUpdatedAt: observedAt, raw,
+    });
+    const historicalId = await repository.upsertMatch('prediction-source', fixture('prediction-historical', historicalKickoff, 'finished', 2, 0));
+    const targetId = await repository.upsertMatch('prediction-source', fixture('prediction-target', targetKickoff, 'scheduled', null, null));
+    const odds = new OddsRepository(pool);
+    const selections = ['HOME', 'DRAW', 'AWAY'];
+    for (const provider of ['nowgoal:one', 'nowgoal:two', 'nowgoal:three']) {
+      for (const [index, selection] of selections.entries()) {
+        await odds.append(historicalId, { provider, providerMatchId: `${provider}-history`, marketType: 'MATCH_RESULT', marketName: '1X2',
+          line: null, selection, oddsDecimal: [2.1, 3.3, 3.6][index]!, capturedAt: observedAt });
+        await odds.append(historicalId, { provider, providerMatchId: `${provider}-history`, marketType: 'MATCH_RESULT', marketName: '1X2',
+          line: null, selection, oddsDecimal: [1.8, 3.5, 4.2][index]!, capturedAt: new Date(observedAt.getTime() + 60_000) });
+      }
+    }
+    const predictionRepository = new PredictionRepository(pool);
+    const config = { ...predictionConfig, minimumHistoricalSample: 1, targetHistoricalSample: 1,
+      minimumPredictionScore: 0, minimumDataQualityScore: 0, minimumConfidenceScore: 0,
+      minimumBookmakerCount: 1, minimumCompleteStateCount: 1 };
+    const backfill = await predictionRepository.backfillHistorical(config);
+    expect(backfill.insertedExamples).toBeGreaterThan(0);
+    const historical = await predictionRepository.loadHistoricalExamples(targetKickoff);
+    const league = await pool.query<{ league_id: string }>('SELECT league_id FROM matches WHERE id=$1', [targetId]);
+    const targetItem: AnalysisItem = { marketType: 'MATCH_RESULT', marketName: '1X2', line: null, selection: 'HOME',
+      openingOdds: 2.1, currentOdds: 1.8, highestOdds: 2.1, lowestOdds: 1.8, snapshotCount: 6,
+      openingFairProbability: 0.45, currentFairProbability: 0.56, probabilityDeltaPp: 11, rawOddsMovementPercent: -14.3,
+      bookmakerCount: 3, completeStateBookmakerCount: 3, minimumCompleteStateCount: 2, agreeingBookmakerCount: 3,
+      disagreeingBookmakerCount: 0, movementAgreementRatio: 1, probabilityDispersion: 0, oddsDispersion: 0,
+      movementClass: 'SUPPORT', score: 80, scoreComponents: { movement: 30, agreement: 20, coverage: 20, freshness: 15, stability: 15 },
+      dataQuality: { score: 90, grade: 'GOOD', analysisEligible: true, warnings: [] }, modelConfidence: { score: 85, grade: 'GOOD' },
+      analysisEligible: true, reasons: [], warnings: [], modelMarketGapPp: null };
+    const evaluation = evaluatePrediction({ matchId: targetId, competitionId: league.rows[0]!.league_id, kickoffAt: targetKickoff,
+      oddsInputHash: 'prediction-integration-input', oddsItems: [targetItem] }, historical, new Date('2099-09-20T17:30:00Z'), config);
+    expect(evaluation.decision).toBe('PREDICT');
+    const runId = await predictionRepository.saveRun(evaluation, config);
+    expect(await predictionRepository.lock(evaluation, runId, new Date('2099-09-20T17:30:00Z'), 30)).toBe(true);
+    expect(await predictionRepository.lock(evaluation, runId, new Date('2099-09-20T17:31:00Z'), 29)).toBe(false);
+    await expect(pool.query('UPDATE prediction_journal SET locked_at=now() WHERE match_id=$1', [targetId])).rejects.toThrow(/immutable/);
+    await repository.upsertMatch('prediction-source', fixture('prediction-target', targetKickoff, 'finished', 2, 0));
+    expect((await predictionRepository.settlePending()).settled).toBe(1);
+    expect((await predictionRepository.settlePending()).settled).toBe(0);
+    const performance = await predictionRepository.performance();
+    expect(performance).toMatchObject({ predictCount: 1, settled: 1, win: 1 });
   });
 });

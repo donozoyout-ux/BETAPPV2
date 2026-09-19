@@ -2,7 +2,9 @@ type DashboardData = { matches: Array<Record<string, unknown>>; providers: Array
   qualification?: Array<Record<string, unknown>>; cornerAnalyses?: Array<Record<string, unknown>>;
   datasetAudit?: Record<string, unknown> | null; validation?: Record<string, unknown> | null;
   backfill?: Array<Record<string, unknown>>; odds?: Array<Record<string, unknown>>;
-  oddsAnalyses?: Array<Record<string, unknown>> };
+  oddsAnalyses?: Array<Record<string, unknown>>; predictions?: Array<Record<string, unknown>>;
+  predictionPreviews?: Array<Record<string, unknown>>; predictionHistory?: Array<Record<string, unknown>>;
+  predictionPerformance?: Record<string, unknown> | null };
 type ValidationMetric = { count?: unknown; sample?: unknown; averagePredictedProbability?: unknown; actualHitRate?: unknown;
   absoluteCalibrationError?: unknown; mae?: unknown; brier?: unknown };
 type DatasetAuditView = { totalMatches?: unknown; cornerCoverage?: { complete?: { rate?: unknown } };
@@ -63,6 +65,10 @@ export function renderDashboard(data: DashboardData): string {
   const odds = data.odds ?? [];
   const analyses = data.cornerAnalyses ?? [];
   const oddsAnalyses = data.oddsAnalyses ?? [];
+  const predictions = data.predictions ?? [];
+  const predictionPreviews = data.predictionPreviews ?? [];
+  const predictionHistory = data.predictionHistory ?? [];
+  const predictionPerformance = data.predictionPerformance;
   const healthyProviders = data.providers.filter((provider) => provider.status === 'healthy').length;
   const percent = (value: unknown) => `${(finiteNumber(value) * 100).toFixed(1)}%`;
   const sources = data.providers.length ? data.providers : [
@@ -125,6 +131,28 @@ export function renderDashboard(data: DashboardData): string {
         ${warnings.length ? `<p style="color:var(--amber)">${warnings.map(escapeHtml).join(' · ')}</p>` : ''}</article>`;
     });
   }).join('') : renderEmpty('∿', 'Henüz oran analizi yok', 'Yeni Nowgoal snapshot değişimleri kaydedildiğinde ODDS_V1 analizi burada görünecek.');
+  const predictionCards = [...predictions, ...predictionPreviews].map((prediction) => {
+    const locked = String(prediction.state).startsWith('LOCKED');
+    const candidate = (prediction.selected_candidate ?? null) as Record<string, unknown> | null;
+    const skip = String(prediction.decision) === 'SKIP';
+    const reasons = (prediction.reasons ?? prediction.skip_reasons ?? []) as unknown[];
+    return `<article class="card"><div class="row"><strong>${escapeHtml(prediction.home_team)} — ${escapeHtml(prediction.away_team)}</strong>
+      <span class="badge ${skip ? 'partial' : 'ok'}">${skip ? '⏭ GEÇ' : locked ? '🔒 RESMİ TAHMİN' : 'ADAY TAHMİN — DEĞİŞEBİLİR'}</span></div>
+      <p>${escapeHtml(prediction.league)} · ${escapeHtml(formatDate(prediction.kickoff_at, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }))}</p>
+      ${skip ? `<p>Neden: ${reasons.map(escapeHtml).join(' · ') || 'Veri eşiği karşılanmadı'}</p>` : `<p><strong>${escapeHtml(prediction.market_type ?? candidate?.marketType)} ${escapeHtml(prediction.line ?? candidate?.line ?? '')} · ${escapeHtml(prediction.selection ?? candidate?.selection)}</strong></p>
+      <p>Prediction Score: ${escapeHtml(prediction.prediction_score ?? candidate?.predictionScore)}/100 · Reference odds: ${escapeHtml(prediction.reference_odds ?? candidate?.referenceOdds)}</p>
+      <p>Historical Similar Matches: N=${escapeHtml(prediction.historical_settled_sample_size ?? (candidate?.historical as Record<string, unknown> | undefined)?.settledSampleSize ?? 0)}</p>`}
+      <p style="color:var(--muted)">Deterministik kayıt · gerçek bahis yürütme yetkisi yoktur.</p></article>`;
+  }).join('') || renderEmpty('◇', 'Henüz tahmin kaydı yok', 'ODDS_V1 verisi oluşunca aday tahminler ve resmi SKIP kararları burada görünecek.');
+  const predictionHistoryRows = predictionHistory.length ? predictionHistory.map((prediction) => {
+    const skip = String(prediction.decision) === 'SKIP';
+    const outcome = prediction.outcome == null ? '⏳ PENDING' : escapeHtml(prediction.outcome);
+    return `<tr><td>${escapeHtml(formatDate(prediction.kickoff_at, { day: '2-digit', month: 'short' }))}</td>
+      <td>${escapeHtml(prediction.home_team)} — ${escapeHtml(prediction.away_team)}</td>
+      <td>${skip ? '⏭ GEÇ' : `${escapeHtml(prediction.market_type)} ${escapeHtml(prediction.line ?? '')} ${escapeHtml(prediction.selection)}`}</td>
+      <td>${skip ? '—' : escapeHtml(prediction.prediction_score)}</td><td>${outcome}</td></tr>`;
+  }).join('') : '<tr><td colspan="5">Henüz kilitli tahmin geçmişi yok.</td></tr>';
+  const performanceSummary = predictionPerformance ? `<div class="grid"><article class="card"><strong>Resmi karar</strong><p>${escapeHtml(predictionPerformance.totalOfficialDecisions)} · PREDICT ${escapeHtml(predictionPerformance.predictCount)} · GEÇ ${escapeHtml(predictionPerformance.skipCount)}</p></article><article class="card"><strong>Settlement</strong><p>N=${escapeHtml(predictionPerformance.settled)} · WIN ${escapeHtml(predictionPerformance.win)} · LOSS ${escapeHtml(predictionPerformance.loss)}</p></article><article class="card"><strong>Reference Paper Units</strong><p>${escapeHtml(predictionPerformance.referencePaperUnits ?? 0)}</p><p style="color:var(--muted)">Gerçek/executable getiri değildir.</p></article></div>` : renderEmpty('◇', 'Performans verisi yok', 'Yalnız kilitli resmi kararlar performansa dahil edilir.');
   const backfillRows = (data.backfill ?? []).length ? (data.backfill ?? []).map((run) => `<tr><td>${escapeHtml(run.competition_name)}</td><td>${escapeHtml(run.season)}</td><td>${escapeHtml(run.status)}</td><td>${escapeHtml(run.fixtures_discovered)}</td><td>${escapeHtml(run.matches_stored)}</td><td>${escapeHtml(run.corner_complete)}</td><td>${escapeHtml(run.partial)}</td><td>${escapeHtml(run.failed)}</td><td>${escapeHtml(run.retries)}</td></tr>`).join('') : '<tr><td colspan="9">Henüz backfill çalıştırılmadı.</td></tr>';
   const datasetHealth = audit ? `<div class="grid"><article class="card"><strong>Geçmiş maç</strong><p>${escapeHtml(audit.totalMatches)}</p></article><article class="card"><strong>Korner kapsaması</strong><p>${percent(audit.cornerCoverage?.complete?.rate)}</p></article><article class="card"><strong>Lig</strong><p>${escapeHtml(audit.perCompetition?.length ?? 0)}</p></article><article class="card"><strong>Sezon</strong><p>${escapeHtml(audit.perSeason?.length ?? 0)}</p></article></div>` : renderEmpty('◫', 'Dataset henüz hazır değil', 'Historical backfill ve audit tamamlandığında kalite özeti burada görünecek.');
   const calibrationRows = validation ? Object.entries(validation.calibration ?? {}).map(([bucket, item]) => `<tr><td>${escapeHtml(bucket)}</td><td>${escapeHtml(item.count)}</td><td>${percent(item.averagePredictedProbability)}</td><td>${percent(item.actualHitRate)}</td><td>${percent(item.absoluteCalibrationError)}</td></tr>`).join('') : '';
@@ -136,6 +164,8 @@ export function renderDashboard(data: DashboardData): string {
     <section class="metrics" aria-label="Özet"><article class="metric"><span class="metric-label">Bugünkü maç</span><strong class="metric-value">${matches.length}</strong><span class="metric-note">Desteklenen ligler</span></article><article class="metric"><span class="metric-label">Canlı oran</span><strong class="metric-value">${odds.length}</strong><span class="metric-note">Eşleşmiş seçim</span></article><article class="metric"><span class="metric-label">Aktif kaynak</span><strong class="metric-value">${healthyProviders}</strong><span class="metric-note">FotMob + Nowgoal</span></article><article class="metric"><span class="metric-label">Korner analizi</span><strong class="metric-value">${analyses.length}</strong><span class="metric-note">Yaklaşan maçlar</span></article></section>
     ${waitingNotice}<section class="workspace"><article class="panel" id="matches"><div class="panel-head"><h2>Bugünün maçları</h2><span class="count">${matches.length}</span></div><div class="panel-body match-list">${matchCards}</div></article><article class="panel" id="odds"><div class="panel-head"><h2>Nowgoal oran panosu</h2><span class="count">${odds.length}</span></div><div class="panel-body odds-list">${oddsRows}</div></article></section>
     <section class="section" id="odds-analysis"><div class="section-title"><h2>ORAN ANALİZİ V1</h2><p>Deterministik piyasa hareketi · bahis önerisi değildir</p></div><div class="grid">${oddsAnalysisCards}</div></section>
+    <section class="section" id="predictions"><div class="section-title"><h2>BUGÜNÜN TAHMİNLERİ</h2><p>PREDICTION V1 · resmi kayıt veya değişebilir önizleme</p></div><div class="grid">${predictionCards}</div></section>
+    <section class="section" id="prediction-history"><div class="section-title"><h2>TAHMİN GEÇMİŞİ</h2><p>Yalnız kilitli resmi kararlar · her oran N ile değerlendirilir</p></div><div class="scroll"><table><thead><tr><th>Tarih</th><th>Maç</th><th>Karar</th><th>Score</th><th>Sonuç</th></tr></thead><tbody>${predictionHistoryRows}</tbody></table></div><details><summary>PERFORMANCE LAB</summary><div class="details-body">${performanceSummary}</div></details></section>
     <section class="section" id="sources"><div class="section-title"><h2>Veri kaynakları</h2><p>Sağlık ve son senkronizasyon durumu</p></div><div class="source-grid">${providerCards}</div></section>
     <section class="section" id="system"><div class="section-title"><h2>Analiz ve sistem</h2><p>İleri seviye veri panelleri</p></div><details><summary>Provider qualification matrisi</summary><div class="details-body">${matrix}</div></details><details><summary>Dataset sağlığı ve backfill</summary><div class="details-body">${datasetHealth}<div class="scroll" style="margin-top:10px"><table><thead><tr><th>Lig</th><th>Sezon</th><th>Durum</th><th>Bulunan</th><th>Kaydedilen</th><th>Tam</th><th>Kısmi</th><th>Hata</th><th>Retry</th></tr></thead><tbody>${backfillRows}</tbody></table></div></div></details><details><summary>Korner modeli ve doğrulama</summary><div class="details-body">${modelValidation}<div class="scroll" style="margin-top:10px"><table><thead><tr><th>Maç</th><th>Beklenen</th><th>O8.5</th><th>O9.5</th><th>O10.5</th><th>Veri kalitesi</th><th>Güven</th></tr></thead><tbody>${cornerRows}</tbody></table></div></div></details></section>
     <footer class="footer"><span>BETAPP V2 · Europe/Istanbul · Otomatik yenileme 60 sn</span><span><a href="/health">Sistem sağlığı</a> · <a href="/api/odds/upcoming">Odds API</a></span></footer></main>`);

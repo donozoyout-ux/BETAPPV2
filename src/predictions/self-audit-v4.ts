@@ -120,17 +120,49 @@ function proposalKey(conditions: AdaptiveRuleCondition[]): string {
   return conditions.map((item) => `${item.dimension}=${item.bucketKey}`).sort().join('&');
 }
 
+export function adaptiveRuleEvaluationInputHash(
+  records: RootCauseRecord[],
+  predictionConfig: PredictionConfig,
+  config: AdaptiveRuleConfig = selfAuditV4Config,
+): string {
+  const recent = [...records]
+    .sort((a, b) => b.settledAt.getTime() - a.settledAt.getTime() || b.settlementId.localeCompare(a.settlementId))
+    .filter((row) => row.outcome !== 'VOID')
+    .slice(0, config.recentWindow);
+  return createHash('sha256').update(JSON.stringify(stable({
+    version: config.version,
+    configHash: adaptiveRuleConfigHash(config),
+    predictionConfig,
+    settlements: recent.map((row) => ({
+      settlementId: row.settlementId,
+      settledAt: row.settledAt.toISOString(),
+      outcome: row.outcome,
+      referencePaperReturn: row.referencePaperReturn,
+      historicalHitRate: row.historicalHitRate,
+      predictionScore: row.predictionScore,
+      bookmakerCount: row.bookmakerCount,
+      historicalSampleSize: row.historicalSampleSize,
+      dataQualityGrade: row.dataQualityGrade,
+      confidenceGrade: row.confidenceGrade,
+      movementClass: row.movementClass,
+      agreementRatio: row.agreementRatio,
+    })),
+  }))).digest('hex');
+}
+
 function makeInputHash(
   config: AdaptiveRuleConfig,
   predictionConfig: PredictionConfig,
   conditions: AdaptiveRuleCondition[],
   rows: RootCauseRecord[],
+  baseline: { binarySampleSize: number; positiveRate: number; referencePaperRoi: number },
 ): string {
   return createHash('sha256').update(JSON.stringify(stable({
     version: config.version,
     configHash: adaptiveRuleConfigHash(config),
     predictionConfig,
     proposalKey: proposalKey(conditions),
+    baseline,
     settlements: rows.map((row) => ({
       settlementId: row.settlementId,
       settledAt: row.settledAt.toISOString(),
@@ -188,7 +220,11 @@ function buildProposal(args: {
   return {
     version: args.config.version,
     configHash: adaptiveRuleConfigHash(args.config),
-    inputHash: makeInputHash(args.config, args.predictionConfig, args.conditions, args.rows),
+    inputHash: makeInputHash(args.config, args.predictionConfig, args.conditions, args.rows, {
+      binarySampleSize: args.baselineBinarySampleSize,
+      positiveRate: args.baselinePositiveRate,
+      referencePaperRoi: args.baselineReferencePaperRoi,
+    }),
     evaluatedAt: args.evaluatedAt,
     proposalKey: key,
     proposalType: args.proposalType,

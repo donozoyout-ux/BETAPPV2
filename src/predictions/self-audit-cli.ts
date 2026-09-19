@@ -7,12 +7,13 @@ const pool = createPool(appConfig);
 
 try {
   const repository = new PredictionRepository(pool);
-  const [global, segments, rootCauses] = await Promise.all([
+  const [global, segments, rootCauses, adaptiveProposals] = await Promise.all([
     repository.runSelfAudit(),
     repository.runSegmentSelfAudit(),
     repository.runRootCauseAudit(),
+    repository.runAdaptiveRuleProposals(),
   ]);
-  console.log(JSON.stringify({ global, segments, rootCauses }, null, 2));
+  console.log(JSON.stringify({ global, segments, rootCauses, adaptiveProposals }, null, 2));
 } finally {
   await pool.end();
 }

@@ -1,5 +1,22 @@
+CREATE TABLE IF NOT EXISTS prediction_adaptive_rule_runs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  audit_version text NOT NULL CHECK(audit_version='SELF_AUDIT_V4'),
+  model_version text NOT NULL,
+  prediction_config_hash text NOT NULL,
+  config_hash text NOT NULL,
+  input_hash text NOT NULL,
+  evaluated_at timestamptz NOT NULL,
+  proposal_count integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(audit_version,model_version,prediction_config_hash,config_hash,input_hash)
+);
+
+CREATE INDEX IF NOT EXISTS prediction_adaptive_rule_runs_latest_idx
+  ON prediction_adaptive_rule_runs(model_version,prediction_config_hash,evaluated_at DESC,created_at DESC);
+
 CREATE TABLE IF NOT EXISTS prediction_adaptive_rule_proposals (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  run_id uuid NOT NULL REFERENCES prediction_adaptive_rule_runs(id),
   audit_version text NOT NULL CHECK(audit_version='SELF_AUDIT_V4'),
   model_version text NOT NULL,
   prediction_config_hash text NOT NULL,
@@ -26,6 +43,7 @@ CREATE TABLE IF NOT EXISTS prediction_adaptive_rule_proposals (
   proposal_score numeric(8,2) NOT NULL,
   reasons jsonb NOT NULL DEFAULT '[]'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(run_id,proposal_key),
   UNIQUE(audit_version,model_version,prediction_config_hash,config_hash,proposal_key,input_hash)
 );
 

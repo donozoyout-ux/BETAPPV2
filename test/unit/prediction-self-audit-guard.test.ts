@@ -50,6 +50,7 @@ describe('PredictionService self audit guard', () => {
         inputHash: 'audit-input', evaluatedAt: now, status: 'PAUSED' as const, settledSampleSize: 40,
         binarySampleSize: 40, recentSampleSize: 40, recentBinarySampleSize: 40, recentPositiveRate: 0.35,
         recentReferencePaperRoi: -0.25, calibrationMae: 0.1, calibrationSampleSize: 30, lossStreak: 3,
+        pauseUntil: new Date('2026-09-21T17:00:00Z'), guardActive: true,
         reasons: ['SELF_AUDIT_RECENT_PERFORMANCE_PAUSE'], metrics: {},
       }),
       saveRun: async (evaluation: PredictionEvaluation) => { savedEvaluations.push(evaluation); return 'run-1'; },

@@ -14,10 +14,19 @@ function payloadHash(payload: unknown): string {
   return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
 }
 
-function compactPayload(payload: unknown): unknown {
+const MAX_INLINE_PAYLOAD_BYTES = 40_000;
+const PAYLOAD_PREVIEW_CHARS = 8_000;
+
+export function compactPayloadForStorage(payload: unknown): unknown {
   const serialized = JSON.stringify(payload);
-  if (Buffer.byteLength(serialized) <= 60_000) return payload;
-  return { truncated: true, originalBytes: Buffer.byteLength(serialized), preview: serialized.slice(0, 20_000) };
+  const originalBytes = Buffer.byteLength(serialized);
+  if (originalBytes <= MAX_INLINE_PAYLOAD_BYTES) return payload;
+  return {
+    truncated: true,
+    originalBytes,
+    payloadSha256: createHash('sha256').update(serialized).digest('hex'),
+    preview: serialized.slice(0, PAYLOAD_PREVIEW_CHARS),
+  };
 }
 
 export class FootballRepository {
@@ -63,7 +72,7 @@ export class FootballRepository {
     payload: unknown,
     sourceUpdatedAt: Date,
   ) {
-    const compact = compactPayload(payload);
+    const compact = compactPayloadForStorage(payload);
     await client.query(
       `INSERT INTO source_payloads(provider,entity_type,external_id,payload_hash,payload,source_updated_at,content_type,parser_version)
        VALUES ($1,$2,$3,$4,$5::jsonb,$6,'application/json','2') ON CONFLICT DO NOTHING`,

@@ -291,6 +291,12 @@ describe('FootballRepository integration', () => {
     expect(Number((await pool.query('SELECT count(*) FROM prediction_adaptive_rule_proposals')).rows[0].count)).toBe(0);
 
     const adaptiveRun = adaptiveRuns.rows[0]!;
+    await expect(pool.query('UPDATE prediction_adaptive_rule_runs SET proposal_count=99 WHERE id=$1', [adaptiveRun.id]))
+      .rejects.toThrow(/immutable/);
+    const olderRun = await pool.query<{ id: string }>(`INSERT INTO prediction_adaptive_rule_runs(
+      audit_version,model_version,prediction_config_hash,config_hash,input_hash,evaluated_at,proposal_count)
+      VALUES('SELF_AUDIT_V4',$1,$2,$3,'synthetic-older-run',now()-interval '1 day',1) RETURNING id`,
+    [adaptiveRun.model_version,adaptiveRun.prediction_config_hash,adaptiveRun.config_hash]);
     const syntheticProposal = await pool.query<{ id: string }>(`INSERT INTO prediction_adaptive_rule_proposals(
       run_id,audit_version,model_version,prediction_config_hash,config_hash,input_hash,proposal_key,proposal_type,severity,
       title,conditions,suggested_change,evaluated_at,binary_sample_size,positive_rate,reference_paper_roi,
@@ -301,10 +307,11 @@ describe('FootballRepository integration', () => {
       'COMBINATION_GUARD','HIGH_RISK','Synthetic integration proposal',
       '[{"dimension":"PREDICTION_SCORE","bucketKey":"70-74","bucketLabel":"Prediction Score: 70-74"}]'::jsonb,
       '{"kind":"ADD_SKIP_RULE","operator":"ALL","autoApply":false,"executionAuthority":false}'::jsonb,
-      now(),15,0.20,-0.50,40,0.60,0.10,-0.40,-0.60,-0.10,-0.20,0.50,80,
+      now()-interval '1 day',15,0.20,-0.50,40,0.60,0.10,-0.40,-0.60,-0.10,-0.20,0.50,80,
       '["ADAPTIVE_COMBINATION_UNDERPERFORMANCE"]'::jsonb) RETURNING id`,
-    [adaptiveRun.id,adaptiveRun.model_version,adaptiveRun.prediction_config_hash,adaptiveRun.config_hash]);
+    [olderRun.rows[0]!.id,adaptiveRun.model_version,adaptiveRun.prediction_config_hash,adaptiveRun.config_hash]);
     const proposalId = syntheticProposal.rows[0]!.id;
+    expect(await predictionRepository.latestAdaptiveRuleProposals(config)).toEqual([]);
     await expect(pool.query('UPDATE prediction_adaptive_rule_proposals SET title=\'mutated\' WHERE id=$1', [proposalId]))
       .rejects.toThrow(/immutable/);
     expect(await predictionRepository.decideAdaptiveRuleProposal(proposalId, 'APPROVED', 'integration approval'))

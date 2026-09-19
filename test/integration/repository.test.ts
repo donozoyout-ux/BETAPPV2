@@ -2,7 +2,7 @@ import { PostgreSqlContainer } from '@testcontainers/postgresql';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { migrationStatus, runMigrations } from '../../src/db/migrator.js';
 import { createPool, type DatabasePool } from '../../src/db/pool.js';
-import { FootballRepository } from '../../src/db/repository.js';
+import { compactPayloadForStorage, FootballRepository } from '../../src/db/repository.js';
 import { OddsRepository } from '../../src/db/odds-repository.js';
 import { OddsAnalysisRepository } from '../../src/db/odds-analysis-repository.js';
 import { CornerRepository } from '../../src/db/corner-repository.js';
@@ -250,4 +250,29 @@ describe('FootballRepository integration', () => {
     const performance = await predictionRepository.performance();
     expect(performance).toMatchObject({ predictCount: 1, settled: 1, win: 1 });
   });
+
+  it('stores compacted source payloads below the PostgreSQL jsonb size constraint', async () => {
+    const raw = {
+      h2h: {
+        matches: Array.from({ length: 700 }, (_, i) => ({
+          id: i,
+          home: { id: `home-${i}`, name: `Bayern München ${i}` },
+          away: { id: `away-${i}`, name: `Borussia Mönchengladbach ${i}` },
+          stats: { possession: [61, 39], shots: [18, 9], corners: [8, 4], note: '"'.repeat(20) },
+        })),
+      },
+    };
+    const compact = compactPayloadForStorage(raw);
+    await pool.query(
+      `INSERT INTO source_payloads(provider,entity_type,external_id,payload_hash,payload,source_updated_at,content_type,parser_version)
+       VALUES('fotmob','statistics','large-payload-regression','large-payload-regression',$1::jsonb,now(),'application/json','2')`,
+      [JSON.stringify(compact)],
+    );
+    const result = await pool.query<{ bytes: number }>(
+      `SELECT octet_length(payload::text)::integer bytes FROM source_payloads
+       WHERE provider='fotmob' AND entity_type='statistics' AND external_id='large-payload-regression'`,
+    );
+    expect(result.rows[0]!.bytes).toBeLessThanOrEqual(65_536);
+  });
+
 });

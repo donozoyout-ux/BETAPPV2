@@ -7,6 +7,8 @@ import { evaluatePrediction, lockWindowState } from './engine.js';
 import { buildPerformance, runPredictionBacktestFromSnapshots, type PerformanceRecord } from './history.js';
 import { referencePaperReturn, settlePrediction } from './settlement.js';
 import { evaluateSelfAudit, selfAuditConfig, type SelfAuditConfig, type SelfAuditRecord, type SelfAuditStatus } from './self-audit.js';
+import { evaluateSegmentSelfAudits, segmentKeysFor, selfAuditV2Config,
+  type SegmentSelfAuditRecord } from './self-audit-v2.js';
 import type { HistoricalExample, PredictionEvaluation, PredictionTarget, SettlementOutcome } from './types.js';
 
 function analysisItem(row: Record<string, unknown>): AnalysisItem {

@@ -139,7 +139,7 @@ describe('FootballRepository integration', () => {
   it('validates migrations, checkpoint, profiles, replay, rollback and advisory locks', async () => {
     const migrations = await migrationStatus(pool);
     expect(migrations.pendingMigrations).toEqual([]);
-    expect(migrations.schemaVersion).toBe('009_prediction_self_audit_v3.sql');
+    expect(migrations.schemaVersion).toBe('010_prediction_self_audit_v4.sql');
     const health = await repository.databaseHealth();
     expect(health.status).toBe('ok');
     await repository.markStarted('fotmob', 'integration-checkpoint', { index: 0 });
@@ -282,6 +282,39 @@ describe('FootballRepository integration', () => {
     await predictionRepository.runRootCauseAudit(config);
     const factorCount = await pool.query('SELECT count(*)::integer count FROM prediction_self_audit_factors');
     expect(factorCount.rows[0].count).toBe(7);
+
+    expect(await predictionRepository.runAdaptiveRuleProposals(config)).toEqual([]);
+    expect(await predictionRepository.runAdaptiveRuleProposals(config)).toEqual([]);
+    const adaptiveRuns = await pool.query<{ id: string; model_version: string; prediction_config_hash: string; config_hash: string }>(
+      'SELECT id,model_version,prediction_config_hash,config_hash FROM prediction_adaptive_rule_runs');
+    expect(adaptiveRuns.rows).toHaveLength(1);
+    expect(Number((await pool.query('SELECT count(*) FROM prediction_adaptive_rule_proposals')).rows[0].count)).toBe(0);
+
+    const adaptiveRun = adaptiveRuns.rows[0]!;
+    const syntheticProposal = await pool.query<{ id: string }>(`INSERT INTO prediction_adaptive_rule_proposals(
+      run_id,audit_version,model_version,prediction_config_hash,config_hash,input_hash,proposal_key,proposal_type,severity,
+      title,conditions,suggested_change,evaluated_at,binary_sample_size,positive_rate,reference_paper_roi,
+      baseline_binary_sample_size,baseline_positive_rate,baseline_reference_paper_roi,positive_rate_gap,
+      reference_paper_roi_gap,interaction_positive_rate_gap,interaction_reference_paper_roi_gap,evidence_strength,
+      proposal_score,reasons)
+      VALUES($1,'SELF_AUDIT_V4',$2,$3,$4,'synthetic-input','PREDICTION_SCORE=70-74&BOOKMAKER_COUNT=3',
+      'COMBINATION_GUARD','HIGH_RISK','Synthetic integration proposal',
+      '[{"dimension":"PREDICTION_SCORE","bucketKey":"70-74","bucketLabel":"Prediction Score: 70-74"}]'::jsonb,
+      '{"kind":"ADD_SKIP_RULE","operator":"ALL","autoApply":false,"executionAuthority":false}'::jsonb,
+      now(),15,0.20,-0.50,40,0.60,0.10,-0.40,-0.60,-0.10,-0.20,0.50,80,
+      '["ADAPTIVE_COMBINATION_UNDERPERFORMANCE"]'::jsonb) RETURNING id`,
+    [adaptiveRun.id,adaptiveRun.model_version,adaptiveRun.prediction_config_hash,adaptiveRun.config_hash]);
+    const proposalId = syntheticProposal.rows[0]!.id;
+    await expect(pool.query('UPDATE prediction_adaptive_rule_proposals SET title=\'mutated\' WHERE id=$1', [proposalId]))
+      .rejects.toThrow(/immutable/);
+    expect(await predictionRepository.decideAdaptiveRuleProposal(proposalId, 'APPROVED', 'integration approval'))
+      .toMatchObject({ proposalId, decision: 'APPROVED', autoApply: false, executionAuthority: false });
+    await expect(predictionRepository.decideAdaptiveRuleProposal(proposalId, 'REJECTED', null))
+      .rejects.toThrow(/already decided/);
+    const decisionId = (await pool.query<{ id: string }>(
+      'SELECT id FROM prediction_adaptive_rule_decisions WHERE proposal_id=$1', [proposalId])).rows[0]!.id;
+    await expect(pool.query('UPDATE prediction_adaptive_rule_decisions SET decision=\'REJECTED\' WHERE id=$1', [decisionId]))
+      .rejects.toThrow(/immutable/);
   });
 
   it('stores compacted source payloads below the PostgreSQL jsonb size constraint', async () => {

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import type { SettlementOutcome } from './types.js';
 
 export type SelfAuditStatus = 'INSUFFICIENT_DATA' | 'HEALTHY' | 'WATCH' | 'PAUSED';
-export type SelfAuditVersion = 'SELF_AUDIT_V1' | 'SELF_AUDIT_V2';
+export type SelfAuditVersion = 'SELF_AUDIT_V1' | 'SELF_AUDIT_V2' | 'SELF_AUDIT_V3';
 
 export type SelfAuditConfig = {
   version: SelfAuditVersion;

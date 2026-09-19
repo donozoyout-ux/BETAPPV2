@@ -347,6 +347,11 @@ export class PredictionRepository {
 export class PredictionService {
   constructor(private readonly repository: PredictionRepository, private readonly config: PredictionConfig = predictionConfig) {}
 
+  private rehashDecision(evaluation: PredictionEvaluation, reason: string): PredictionEvaluation {
+    return { ...evaluation,
+      inputHash: createHash('sha256').update(`${evaluation.inputHash}|decision-guard:${reason}`).digest('hex') };
+  }
+
   private attachSelfAudit(evaluation: PredictionEvaluation, audit: Awaited<ReturnType<PredictionRepository['latestSelfAudit']>>) {
     if (!audit) return evaluation;
     const warning = audit.status === 'WATCH' ? 'SELF_AUDIT_WATCH'
@@ -371,9 +376,9 @@ export class PredictionService {
       let evaluation = this.attachSelfAudit(evaluatePrediction(target, examples, now, this.config), selfAudit);
       const window = lockWindowState(target.kickoffAt, now, this.config);
       if (window.missed) {
-        evaluation = { ...evaluation, decision: 'SKIP', selectedCandidate: null,
+        evaluation = this.rehashDecision({ ...evaluation, decision: 'SKIP', selectedCandidate: null,
           skipReasons: [...new Set([...evaluation.skipReasons, 'LOCK_WINDOW_MISSED' as const])],
-        };
+        }, 'LOCK_WINDOW_MISSED');
         const runId = await this.repository.saveRun(evaluation, this.config);
         // A missed pre-kickoff window is itself an official, auditable SKIP. The
         // unique journal constraint preserves the first decision if another worker
@@ -383,12 +388,12 @@ export class PredictionService {
         continue;
       }
       if (window.eligible && selfAudit?.status === 'PAUSED' && evaluation.decision === 'PREDICT') {
-        evaluation = {
+        evaluation = this.rehashDecision({
           ...evaluation,
           decision: 'SKIP',
           selectedCandidate: null,
           skipReasons: [...new Set([...evaluation.skipReasons, 'SELF_AUDIT_PAUSED' as const])],
-        };
+        }, 'SELF_AUDIT_PAUSED');
         selfAuditBlocked += 1;
       }
       const runId = await this.repository.saveRun(evaluation, this.config);

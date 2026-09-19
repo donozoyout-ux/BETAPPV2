@@ -23,11 +23,11 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
   });
 
   app.get('/api/dashboard', async () => {
-    const [data, today, previews, history, performance, selfAudit] = await Promise.all([repository.dashboardData('Europe/Istanbul'),
+    const [data, today, previews, history, performance, selfAudit, segmentAudits] = await Promise.all([repository.dashboardData('Europe/Istanbul'),
       predictions?.today() ?? [], predictions?.previews() ?? [], predictions?.history(20) ?? [], predictions?.performance() ?? null,
-      predictions?.latestSelfAudit() ?? null]);
+      predictions?.latestSelfAudit() ?? null, predictions?.latestSegmentSelfAudits() ?? []]);
     return { ...data, predictions: today, predictionPreviews: previews, predictionHistory: history,
-      predictionPerformance: performance, predictionSelfAudit: selfAudit };
+      predictionPerformance: performance, predictionSelfAudit: selfAudit, predictionSelfAuditSegments: segmentAudits };
   });
   app.get('/api/odds/upcoming', async () => ({ odds: await repository.upcomingOdds(1000) }));
   app.get('/api/backfill/status', async () => repository.backfillStatus());
@@ -48,15 +48,18 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
   app.get('/api/predictions/self-audit', async () => predictions ? (await predictions.latestSelfAudit() ?? {
     status: 'NOT_AVAILABLE', reasons: ['SELF_AUDIT_NOT_RUN'],
   }) : { status: 'NOT_AVAILABLE', reasons: ['SELF_AUDIT_NOT_CONFIGURED'] });
+  app.get('/api/predictions/self-audit/segments', async () => ({
+    version: 'SELF_AUDIT_V2', segments: predictions ? await predictions.latestSegmentSelfAudits() : [],
+  }));
   app.get<{ Params: { matchId: string } }>('/api/predictions/:matchId', async (request) => predictions
     ? predictions.detail(request.params.matchId) : { matchId: request.params.matchId, state: 'NOT_GENERATED', journal: null, runs: [] });
   app.get('/', async (_request, reply) => {
-    const [data, today, previews, history, performance, selfAudit] = await Promise.all([repository.dashboardData('Europe/Istanbul'),
+    const [data, today, previews, history, performance, selfAudit, segmentAudits] = await Promise.all([repository.dashboardData('Europe/Istanbul'),
       predictions?.today() ?? [], predictions?.previews() ?? [], predictions?.history(20) ?? [], predictions?.performance() ?? null,
-      predictions?.latestSelfAudit() ?? null]);
+      predictions?.latestSelfAudit() ?? null, predictions?.latestSegmentSelfAudits() ?? []]);
     return reply.type('text/html; charset=utf-8').send(renderDashboard({ ...data, predictions: today,
       predictionPreviews: previews, predictionHistory: history, predictionPerformance: performance,
-      predictionSelfAudit: selfAudit }));
+      predictionSelfAudit: selfAudit, predictionSelfAuditSegments: segmentAudits }));
   });
   app.get<{ Params: { matchId: string } }>('/matches/:matchId/corners', async (request, reply) => {
     const detail = await repository.cornerAnalysisDetail(request.params.matchId);

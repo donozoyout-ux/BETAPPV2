@@ -499,7 +499,9 @@ export function renderDashboard(data: DashboardData): string {
   const modelValidation = validation ? `<div class="grid"><article class="card"><strong>MAE</strong><p>${finiteNumber(validation.mae).toFixed(3)}</p></article><article class="card"><strong>RMSE</strong><p>${finiteNumber(validation.rmse).toFixed(3)}</p></article><article class="card"><strong>Brier</strong><p>${finiteNumber(validation.brier).toFixed(4)}</p></article><article class="card"><strong>Log loss</strong><p>${finiteNumber(validation.logLoss).toFixed(4)}</p></article></div><div class="scroll" style="margin-top:10px"><table><thead><tr><th>Bucket</th><th>Count</th><th>Predicted</th><th>Actual</th><th>Abs. error</th></tr></thead><tbody>${calibrationRows}</tbody></table></div>` : renderEmpty('∿', 'Backtest sonucu yok', 'Model doğrulaması çalıştırıldığında hata ve kalibrasyon metrikleri burada gösterilecek.');
   const waitingNotice = matches.length || odds.length ? '' : `<div class="notice"><span class="notice-mark">i</span><div><strong>İlk veri senkronizasyonu bekleniyor</strong><p>Uygulama ve veritabanı hazır. Collector devreye girdiğinde bu ekran otomatik olarak 60 saniyede bir yenilenir.</p></div></div>`;
 
-  const officialPredictionCount = predictions.filter((item) => String(item.decision) === 'PREDICT').length;
+  const officialPredictionCount = officialPredictions.length;
+  const reviewCandidateCount = predictionReviewCandidates.length;
+  const rejectedPredictionCount = rejectedPredictions.length;
   const skipPredictionCount = predictions.filter((item) => String(item.decision) === 'SKIP').length;
   const pendingSettlementCount = predictionPerformance?.pending == null
     ? predictionHistory.filter((item) => item.outcome == null && String(item.decision) === 'PREDICT').length
@@ -513,15 +515,21 @@ export function renderDashboard(data: DashboardData): string {
   const watchFactors = predictionSelfAuditRootCauses.filter((item) => item.status === 'WATCH').length;
   const proposedRules = predictionAdaptiveRuleProposals.filter((item) => item.decision === 'PROPOSED').length;
   const providerQuickRows = sources.slice(0, 5).map((provider) => {
-    const status = String(provider.status ?? 'unknown');
-    const cls = status === 'healthy' ? 'ok' : ['degraded','waiting'].includes(status) ? 'partial' : status === 'blocked' ? 'bad' : 'neutral';
-    return `<div class="health-row"><span>${escapeHtml(provider.provider)}</span><span class="badge ${cls}">${escapeHtml(status === 'waiting' ? 'bekliyor' : status)}</span></div>`;
+    const status = String(provider.status ?? 'unknown').toLowerCase();
+    const cls = status === 'healthy' ? 'ok' : ['degraded','waiting'].includes(status) ? 'partial' : 'neutral';
+    const label = status === 'healthy' ? 'Çalışıyor' : status === 'waiting' ? 'Veri bekleniyor'
+      : status === 'degraded' ? 'Kısmi çalışıyor' : status === 'blocked' ? 'Kullanılmıyor' : 'Kontrol ediliyor';
+    return `<div class="health-row"><span>${escapeHtml(provider.provider)}</span><span class="badge ${cls}">${escapeHtml(label)}</span></div>`;
   }).join('');
   const auditOverview = `<div class="audit-overview">
-    <article class="audit-mini"><small>V1 · Genel Guard</small><strong>${escapeHtml(globalAuditStatus)}</strong><span>${globalAuditGuard ? 'Yeni resmi tahmin kapısı korunuyor' : 'Genel güvenlik katmanı'}</span></article>
-    <article class="audit-mini"><small>V2 · Segment</small><strong>${pausedSegments} PAUSED · ${watchSegments} WATCH</strong><span>Lig ve market bazlı kontrol</span></article>
-    <article class="audit-mini"><small>V3 · Kök Neden</small><strong>${highRiskFactors} HIGH RISK</strong><span>${watchFactors} izlenen faktör</span></article>
-    <article class="audit-mini"><small>V4 · Öneriler</small><strong>${proposedRules} PROPOSED</strong><span>autoApply=false · insan onayı</span></article>
+    <article class="audit-mini"><small>Genel tahmin sistemi</small><strong>${escapeHtml(translateSystemStatus(globalAuditStatus))}</strong>
+      <span>${globalAuditGuard ? 'Güvenlik freni yeni resmi tahminleri bekletiyor' : 'Genel kontrol normal çalışıyor'}</span></article>
+    <article class="audit-mini"><small>Lig ve bahis türleri</small><strong>${pausedSegments} durduruldu · ${watchSegments} izleniyor</strong>
+      <span>Sadece sorunlu alanlar ayrı takip edilir</span></article>
+    <article class="audit-mini"><small>Performans uyarıları</small><strong>${highRiskFactors} yüksek risk</strong>
+      <span>${watchFactors} koşul yakından izleniyor</span></article>
+    <article class="audit-mini"><small>Sistem önerileri</small><strong>${proposedRules} öneri</strong>
+      <span>Hiçbir değişiklik otomatik uygulanmaz</span></article>
   </div>`;
 
   return shell(`<div class="app-shell">

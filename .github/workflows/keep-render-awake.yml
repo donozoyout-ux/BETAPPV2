@@ -31,6 +31,7 @@ jobs:
           HEALTH_URL="https://betappv2.onrender.com/health?keepalive=${GITHUB_RUN_ID}"
           DIAG_URL="https://betappv2.onrender.com/api/predictions/diagnostics?keepalive=${GITHUB_RUN_ID}"
           ODDS_AUDIT_URL="https://betappv2.onrender.com/api/odds-intelligence/audit/history?limit=5000&keepalive=${GITHUB_RUN_ID}"
+          DASHBOARD_URL="https://betappv2.onrender.com/api/dashboard?keepalive=${GITHUB_RUN_ID}"
 
           root_code="$(curl \
             --location \
@@ -114,6 +115,25 @@ jobs:
             echo "Historical odds audit endpoint unavailable in this deployment."
           fi
           rm -f "$audit_file"
+
+          dashboard_file="$(mktemp)"
+          dashboard_code="$(curl --location --silent --show-error --output "$dashboard_file" --write-out '%{http_code}'             --connect-timeout 20 --max-time 60 "$DASHBOARD_URL" || true)"
+          echo "BETAPP dashboard HTTP: ${dashboard_code:-000}"
+          if [[ "$dashboard_code" == "200" ]]; then
+            jq -c '{
+              matches: ((.matches // []) | length),
+              providers: ((.providers // []) | length),
+              odds: ((.odds // []) | length),
+              oddsAnalyses: ((.oddsAnalyses // []) | length),
+              predictions: ((.predictions // []) | length),
+              predictionPreviews: ((.predictionPreviews // []) | length),
+              reviewCandidates: ((.predictionReviewCandidates // []) | length),
+              predictionHistory: ((.predictionHistory // []) | length),
+              oddsSimilarity: ((.oddsSimilarity // []) | length),
+              oddsIntelligence: ((.oddsIntelligence // []) | length)
+            }' "$dashboard_file"
+          fi
+          rm -f "$dashboard_file"
 
           # Any HTTP response means the Render service was reached/woken.
           # Fail only when both requests could not reach the service at all.

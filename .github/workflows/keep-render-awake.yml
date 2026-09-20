@@ -30,6 +30,7 @@ jobs:
           ROOT_URL="https://betappv2.onrender.com/?keepalive=${GITHUB_RUN_ID}"
           HEALTH_URL="https://betappv2.onrender.com/health?keepalive=${GITHUB_RUN_ID}"
           DIAG_URL="https://betappv2.onrender.com/api/predictions/diagnostics?keepalive=${GITHUB_RUN_ID}"
+          ODDS_AUDIT_URL="https://betappv2.onrender.com/api/odds-intelligence/audit/history?limit=5000&keepalive=${GITHUB_RUN_ID}"
 
           root_code="$(curl \
             --location \
@@ -89,6 +90,30 @@ jobs:
             echo "Prediction diagnostics endpoint unavailable in this deployment."
           fi
           rm -f "$diag_file"
+
+          audit_file="$(mktemp)"
+          audit_code="000"
+          for attempt in 1 2 3 4 5 6 7 8; do
+            audit_code="$(curl --location --silent --show-error --output "$audit_file" --write-out '%{http_code}'               --connect-timeout 20 --max-time 60 "$ODDS_AUDIT_URL" || true)"
+            [[ "$audit_code" == "200" ]] && break
+            echo "Historical odds audit not ready yet (HTTP ${audit_code:-000}, attempt $attempt/8)"
+            sleep 15
+          done
+          echo "BETAPP historical odds audit HTTP: ${audit_code:-000}"
+          if [[ "$audit_code" == "200" ]]; then
+            jq -c '{
+              scanLimit,
+              scannedMatches,
+              truncated,
+              archive,
+              routeReadiness,
+              topMarkets: (.markets // [])[0:12],
+              competitionSeasons: (.competitionSeasons // [])[0:20]
+            }' "$audit_file"
+          else
+            echo "Historical odds audit endpoint unavailable in this deployment."
+          fi
+          rm -f "$audit_file"
 
           # Any HTTP response means the Render service was reached/woken.
           # Fail only when both requests could not reach the service at all.

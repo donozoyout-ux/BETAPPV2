@@ -523,6 +523,65 @@ export class PredictionRepository {
     return { proposalId, decision, note, autoApply: false, executionAuthority: false };
   }
 
+  async reviewCandidates(now = new Date(), limit = 8) {
+    const safeLimit = Math.max(1, Math.min(20, Math.trunc(limit)));
+    const result = await this.pool.query(`SELECT DISTINCT ON(r.match_id)
+      r.match_id,r.decision,r.candidates,r.skip_reasons,r.generated_at,m.kickoff_at,l.name league,
+      ht.name home_team,at.name away_team,
+      CASE WHEN j.id IS NULL THEN 'PREVIEW' ELSE CASE WHEN j.decision='PREDICT' THEN 'LOCKED_PREDICTION' ELSE 'LOCKED_SKIP' END END state
+      FROM prediction_runs r
+      JOIN matches m ON m.id=r.match_id JOIN leagues l ON l.id=m.league_id
+      JOIN teams ht ON ht.id=m.home_team_id JOIN teams at ON at.id=m.away_team_id
+      LEFT JOIN prediction_journal j ON j.match_id=r.match_id AND j.model_version=r.model_version
+      WHERE m.status IN('scheduled','live')
+        AND m.kickoff_at>=$1::timestamptz-interval '3 hours'
+        AND m.kickoff_at<$1::timestamptz+interval '48 hours'
+      ORDER BY r.match_id,r.created_at DESC,r.id DESC`, [now]);
+
+    const parseCandidates = (value: unknown): Array<Record<string, unknown>> => {
+      if (Array.isArray(value)) return value.filter((item): item is Record<string, unknown> =>
+        Boolean(item) && typeof item === 'object');
+      if (typeof value === 'string') {
+        try {
+          const parsed = JSON.parse(value);
+          return Array.isArray(parsed) ? parsed.filter((item): item is Record<string, unknown> =>
+            Boolean(item) && typeof item === 'object') : [];
+        } catch { return []; }
+      }
+      return [];
+    };
+    const parseReasons = (value: unknown): string[] => Array.isArray(value) ? value.map(String)
+      : typeof value === 'string' ? (() => { try { const parsed = JSON.parse(value); return Array.isArray(parsed) ? parsed.map(String) : []; } catch { return []; } })()
+      : [];
+
+    return result.rows.flatMap((row) => {
+      if (String(row.decision) === 'PREDICT') return [];
+      const skipReasons = parseReasons(row.skip_reasons);
+      if (skipReasons.some((reason) => reason === 'SELF_AUDIT_PAUSED' || reason === 'SELF_AUDIT_SEGMENT_PAUSED')) return [];
+      const best = parseCandidates(row.candidates)
+        .filter((candidate) => {
+          const historical = candidate.historical && typeof candidate.historical === 'object'
+            ? candidate.historical as Record<string, unknown> : {};
+          const odds = Number(candidate.currentOdds);
+          return Number(candidate.predictionScore ?? 0) >= 50
+            && Number(historical.settledSampleSize ?? 0) >= 5
+            && Number(candidate.bookmakerCount ?? 0) >= 2
+            && Number.isFinite(odds) && odds > 1;
+        })
+        .sort((a, b) => Number(b.predictionScore ?? 0) - Number(a.predictionScore ?? 0)
+          || Number((b.historical as Record<string, unknown> | undefined)?.settledSampleSize ?? 0)
+            - Number((a.historical as Record<string, unknown> | undefined)?.settledSampleSize ?? 0))[0];
+      if (!best) return [];
+      return [{
+        matchId: String(row.match_id), kickoffAt: row.kickoff_at, league: String(row.league),
+        homeTeam: String(row.home_team), awayTeam: String(row.away_team), state: String(row.state),
+        skipReasons, candidate: best,
+      }];
+    }).sort((a, b) => Number(b.candidate.predictionScore ?? 0) - Number(a.candidate.predictionScore ?? 0)
+      || new Date(String(a.kickoffAt)).getTime() - new Date(String(b.kickoffAt)).getTime())
+      .slice(0, safeLimit);
+  }
+
   async previews() {
     return (await this.pool.query(`SELECT DISTINCT ON(r.match_id) r.*,m.kickoff_at,l.name league,ht.name home_team,at.name away_team,
       CASE WHEN j.id IS NULL THEN 'PREVIEW' ELSE CASE WHEN j.decision='PREDICT' THEN 'LOCKED_PREDICTION' ELSE 'LOCKED_SKIP' END END state

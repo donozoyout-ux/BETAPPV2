@@ -1,11 +1,12 @@
 import type { AppConfig } from '../config.js';
 import type { MatchOdds, NormalizedOdds, OddsFixture, OddsProvider } from '../domain/odds.js';
 import type { Logger } from '../logger.js';
+import type { HistoricalArchivedFixture } from '../historical-odds/types.js';
 import { check, statusFromError } from '../qualification/helpers.js';
 import { providerCapabilities, type ProviderQualification, type QualifiableProvider } from '../qualification/types.js';
 import { ResilientHttpClient } from './http-client.js';
 
-type NowgoalMatch = {
+export type NowgoalMatch = {
   ScheduleID?: string;
   matchTime?: string;
   homeTeam?: string;
@@ -21,9 +22,33 @@ export type NowgoalOddsRow = {
   ScheduleID?: string;
   CompanyID?: number;
   Type?: string;
+  FirstUpodds?: string | number;
+  FirstGoal?: string | number;
+  FirstDownodds?: string | number;
   UpOdds?: string | number;
   Goal?: string | number;
   DownOdds?: string | number;
+  UpOdds_Real?: string | number;
+  Goal_Real?: string | number;
+  DownOdds_Real?: string | number;
+};
+
+export type NowgoalArchivedOddsValue = {
+  provider: string;
+  providerMatchId: string;
+  marketType: string;
+  marketName: string;
+  line: number | null;
+  selection: string;
+  oddsDecimal: number;
+  stateGroup: 'CURRENT_FIELD_GROUP';
+};
+
+export type NowgoalHistoricalDiary = {
+  sourceDate: string;
+  fixtures: HistoricalArchivedFixture[];
+  states: NowgoalArchivedOddsValue[];
+  rawRows: NowgoalOddsRow[];
 };
 
 type OddsDiaryResponse = { data?: NowgoalOddsRow[] };
@@ -99,6 +124,70 @@ export function normalizeNowgoalOddsRows(
   });
 }
 
+function archivedValue(
+  row: NowgoalOddsRow,
+  bookmaker: string,
+  marketType: string,
+  marketName: string,
+  line: number | null,
+  selection: string,
+  oddsDecimal: number | null,
+): NowgoalArchivedOddsValue[] {
+  if (!row.ScheduleID || oddsDecimal == null) return [];
+  return [{
+    provider: `nowgoal:${bookmaker}`,
+    providerMatchId: row.ScheduleID,
+    marketType,
+    marketName,
+    line,
+    selection,
+    oddsDecimal,
+    stateGroup: 'CURRENT_FIELD_GROUP',
+  }];
+}
+
+/**
+ * Historical diary rows do not contain source observation timestamps.
+ * We intentionally normalize ONLY the currently-returned field group and keep
+ * it separate from odds_snapshots. No opening/closing/movement semantics.
+ */
+export function normalizeNowgoalArchivedOddsRows(
+  rows: NowgoalOddsRow[],
+  companyNames: Readonly<Record<number, string>> = nowgoalCompanies,
+): NowgoalArchivedOddsValue[] {
+  return rows.flatMap((row) => {
+    const companyId = number(row.CompanyID);
+    if (companyId == null) return [];
+    const bookmaker = companyNames[companyId] ?? `company_${companyId}`;
+    const line = number(row.Goal);
+    switch (row.Type) {
+      case '1x2':
+        return [
+          ...archivedValue(row, bookmaker, 'MATCH_RESULT', '1X2', null, 'HOME', decimal(row.UpOdds, false)),
+          ...archivedValue(row, bookmaker, 'MATCH_RESULT', '1X2', null, 'DRAW', decimal(row.Goal, false)),
+          ...archivedValue(row, bookmaker, 'MATCH_RESULT', '1X2', null, 'AWAY', decimal(row.DownOdds, false)),
+        ];
+      case 'HDP':
+        return [
+          ...archivedValue(row, bookmaker, 'ASIAN_HANDICAP', 'Asian Handicap', line, 'HOME', decimal(row.UpOdds, true)),
+          ...archivedValue(row, bookmaker, 'ASIAN_HANDICAP', 'Asian Handicap', line, 'AWAY', decimal(row.DownOdds, true)),
+        ];
+      case 'OU':
+        return [
+          ...archivedValue(row, bookmaker, 'TOTAL_GOALS', 'Total Goals', line, 'OVER', decimal(row.UpOdds, true)),
+          ...archivedValue(row, bookmaker, 'TOTAL_GOALS', 'Total Goals', line, 'UNDER', decimal(row.DownOdds, true)),
+        ];
+      case 'CR':
+        return [
+          ...archivedValue(row, bookmaker, 'TOTAL_CORNERS', 'Total Corners', line, 'OVER', decimal(row.UpOdds, true)),
+          ...archivedValue(row, bookmaker, 'TOTAL_CORNERS', 'Total Corners', line, 'UNDER', decimal(row.DownOdds, true)),
+        ];
+      default:
+        return [];
+    }
+  });
+}
+
 function dateOnly(date: Date): string { return date.toISOString().slice(0, 10); }
 
 function parseUtc(value: string): Date {
@@ -142,6 +231,47 @@ export class NowgoalProvider implements OddsProvider, QualifiableProvider {
       if (Number.isNaN(fixture.kickoffAt.getTime())) return [];
       return [{ fixture, odds: matchOdds }];
     });
+  }
+
+  async getHistoricalArchivedOddsForDate(
+    date: Date,
+    companyIds: readonly number[] = [2, 22],
+  ): Promise<NowgoalHistoricalDiary> {
+    const sourceDate = dateOnly(date);
+    const query = `date=${sourceDate}&timeRange=all&lang=en&ishot=0&halfOdd=0`;
+    const matchPayload = await this.http.getJson<MatchDiaryResponse>(
+      this.proxyPath(`/v1/football/match/diary?${query}`),
+    );
+    const rawRows: NowgoalOddsRow[] = [];
+    for (const companyId of companyIds) {
+      const payload = await this.http.getJson<OddsDiaryResponse>(
+        this.proxyPath(`/v1/football/odds/diary?${query}&companyid=${companyId}`),
+      );
+      rawRows.push(...(payload.data ?? []));
+    }
+
+    const leagues = new Map((matchPayload.data?.leagues ?? []).flatMap((league) =>
+      league.sclassID ? [[league.sclassID, league.leagueName ?? null] as const] : []));
+    const fixtures = (matchPayload.data?.matches ?? []).flatMap((match): HistoricalArchivedFixture[] => {
+      if (!match.ScheduleID || !match.matchTime || !match.homeTeam || !match.guestTeam) return [];
+      const kickoffAt = parseUtc(match.matchTime);
+      if (Number.isNaN(kickoffAt.getTime())) return [];
+      return [{
+        providerMatchId: match.ScheduleID,
+        kickoffAt,
+        homeTeam: match.homeTeam,
+        awayTeam: match.guestTeam,
+        leagueName: match.sclassID ? (leagues.get(match.sclassID) ?? null) : null,
+        finished: match.MatchState === -1,
+      }];
+    });
+
+    return {
+      sourceDate,
+      fixtures,
+      states: normalizeNowgoalArchivedOddsRows(rawRows, nowgoalCompanies),
+      rawRows,
+    };
   }
 
   async getPrematchOdds(): Promise<NormalizedOdds[]> {

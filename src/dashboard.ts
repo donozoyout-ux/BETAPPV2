@@ -131,12 +131,13 @@ function shell(content: string, title = 'BETAPP — Futbol Analiz Terminali'): s
   .workspace{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.35fr);gap:12px}.panel{min-width:0;border:1px solid var(--line);border-radius:17px;background:var(--panel);box-shadow:var(--shadow);overflow:hidden}.panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 17px;border-bottom:1px solid var(--line-soft)}.panel-head h3,.panel-head h2{margin:0;font-size:.9rem}.panel-body{padding:8px}.count{padding:4px 8px;border-radius:999px;background:rgba(116,245,156,.09);color:var(--green);font-size:.68rem;font-weight:850}.match-list,.odds-list{display:grid;gap:4px}.match{display:grid;grid-template-columns:60px minmax(0,1fr) auto;align-items:center;gap:12px;padding:11px;border:1px solid transparent;border-radius:11px;transition:.16s}.match:hover,.odd:hover{background:var(--panel-2);border-color:var(--line)}.match-time{font-size:.9rem;font-weight:900;font-variant-numeric:tabular-nums}.match-time small,.teams small{display:block;color:var(--muted);font-size:.67rem;font-weight:650}.teams{min-width:0;font-weight:780}.teams span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.status{padding:4px 7px;border-radius:7px;background:#17291f;color:var(--muted);font-size:.64rem;font-weight:850;text-transform:uppercase}.status.live{background:rgba(255,115,115,.12);color:var(--red)}.odd{display:grid;grid-template-columns:minmax(175px,1.45fr) minmax(120px,.9fr) 66px 72px;align-items:center;gap:10px;padding:10px;border:1px solid transparent;border-radius:11px}.odd-match,.odd-market{min-width:0}.odd-match{font-weight:760}.odd-match span,.odd-market span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.odd-match small,.odd-market small{display:block;color:var(--muted);font-size:.66rem}.price{display:inline-flex;justify-content:center;padding:7px 8px;border-radius:8px;background:var(--green);color:#07110d;font-weight:950;font-variant-numeric:tabular-nums}.movement{font-size:.72rem;font-weight:850;text-align:right}.movement.up{color:var(--green)}.movement.down{color:var(--red)}.movement.flat{color:var(--muted)}
   .grid,.source-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(245px,1fr));gap:10px}.card,.source{padding:15px;border:1px solid var(--line);border-radius:14px;background:var(--panel)}.card:hover{border-color:#31503c}.row,.source-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.card p,.source p{margin:8px 0 0;color:var(--muted);font-size:.76rem}.source-name{font-weight:850;text-transform:capitalize}.badge{display:inline-flex;align-items:center;padding:4px 7px;border-radius:999px;font-size:.62rem;font-weight:900;text-transform:uppercase;white-space:nowrap}.ok{background:rgba(49,216,120,.11);color:var(--green)}.partial{background:rgba(255,201,92,.11);color:var(--amber)}.bad{background:rgba(255,115,115,.11);color:#ff9898}.neutral{background:#1a2d22;color:var(--muted)}
   .audit-overview{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:10px}.audit-mini{padding:14px;border:1px solid var(--line);border-radius:13px;background:var(--panel)}.audit-mini small{display:block;color:var(--muted);font-size:.65rem;font-weight:850;letter-spacing:.07em;text-transform:uppercase}.audit-mini strong{display:block;margin-top:6px;font-size:1.05rem}.audit-mini span{display:block;margin-top:4px;color:var(--muted-2);font-size:.69rem}
+  .evidence-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}.evidence-box{padding:11px;border:1px solid var(--line-soft);border-radius:11px;background:rgba(7,17,13,.48)}.evidence-box small{display:block;color:var(--muted-2);font-size:.62rem;font-weight:850;text-transform:uppercase;letter-spacing:.06em}.evidence-box strong{display:block;margin-top:4px;font-size:1rem}.result-map{display:grid;gap:8px;padding:13px 16px;border-top:1px solid var(--line-soft);background:rgba(7,17,13,.28)}.result-map-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.result-map-head strong{font-size:.78rem}.result-map-head span{color:var(--muted);font-size:.65rem}.result-map-row{display:grid;grid-template-columns:minmax(120px,1fr) 1.6fr 54px;gap:9px;align-items:center}.result-map-label{font-size:.7rem;font-weight:750}.result-track{height:8px;border-radius:999px;background:var(--panel-3);overflow:hidden}.result-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--green-2),var(--green))}.result-map-value{text-align:right;font-size:.7rem;font-weight:900}.evidence-note{margin:10px 0 0;color:var(--muted);font-size:.72rem}
   .similarity-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.similarity-card{overflow:hidden;border:1px solid var(--line);border-radius:16px;background:var(--panel);box-shadow:var(--shadow)}.similarity-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:16px;border-bottom:1px solid var(--line-soft)}.similarity-head h3{margin:0;font-size:.92rem}.similarity-head p{margin:4px 0 0;color:var(--muted);font-size:.7rem}.similarity-current{padding:14px 16px;background:linear-gradient(145deg,rgba(116,245,156,.045),transparent)}.similarity-market{font-weight:900}.similarity-odds{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap}.similarity-arrow{color:var(--muted-2)}.similarity-price{font-size:1.15rem;font-weight:950;font-variant-numeric:tabular-nums}.similarity-meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.similar-list{border-top:1px solid var(--line-soft)}.similar-list-title{padding:10px 14px;color:var(--muted);font-size:.66rem;font-weight:850;letter-spacing:.08em;text-transform:uppercase}.similar-row{display:grid;grid-template-columns:28px minmax(0,1fr) 105px 95px;align-items:center;gap:9px;padding:10px 14px;border-top:1px solid var(--line-soft)}.similar-rank{display:grid;place-items:center;width:24px;height:24px;border-radius:7px;background:var(--panel-3);color:var(--green);font-size:.66rem;font-weight:900}.similar-teams{min-width:0}.similar-teams strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.76rem}.similar-teams span{display:block;color:var(--muted);font-size:.64rem}.similar-history-odds{font-size:.72rem;font-weight:800;font-variant-numeric:tabular-nums}.similar-history-odds small{display:block;color:var(--muted);font-size:.61rem;font-weight:650}.similar-result{text-align:right}.similar-result small{display:block;margin-top:3px;color:var(--muted);font-size:.6rem}
   details{margin-top:9px;border:1px solid var(--line);border-radius:13px;background:rgba(13,27,20,.82)}summary{cursor:pointer;list-style:none;padding:14px 16px;font-weight:800;font-size:.82rem}summary::-webkit-details-marker{display:none}summary:after{content:"+";float:right;color:var(--green)}details[open] summary:after{content:"−"}.details-body{padding:0 12px 12px}.scroll{overflow:auto;border:1px solid var(--line-soft);border-radius:11px}table{width:100%;border-collapse:collapse;background:var(--panel);font-size:.75rem}th,td{padding:10px 11px;border-bottom:1px solid var(--line-soft);text-align:left;vertical-align:top;white-space:nowrap}th{color:var(--muted);font-size:.61rem;letter-spacing:.07em;text-transform:uppercase}tr:last-child td{border-bottom:0}.empty{display:flex;align-items:center;gap:13px;min-height:155px;padding:20px;color:var(--muted)}.empty-icon{display:grid;place-items:center;flex:0 0 auto;width:44px;height:44px;border:1px solid var(--line);border-radius:12px;background:var(--panel-2);color:var(--green)}.empty strong{color:var(--text)}.empty p{max-width:420px;margin:3px 0 0;font-size:.78rem}
   .footer{display:flex;justify-content:space-between;gap:18px;margin-top:28px;padding:18px 0;border-top:1px solid var(--line);color:var(--muted-2);font-size:.7rem}.footer a{color:var(--green)}.hidden-by-search{display:none!important}
   @media(max-width:1180px){:root{--sidebar-w:205px}.metrics{grid-template-columns:repeat(3,1fr)}.command-hero{grid-template-columns:1fr}.audit-overview{grid-template-columns:repeat(2,1fr)}.similarity-grid{grid-template-columns:1fr}}
   @media(max-width:860px){.sidebar{display:none}.app-main{margin-left:0}.mobile-menu{display:inline-flex}.topbar{padding:0 16px}.search{width:min(390px,58vw)}.content{width:min(100% - 26px,1500px)}.workspace{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}}
-  @media(max-width:560px){.top-title{display:none}.top-actions .top-chip{display:none}.search{width:100%}.topbar{gap:10px}.content{width:min(100% - 18px,1500px);padding-top:16px}.hero-main,.hero-status{border-radius:15px}.hero-main{padding:19px}.metrics{gap:7px}.metric{min-height:95px;padding:12px}.metric-value{font-size:1.45rem}.audit-overview{grid-template-columns:1fr 1fr}.section-title{align-items:flex-start;flex-direction:column;gap:3px}.odd{grid-template-columns:minmax(0,1fr) 62px}.odd-market,.movement{display:none}.match{grid-template-columns:55px minmax(0,1fr)}.match .status{display:none}.grid,.source-grid{grid-template-columns:1fr}.similar-row{grid-template-columns:24px minmax(0,1fr) 86px}.similar-result{grid-column:2/4;text-align:left}.footer{flex-direction:column}}
+  @media(max-width:560px){.evidence-strip{grid-template-columns:1fr}.result-map-row{grid-template-columns:minmax(95px,1fr) 1.3fr 46px}.top-title{display:none}.top-actions .top-chip{display:none}.search{width:100%}.topbar{gap:10px}.content{width:min(100% - 18px,1500px);padding-top:16px}.hero-main,.hero-status{border-radius:15px}.hero-main{padding:19px}.metrics{gap:7px}.metric{min-height:95px;padding:12px}.metric-value{font-size:1.45rem}.audit-overview{grid-template-columns:1fr 1fr}.section-title{align-items:flex-start;flex-direction:column;gap:3px}.odd{grid-template-columns:minmax(0,1fr) 62px}.odd-market,.movement{display:none}.match{grid-template-columns:55px minmax(0,1fr)}.match .status{display:none}.grid,.source-grid{grid-template-columns:1fr}.similar-row{grid-template-columns:24px minmax(0,1fr) 86px}.similar-result{grid-column:2/4;text-align:left}.footer{flex-direction:column}}
   </style></head><body>${content}
   <script>
   (()=>{const input=document.querySelector('[data-global-search]');if(!input)return;input.addEventListener('input',()=>{const q=input.value.trim().toLocaleLowerCase('tr-TR');document.querySelectorAll('[data-search-row]').forEach(el=>{const hit=!q||el.textContent.toLocaleLowerCase('tr-TR').includes(q);el.classList.toggle('hidden-by-search',!hit)})});const links=[...document.querySelectorAll('.side-nav a[href^="#"]')];const obs=new IntersectionObserver(entries=>{for(const e of entries){if(e.isIntersecting){links.forEach(a=>a.classList.toggle('active',a.getAttribute('href')==='#'+e.target.id))}}},{rootMargin:'-25% 0px -65% 0px'});document.querySelectorAll('main section[id]').forEach(s=>obs.observe(s));})();
@@ -211,7 +212,7 @@ export function renderDashboard(data: DashboardData): string {
     return `<article class="source"><div class="source-top"><span class="source-name">${escapeHtml(name)}</span>
       <span class="badge ${badgeClass}">${escapeHtml(statusLabel)}</span></div>
       <p>${escapeHtml(explanation)} · ${status === 'healthy' ? 'veri geliyor' : statusLabel.toLocaleLowerCase('tr-TR')}</p></article>`;
-  }).join('') + [
+  }).join('' + [
     ['StatBunker', '⚠ Kullanım izni kontrol ediliyor', 'partial'],
     ['SoccerStats', '⚠ Kullanım izni kontrol ediliyor', 'partial'],
     ['AdamChoi', '⚠ Kullanım izni kontrol ediliyor', 'partial'],
@@ -226,52 +227,88 @@ export function renderDashboard(data: DashboardData): string {
   const oddsSimilarityCards = oddsSimilarity.length ? oddsSimilarity.map((entry) => {
     const current = (entry.current ?? {}) as Record<string, unknown>;
     const history = Array.isArray(entry.matches) ? entry.matches as Array<Record<string, unknown>> : [];
+    const resultMap = Array.isArray(entry.resultMap) ? entry.resultMap as Array<Record<string, unknown>> : [];
+    const evidenceGap = (entry.evidenceGap ?? {}) as Record<string, unknown>;
     const state = String(current.state ?? 'PREVIEW');
     const stateLabel = state === 'LOCKED_PREDICTION' ? 'Resmi tahmin'
       : state === 'MATCH_ONLY' ? 'Karşılaştırma' : 'İnceleme adayı';
     const stateClass = state === 'LOCKED_PREDICTION' ? 'ok' : state === 'MATCH_ONLY' ? 'neutral' : 'partial';
-    const hitRate = current.historicalHitRate == null ? 'Henüz hesaplanmadı' : percent(current.historicalHitRate);
+    const hitRate = current.historicalHitRate == null ? null : finiteNumber(current.historicalHitRate);
+    const hitRateText = hitRate == null ? 'Henüz hesaplanmadı' : percent(hitRate);
     const avgSimilarity = current.averageSimilarity == null ? '—'
       : `${(finiteNumber(current.averageSimilarity) * 100).toFixed(0)}%`;
     const movement = finiteNumber(current.probabilityDeltaPp);
+    const agreement = Math.round(finiteNumber(current.agreementRatio) * 100);
     const line = current.line == null ? '' : ` ${escapeHtml(current.line)}`;
     const marketLabel = `${translateMarket(current.marketType)}${line} · ${translateSelection(current.selection)}`;
+
+    const baselineRate = evidenceGap.baselineRate == null ? null : finiteNumber(evidenceGap.baselineRate);
+    const gapPp = evidenceGap.gapPp == null ? null : finiteNumber(evidenceGap.gapPp);
+    const gapLabel = gapPp == null ? 'Taban için veri yetersiz'
+      : gapPp >= 12 ? 'Güçlü fark'
+      : gapPp >= 6 ? 'Belirgin fark'
+      : gapPp >= 2 ? 'Hafif fark'
+      : gapPp > -2 ? 'Tabana yakın'
+      : 'Tabanın altında';
+    const gapClass = gapPp == null ? 'neutral' : gapPp >= 6 ? 'ok' : gapPp >= 2 ? 'partial' : gapPp < 0 ? 'bad' : 'neutral';
+    const gapText = gapPp == null ? '—' : `${gapPp >= 0 ? '+' : ''}${gapPp.toFixed(1)} puan`;
+    const baselineScope = String(evidenceGap.baselineScope ?? '') === 'SAME_COMPETITION' ? 'Lig tabanı' : 'Genel taban';
+    const baselineText = baselineRate == null ? '—' : percent(baselineRate);
+
+    const mapRows = resultMap.slice(0, 7).map((item) => {
+      const rate = item.positiveRate == null ? 0 : finiteNumber(item.positiveRate);
+      const itemLine = item.line == null ? '' : ` ${escapeHtml(item.line)}`;
+      const label = `${translateMarket(item.marketType)}${itemLine} · ${translateSelection(item.selection)}`;
+      return `<div class="result-map-row"><span class="result-map-label">${escapeHtml(label)} <small style="color:var(--muted)">(${escapeHtml(item.positiveCount)}/${escapeHtml(item.sampleSize)})</small></span>
+        <span class="result-track"><span class="result-fill" style="width:${Math.max(0, Math.min(100, rate * 100)).toFixed(0)}%"></span></span>
+        <span class="result-map-value">${(rate * 100).toFixed(0)}%</span></div>`;
+    }).join('');
+
     const rows = history.map((item) => {
       const rawOutcome = String(item.outcome ?? '—');
       const outcomeClass = ['WIN','HALF_WIN'].includes(rawOutcome) ? 'ok'
         : ['LOSS','HALF_LOSS'].includes(rawOutcome) ? 'bad' : 'partial';
       const score = item.homeScore == null || item.awayScore == null ? 'Sonuç yok' : `${item.homeScore} - ${item.awayScore}`;
       const cornerScore = item.homeCorners == null || item.awayCorners == null ? null : `${item.homeCorners} - ${item.awayCorners} korner`;
-      const similarPct = current.averageSimilarity == null ? null : avgSimilarity;
       return `<div class="similar-row" data-search-row>
         <span class="similar-rank">#${escapeHtml(item.rank)}</span>
         <div class="similar-teams"><strong>${escapeHtml(item.homeTeam)} — ${escapeHtml(item.awayTeam)}</strong>
           <span>${escapeHtml(formatDate(item.kickoffAt, { day: '2-digit', month: 'long', year: 'numeric' }))} · ${escapeHtml(item.league)}</span></div>
         <div class="similar-history-odds">${finiteNumber(item.openingOdds).toFixed(2)} → ${finiteNumber(item.currentOdds).toFixed(2)}
-          <small>${escapeHtml(translateMarket(item.marketType))} · ${escapeHtml(translateSelection(item.selection))}${similarPct ? ` · benzerlik ${escapeHtml(similarPct)}` : ''}</small></div>
+          <small>${escapeHtml(translateMarket(item.marketType))} · ${escapeHtml(translateSelection(item.selection))} · karar -${escapeHtml(item.featureLeadMinutes)} dk</small></div>
         <div class="similar-result"><span class="badge ${outcomeClass}">${escapeHtml(outcomeText(rawOutcome))}</span>
           <small>${escapeHtml(score)}${cornerScore ? ` · ${escapeHtml(cornerScore)}` : ''}</small></div>
       </div>`;
     }).join('');
+
     return `<article class="similarity-card" data-search-row>
-      <div class="similarity-head"><div><h3>${escapeHtml(current.homeTeam)} — ${escapeHtml(current.awayTeam)}</h3>
+      <div class="similarity-head"><div><span class="section-kicker">Geçmiş İkizler</span><h3>${escapeHtml(current.homeTeam)} — ${escapeHtml(current.awayTeam)}</h3>
         <p>${escapeHtml(current.league)} · ${escapeHtml(formatDate(current.kickoffAt, { day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' }))}</p></div>
         <span class="badge ${stateClass}">${escapeHtml(stateLabel)}</span></div>
       <div class="similarity-current"><div class="similarity-market">${escapeHtml(marketLabel)}</div>
         <div class="similarity-odds"><span class="similarity-price">${finiteNumber(current.openingOdds).toFixed(2)}</span><span class="similarity-arrow">→</span>
           <span class="similarity-price">${finiteNumber(current.currentOdds).toFixed(2)}</span>
           <span class="badge neutral">${escapeHtml(movementText(movement))}</span></div>
-        <p style="margin:9px 0 0;color:var(--muted)">Açılış oranı → şu anki oran. Sistem geçmişte aynı bahis türünde benzer oran yapıları arıyor.</p>
-        <div class="similarity-meta"><span class="badge neutral">Tahmin skoru ${escapeHtml(current.predictionScore)}/100</span>
-          <span class="badge neutral">Benzer geçmiş maç: ${escapeHtml(current.historicalSettledSampleSize)}</span>
-          <span class="badge neutral">Geçmiş başarı: ${escapeHtml(hitRate)}</span>
-          <span class="badge neutral">Ortalama benzerlik: ${escapeHtml(avgSimilarity)}</span></div></div>
-      <div class="similar-list"><div class="similar-list-title">En çok benzeyen geçmiş maçlar</div>
+        <p class="evidence-note">Bu eşleşme yalnız oran seviyesine değil; açılış, güncel oran, olasılık değişimi ve bahis şirketi uyumuna birlikte bakar.</p>
+        <div class="similarity-meta"><span class="badge neutral">Benzer geçmiş maç: ${escapeHtml(current.historicalSettledSampleSize)}</span>
+          <span class="badge neutral">Geçmiş başarı: ${escapeHtml(hitRateText)}</span>
+          <span class="badge neutral">Ortalama benzerlik: ${escapeHtml(avgSimilarity)}</span>
+          <span class="badge neutral">Bahis şirketi uyumu: ${agreement}%</span></div>
+        <div class="evidence-strip">
+          <div class="evidence-box"><small>Benzer grubun başarısı</small><strong>${escapeHtml(hitRateText)}</strong></div>
+          <div class="evidence-box"><small>${escapeHtml(baselineScope)}</small><strong>${escapeHtml(baselineText)}</strong><span style="color:var(--muted);font-size:.65rem">n=${escapeHtml(evidenceGap.baselineSampleSize ?? 0)}</span></div>
+          <div class="evidence-box"><small>Kanıt farkı</small><strong>${escapeHtml(gapText)}</strong><span class="badge ${gapClass}" style="margin-top:5px">${escapeHtml(gapLabel)}</span></div>
+        </div>
+        <p class="evidence-note">${gapPp == null ? 'Henüz güvenilir bir lig/genel taban karşılaştırması oluşturulamadı.'
+          : gapPp >= 0 ? `Benzer oran grubunun başarısı ${baselineScope.toLocaleLowerCase('tr-TR')}ndan ${Math.abs(gapPp).toFixed(1)} puan daha yüksek.`
+          : `Benzer oran grubunun başarısı ${baselineScope.toLocaleLowerCase('tr-TR')}ndan ${Math.abs(gapPp).toFixed(1)} puan daha düşük.`}</p></div>
+      ${mapRows ? `<div class="result-map"><div class="result-map-head"><strong>Sonuç Haritası</strong><span>Aynı geçmiş ikiz grubunda diğer marketler</span></div>${mapRows}</div>` : ''}
+      <div class="similar-list"><div class="similar-list-title">Bu hesabı oluşturan en yakın geçmiş maçlar</div>
         ${rows || '<div class="similar-list-title">Bu oran yapısına benzeyen sonuçlanmış maç henüz bulunamadı.</div>'}</div></article>`;
-  }).join('') : renderEmpty('∿', 'Henüz geçmiş oran eşleşmesi yok',
+  }).join('') : renderEmpty('∿', 'Henüz geçmiş ikiz bulunamadı',
     oddsAnalyses.length
-      ? 'Oranlar takip ediliyor. Yeterli geçmiş benzerlik oluştuğunda en yakın maçlar burada gösterilecek.'
-      : 'Önce maçların oran verileri toplanacak, ardından geçmiş maçlarla karşılaştırılacak.');
+      ? 'Oranlar takip ediliyor. Yeterli gerçek historical odds örneği oluştuğunda Geçmiş İkizler ve Sonuç Haritası burada açılacak.'
+      : 'Önce maçların oran verileri toplanacak, ardından gerçek geçmiş oran kayıtlarıyla karşılaştırılacak.');
   const officialPredictions = predictions.filter((item) => String(item.decision) === 'PREDICT');
   const reviewMatchIds = new Set(predictionReviewCandidates.map((item) => String(item.matchId ?? '')));
   const rejectedByMatch = new Map<string, Record<string, unknown>>();
@@ -574,7 +611,7 @@ export function renderDashboard(data: DashboardData): string {
           <div class="section-title"><div><h2>Tahmin Oluşturulmayan Maçlar</h2><p>Kalabalık kartlar yerine yalnız ana sebebi gösteriyoruz.</p></div><span class="badge neutral">${rejectedPredictionCount}</span></div>
           ${rejectedCompact}</section>
 
-        <section class="section" id="odds-analysis"><div class="section-title"><div><span class="section-kicker">Geçmiş karşılaştırma</span><h2>Oran Eşleşmeleri</h2><p>Bugünkü maçın oran yapısını geçmişte en çok benzeyen maçlarla karşılaştırıyoruz.</p></div></div>
+        <section class="section" id="odds-analysis"><div class="section-title"><div><span class="section-kicker">BETAPP Farkı</span><h2>Geçmiş İkizler & Sonuç Haritası</h2><p>Benzer oran profillerini buluyor, o grubun farklı marketlerde nasıl sonuçlandığını ve lig tabanından farkını açıklıyoruz.</p></div></div>
           <div class="similarity-grid">${oddsSimilarityCards}</div></section>
 
         <section class="section" id="prediction-history"><div class="section-title"><div><span class="section-kicker">Geçmiş</span><h2>Geçmiş Tahminler</h2><p>Resmi tahminlerin ve sonuçların geçmiş kaydı.</p></div></div>

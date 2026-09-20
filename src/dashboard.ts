@@ -298,17 +298,97 @@ export function renderDashboard(data: DashboardData): string {
   const modelValidation = validation ? `<div class="grid"><article class="card"><strong>MAE</strong><p>${finiteNumber(validation.mae).toFixed(3)}</p></article><article class="card"><strong>RMSE</strong><p>${finiteNumber(validation.rmse).toFixed(3)}</p></article><article class="card"><strong>Brier</strong><p>${finiteNumber(validation.brier).toFixed(4)}</p></article><article class="card"><strong>Log loss</strong><p>${finiteNumber(validation.logLoss).toFixed(4)}</p></article></div><div class="scroll" style="margin-top:10px"><table><thead><tr><th>Bucket</th><th>Count</th><th>Predicted</th><th>Actual</th><th>Abs. error</th></tr></thead><tbody>${calibrationRows}</tbody></table></div>` : renderEmpty('∿', 'Backtest sonucu yok', 'Model doğrulaması çalıştırıldığında hata ve kalibrasyon metrikleri burada gösterilecek.');
   const waitingNotice = matches.length || odds.length ? '' : `<div class="notice"><span class="notice-mark">i</span><div><strong>İlk veri senkronizasyonu bekleniyor</strong><p>Uygulama ve veritabanı hazır. Collector devreye girdiğinde bu ekran otomatik olarak 60 saniyede bir yenilenir.</p></div></div>`;
 
-  return shell(`<header class="topbar"><div class="wrap topbar-inner"><a class="brand" href="/"><span class="brand-mark">B</span><span>BETAPP<small>Data Terminal</small></span></a><nav class="nav" aria-label="Ana menü"><a href="#matches">Maçlar</a><a href="#odds">Oranlar</a><a href="#sources">Kaynaklar</a><a href="#system">Sistem</a></nav><a class="live-pill" href="/health"><span class="live-dot ${healthyProviders ? '' : 'wait'}"></span>${escapeHtml(statusText)}</a></div></header>
-    <main class="wrap"><section class="hero"><div><p class="eyebrow">Canlı futbol veri merkezi</p><h1>Maçlar, oranlar,<br>tek ekranda.</h1><p class="hero-copy">Dokuz elit turnuvadaki fikstürleri, Nowgoal pre-match oranlarını ve korner analizlerini İstanbul saatine göre takip edin.</p></div></section>
-    <section class="metrics" aria-label="Özet"><article class="metric"><span class="metric-label">Bugünkü maç</span><strong class="metric-value">${matches.length}</strong><span class="metric-note">Desteklenen ligler</span></article><article class="metric"><span class="metric-label">Canlı oran</span><strong class="metric-value">${odds.length}</strong><span class="metric-note">Eşleşmiş seçim</span></article><article class="metric"><span class="metric-label">Aktif kaynak</span><strong class="metric-value">${healthyProviders}</strong><span class="metric-note">FotMob + Nowgoal</span></article><article class="metric"><span class="metric-label">Korner analizi</span><strong class="metric-value">${analyses.length}</strong><span class="metric-note">Yaklaşan maçlar</span></article></section>
-    ${waitingNotice}<section class="workspace"><article class="panel" id="matches"><div class="panel-head"><h2>Bugünün maçları</h2><span class="count">${matches.length}</span></div><div class="panel-body match-list">${matchCards}</div></article><article class="panel" id="odds"><div class="panel-head"><h2>Nowgoal oran panosu</h2><span class="count">${odds.length}</span></div><div class="panel-body odds-list">${oddsRows}</div></article></section>
-    <section class="section" id="odds-analysis"><div class="section-title"><h2>ORAN ANALİZİ V1</h2><p>Deterministik piyasa hareketi · bahis önerisi değildir</p></div><div class="grid">${oddsAnalysisCards}</div></section>
-    <section class="section" id="predictions"><div class="section-title"><h2>BUGÜNÜN TAHMİNLERİ</h2><p>PREDICTION V1 · resmi kayıt veya değişebilir önizleme</p></div><div class="grid">${predictionCards}</div></section>
-    <section class="section" id="prediction-self-audit"><div class="section-title"><h2>KENDİNİ KONTROL</h2><p>SELF-AUDIT V1 + V2 + V3 + V4 · güvenlik, teşhis ve insan onaylı adaptasyon</p></div>${selfAuditSummary}${segmentAuditSummary}${rootCauseSummary}${adaptiveRuleSummary}</section>
-    <section class="section" id="prediction-history"><div class="section-title"><h2>TAHMİN GEÇMİŞİ</h2><p>Yalnız kilitli resmi kararlar · her oran N ile değerlendirilir</p></div><div class="scroll"><table><thead><tr><th>Tarih</th><th>Maç</th><th>Karar</th><th>Score</th><th>Sonuç</th></tr></thead><tbody>${predictionHistoryRows}</tbody></table></div><details><summary>PERFORMANCE LAB</summary><div class="details-body">${performanceSummary}</div></details></section>
-    <section class="section" id="sources"><div class="section-title"><h2>Veri kaynakları</h2><p>Sağlık ve son senkronizasyon durumu</p></div><div class="source-grid">${providerCards}</div></section>
-    <section class="section" id="system"><div class="section-title"><h2>Analiz ve sistem</h2><p>İleri seviye veri panelleri</p></div><details><summary>Provider qualification matrisi</summary><div class="details-body">${matrix}</div></details><details><summary>Dataset sağlığı ve backfill</summary><div class="details-body">${datasetHealth}<div class="scroll" style="margin-top:10px"><table><thead><tr><th>Lig</th><th>Sezon</th><th>Durum</th><th>Bulunan</th><th>Kaydedilen</th><th>Tam</th><th>Kısmi</th><th>Hata</th><th>Retry</th></tr></thead><tbody>${backfillRows}</tbody></table></div></div></details><details><summary>Korner modeli ve doğrulama</summary><div class="details-body">${modelValidation}<div class="scroll" style="margin-top:10px"><table><thead><tr><th>Maç</th><th>Beklenen</th><th>O8.5</th><th>O9.5</th><th>O10.5</th><th>Veri kalitesi</th><th>Güven</th></tr></thead><tbody>${cornerRows}</tbody></table></div></div></details></section>
-    <footer class="footer"><span>BETAPP V2 · Europe/Istanbul · Otomatik yenileme 60 sn</span><span><a href="/health">Sistem sağlığı</a> · <a href="/api/odds/upcoming">Odds API</a></span></footer></main>`);
+  const officialPredictionCount = predictions.filter((item) => String(item.decision) === 'PREDICT').length;
+  const skipPredictionCount = predictions.filter((item) => String(item.decision) === 'SKIP').length;
+  const pendingSettlementCount = predictionPerformance?.pending == null
+    ? predictionHistory.filter((item) => item.outcome == null && String(item.decision) === 'PREDICT').length
+    : finiteNumber(predictionPerformance.pending);
+  const globalAuditRaw = String(predictionSelfAudit?.status ?? 'NOT_AVAILABLE');
+  const globalAuditGuard = Boolean(predictionSelfAudit?.guardActive);
+  const globalAuditStatus = globalAuditRaw === 'PAUSED' && !globalAuditGuard ? 'RECOVERY' : globalAuditRaw;
+  const pausedSegments = predictionSelfAuditSegments.filter((item) => item.status === 'PAUSED' && item.guardActive).length;
+  const watchSegments = predictionSelfAuditSegments.filter((item) => item.status === 'WATCH').length;
+  const highRiskFactors = predictionSelfAuditRootCauses.filter((item) => item.status === 'HIGH_RISK').length;
+  const watchFactors = predictionSelfAuditRootCauses.filter((item) => item.status === 'WATCH').length;
+  const proposedRules = predictionAdaptiveRuleProposals.filter((item) => item.decision === 'PROPOSED').length;
+  const providerQuickRows = sources.slice(0, 5).map((provider) => {
+    const status = String(provider.status ?? 'unknown');
+    const cls = status === 'healthy' ? 'ok' : ['degraded','waiting'].includes(status) ? 'partial' : status === 'blocked' ? 'bad' : 'neutral';
+    return `<div class="health-row"><span>${escapeHtml(provider.provider)}</span><span class="badge ${cls}">${escapeHtml(status === 'waiting' ? 'bekliyor' : status)}</span></div>`;
+  }).join('');
+  const auditOverview = `<div class="audit-overview">
+    <article class="audit-mini"><small>V1 · Genel Guard</small><strong>${escapeHtml(globalAuditStatus)}</strong><span>${globalAuditGuard ? 'Yeni resmi tahmin kapısı korunuyor' : 'Genel güvenlik katmanı'}</span></article>
+    <article class="audit-mini"><small>V2 · Segment</small><strong>${pausedSegments} PAUSED · ${watchSegments} WATCH</strong><span>Lig ve market bazlı kontrol</span></article>
+    <article class="audit-mini"><small>V3 · Kök Neden</small><strong>${highRiskFactors} HIGH RISK</strong><span>${watchFactors} izlenen faktör</span></article>
+    <article class="audit-mini"><small>V4 · Öneriler</small><strong>${proposedRules} PROPOSED</strong><span>autoApply=false · insan onayı</span></article>
+  </div>`;
+
+  return shell(`<div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="/"><span class="brand-mark">B</span><span>BETAPP<small>Analysis Terminal</small></span></a>
+      <div class="side-group"><div class="side-label">Terminal</div><nav class="side-nav" aria-label="Ana menü">
+        <a class="active" href="#overview"><span class="nav-icon">⌂</span>Genel Bakış</a>
+        <a href="#matches"><span class="nav-icon">◫</span>Maç Merkezi</a>
+        <a href="#predictions"><span class="nav-icon">◎</span>Tahmin Merkezi</a>
+        <a href="#odds-analysis"><span class="nav-icon">↗</span>Oran Analizi</a>
+      </nav></div>
+      <div class="side-group"><div class="side-label">Kontrol</div><nav class="side-nav">
+        <a href="#prediction-self-audit"><span class="nav-icon">◇</span>Self‑Audit</a>
+        <a href="#prediction-history"><span class="nav-icon">◷</span>Geçmiş & Performans</a>
+        <a href="#sources"><span class="nav-icon">◉</span>Veri Kaynakları</a>
+        <a href="#system"><span class="nav-icon">⚙</span>Sistem</a>
+      </nav></div>
+      <div class="sidebar-foot"><a class="system-pill" href="/health"><span class="live-dot ${healthyProviders ? '' : 'wait'}"></span><span><strong style="display:block;color:var(--text)">${escapeHtml(statusText)}</strong>Health endpoint</span></a></div>
+    </aside>
+    <div class="app-main">
+      <header class="topbar"><div class="top-title"><strong>BETAPP Command Center</strong><span>Europe/Istanbul · 60 sn otomatik yenileme</span></div>
+        <label class="search" aria-label="Panelde ara"><input data-global-search type="search" placeholder="Maç, lig, market veya provider ara…"></label>
+        <div class="top-actions"><a class="top-chip" href="/api/predictions/today">Prediction API</a><a class="top-chip" href="/health">System Health</a></div>
+      </header>
+      <main class="content">
+        <section class="command-hero" id="overview">
+          <article class="hero-main"><p class="eyebrow">BETAPP UI V3 · Canlı analiz terminali</p><h1>Bugünün futbol verisi,<br>tek kontrol merkezinde.</h1>
+            <p class="hero-copy">Fikstür, Nowgoal oran hareketleri, deterministik Prediction V1 ve Self‑Audit V1–V4 aynı panelde. Sistem tahmini ve performansı kaydeder; gerçek bahis yürütme yetkisi yoktur.</p></article>
+          <article class="hero-status"><div class="hero-status-head"><strong>Sistem Durumu</strong><span class="badge ${healthyProviders ? 'ok' : 'partial'}">${healthyProviders ? 'ONLINE' : 'WAITING'}</span></div>
+            <div class="hero-status-list">${providerQuickRows || '<div class="health-row"><span>Provider</span><b>Veri bekleniyor</b></div>'}
+              <div class="health-row"><span>Self‑Audit</span><b>${escapeHtml(globalAuditStatus)}</b></div></div></article>
+        </section>
+        <section class="metrics" aria-label="Komuta özeti">
+          <article class="metric"><span class="metric-label">Bugünkü maç</span><strong class="metric-value">${matches.length}</strong><span class="metric-note">Desteklenen turnuvalar</span></article>
+          <article class="metric"><span class="metric-label">Canlı odds</span><strong class="metric-value">${odds.length}</strong><span class="metric-note">Nowgoal eşleşmiş seçim</span></article>
+          <article class="metric"><span class="metric-label">Resmi tahmin</span><strong class="metric-value">${officialPredictionCount}</strong><span class="metric-note">GEÇ: ${skipPredictionCount}</span></article>
+          <article class="metric ${pendingSettlementCount ? 'alert' : ''}"><span class="metric-label">Settlement bekliyor</span><strong class="metric-value">${pendingSettlementCount}</strong><span class="metric-note">Kilitlemiş PREDICT kayıtları</span></article>
+          <article class="metric ${pausedSegments || highRiskFactors ? 'danger' : ''}"><span class="metric-label">Self‑Audit alarm</span><strong class="metric-value">${pausedSegments + highRiskFactors}</strong><span class="metric-note">Paused segment + high risk</span></article>
+          <article class="metric"><span class="metric-label">Aktif kaynak</span><strong class="metric-value">${healthyProviders}</strong><span class="metric-note">Provider health</span></article>
+        </section>
+        ${waitingNotice}
+
+        <section class="section" id="matches"><div class="section-title"><div><span class="section-kicker">Live workspace</span><h2>Maç Merkezi</h2><p>Bugünün maçları ile canlı oran akışı yan yana.</p></div></div>
+          <div class="workspace"><article class="panel"><div class="panel-head"><h3>Bugünün maçları</h3><span class="count">${matches.length}</span></div><div class="panel-body match-list">${matchCards}</div></article>
+            <article class="panel" id="odds"><div class="panel-head"><h3>Nowgoal oran panosu</h3><span class="count">${odds.length}</span></div><div class="panel-body odds-list">${oddsRows}</div></article></div></section>
+
+        <section class="section" id="predictions"><div class="section-title"><div><span class="section-kicker">Prediction V1</span><h2>Tahmin Merkezi</h2><p>Resmi tahmin, aday tahmin ve GEÇ kararları.</p></div><span class="badge neutral">${predictions.length + predictionPreviews.length} kayıt</span></div><div class="grid">${predictionCards}</div></section>
+
+        <section class="section" id="odds-analysis"><div class="section-title"><div><span class="section-kicker">Market intelligence</span><h2>Oran Analizi V1</h2><p>Açılış → güncel hareket, bookmaker teyidi ve veri kalitesi. Bahis önerisi değildir.</p></div></div><div class="grid">${oddsAnalysisCards}</div></section>
+
+        <section class="section" id="prediction-self-audit"><div class="section-title"><div><span class="section-kicker">Control center</span><h2>Self‑Audit Merkezi</h2><p>V1 genel guard · V2 segment kontrolü · V3 kök neden · V4 adaptive proposal.</p></div></div>
+          ${auditOverview}${selfAuditSummary}${segmentAuditSummary}${rootCauseSummary}${adaptiveRuleSummary}</section>
+
+        <section class="section" id="prediction-history"><div class="section-title"><div><span class="section-kicker">Journal</span><h2>Tahmin Geçmişi & Performance Lab</h2><p>Yalnız kilitli resmi kararlar performansa dahil edilir.</p></div></div>
+          <div class="scroll"><table><thead><tr><th>Tarih</th><th>Maç</th><th>Karar</th><th>Score</th><th>Sonuç</th></tr></thead><tbody>${predictionHistoryRows}</tbody></table></div>
+          <details><summary>Performance Lab</summary><div class="details-body">${performanceSummary}</div></details></section>
+
+        <section class="section" id="sources"><div class="section-title"><div><span class="section-kicker">Data layer</span><h2>Veri Kaynakları</h2><p>Provider health ve son senkronizasyon durumu.</p></div></div><div class="source-grid">${providerCards}</div></section>
+
+        <section class="section" id="system"><div class="section-title"><div><span class="section-kicker">Advanced</span><h2>Sistem & Model Laboratuvarı</h2><p>Qualification, dataset, backfill ve korner model doğrulaması.</p></div></div>
+          <details><summary>Provider qualification matrisi</summary><div class="details-body">${matrix}</div></details>
+          <details><summary>Dataset sağlığı ve backfill</summary><div class="details-body">${datasetHealth}<div class="scroll" style="margin-top:10px"><table><thead><tr><th>Lig</th><th>Sezon</th><th>Durum</th><th>Bulunan</th><th>Kaydedilen</th><th>Tam</th><th>Kısmi</th><th>Hata</th><th>Retry</th></tr></thead><tbody>${backfillRows}</tbody></table></div></div></details>
+          <details><summary>Korner modeli ve doğrulama</summary><div class="details-body">${modelValidation}<div class="scroll" style="margin-top:10px"><table><thead><tr><th>Maç</th><th>Beklenen</th><th>O8.5</th><th>O9.5</th><th>O10.5</th><th>Veri kalitesi</th><th>Güven</th></tr></thead><tbody>${cornerRows}</tbody></table></div></div></details>
+        </section>
+        <footer class="footer"><span>BETAPP UI V3 · Prediction + Self‑Audit Control Center</span><span><a href="/health">Sistem sağlığı</a> · <a href="/api/odds/upcoming">Odds API</a> · <a href="/api/predictions/self-audit/proposals">V4 Proposals</a></span></footer>
+      </main>
+    </div>
+  </div>`);
 }
 
 export function renderCornerDetail(data: Record<string, unknown>): string {

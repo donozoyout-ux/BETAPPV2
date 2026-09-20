@@ -133,8 +133,8 @@ export class OddsIntelligenceRepository {
     let movementReadyRoutes = 0;
     let matchesWithRoute = 0;
     let matchesWithMovementReadyRoute = 0;
-    let earliestKickoff: Date | null = null;
-    let latestKickoff: Date | null = null;
+    let earliestKickoffMs: number | null = null;
+    let latestKickoffMs: number | null = null;
 
     for (const row of result.rows) {
       const data = outcome(row);
@@ -147,8 +147,9 @@ export class OddsIntelligenceRepository {
       if (hasMovementRoute) matchesWithMovementReadyRoute += 1;
       routes += built.length;
       movementReadyRoutes += built.filter((route) => route.genuineObservations >= 2).length;
-      earliestKickoff = earliestKickoff == null || data.kickoffAt < earliestKickoff ? data.kickoffAt : earliestKickoff;
-      latestKickoff = latestKickoff == null || data.kickoffAt > latestKickoff ? data.kickoffAt : latestKickoff;
+      const kickoffMs = data.kickoffAt.getTime();
+      earliestKickoffMs = earliestKickoffMs == null ? kickoffMs : Math.min(earliestKickoffMs, kickoffMs);
+      latestKickoffMs = latestKickoffMs == null ? kickoffMs : Math.max(latestKickoffMs, kickoffMs);
 
       const season = String(row.season ?? 'UNKNOWN');
       const competitionKey = `${data.league}|${season}`;
@@ -194,8 +195,8 @@ export class OddsIntelligenceRepository {
         preKickoffSnapshots: Number(summaryRow.pre_kickoff_snapshots ?? 0),
         excludedPostKickoffSnapshots: Number(summaryRow.excluded_post_kickoff_snapshots ?? 0),
         providers: [...providers].sort(),
-        earliestKickoff,
-        latestKickoff,
+        earliestKickoff: earliestKickoffMs == null ? null : new Date(earliestKickoffMs),
+        latestKickoff: latestKickoffMs == null ? null : new Date(latestKickoffMs),
       },
       routeReadiness: {
         matchesWithRoute,

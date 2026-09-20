@@ -536,7 +536,7 @@ export class PredictionRepository {
     const safeMatchLimit = Math.max(1, Math.min(8, Math.trunc(matchLimit)));
     const safeExampleLimit = Math.max(1, Math.min(8, Math.trunc(exampleLimit)));
     const result = await this.pool.query(`SELECT DISTINCT ON(r.match_id)
-      r.match_id,r.generated_at,r.decision,r.selected_candidate,m.kickoff_at,l.name league,
+      r.match_id,r.generated_at,r.decision,r.selected_candidate,r.candidates,r.skip_reasons,m.kickoff_at,l.name league,
       ht.name home_team,at.name away_team,
       CASE WHEN j.id IS NULL THEN 'PREVIEW' ELSE
         CASE WHEN j.decision='PREDICT' THEN 'LOCKED_PREDICTION' ELSE 'LOCKED_SKIP' END END state
@@ -549,7 +549,6 @@ export class PredictionRepository {
       WHERE m.status IN('scheduled','live')
         AND m.kickoff_at>=$1::timestamptz-interval '3 hours'
         AND m.kickoff_at<$1::timestamptz+interval '48 hours'
-        AND r.selected_candidate IS NOT NULL
       ORDER BY r.match_id,
         CASE WHEN j.id IS NULL THEN 1 ELSE 0 END,
         r.created_at DESC,r.id DESC`, [now]);
@@ -562,14 +561,40 @@ export class PredictionRepository {
       return typeof value === 'object' ? value as Record<string, unknown> : null;
     };
 
+    const parseCandidates = (value: unknown): Array<Record<string, unknown>> => {
+      if (!value) return [];
+      if (typeof value === 'string') {
+        try {
+          const parsed = JSON.parse(value);
+          return Array.isArray(parsed) ? parsed.filter((item): item is Record<string, unknown> =>
+            Boolean(item) && typeof item === 'object') : [];
+        } catch { return []; }
+      }
+      return Array.isArray(value) ? value.filter((item): item is Record<string, unknown> =>
+        Boolean(item) && typeof item === 'object') : [];
+    };
+
     const selected = result.rows.map((row) => {
-      const candidate = parseCandidate(row.selected_candidate);
+      const officialCandidate = parseCandidate(row.selected_candidate);
+      const allCandidates = parseCandidates(row.candidates);
+      const candidatePool = officialCandidate ? [officialCandidate, ...allCandidates] : allCandidates;
+      const candidate = candidatePool
+        .filter((item) => {
+          const historical = item.historical && typeof item.historical === 'object'
+            ? item.historical as Record<string, unknown> : null;
+          return Array.isArray(historical?.exampleIds) && historical!.exampleIds.length > 0;
+        })
+        .sort((left, right) => Number(right.predictionScore ?? 0) - Number(left.predictionScore ?? 0)
+          || Number((right.historical as Record<string, unknown> | undefined)?.settledSampleSize ?? 0)
+            - Number((left.historical as Record<string, unknown> | undefined)?.settledSampleSize ?? 0))[0] ?? null;
       const historical = candidate?.historical && typeof candidate.historical === 'object'
         ? candidate.historical as Record<string, unknown> : null;
       const ids = Array.isArray(historical?.exampleIds) ? historical!.exampleIds.map(String).slice(0, safeExampleLimit) : [];
-      return { row, candidate, historical, ids };
+      const skipReasons = Array.isArray(row.skip_reasons) ? row.skip_reasons.map(String) : [];
+      return { row, candidate, historical, ids, skipReasons, officialCandidate: officialCandidate != null };
     }).filter((item) => item.candidate && item.ids.length)
-      .sort((a, b) => Number(b.candidate!.predictionScore ?? 0) - Number(a.candidate!.predictionScore ?? 0)
+      .sort((a, b) => Number(b.officialCandidate) - Number(a.officialCandidate)
+        || Number(b.candidate!.predictionScore ?? 0) - Number(a.candidate!.predictionScore ?? 0)
         || Number(b.historical?.settledSampleSize ?? 0) - Number(a.historical?.settledSampleSize ?? 0)
         || new Date(String(a.row.kickoff_at)).getTime() - new Date(String(b.row.kickoff_at)).getTime())
       .slice(0, safeMatchLimit);
@@ -588,10 +613,12 @@ export class PredictionRepository {
       WHERE e.id=ANY($1::uuid[])`, [allIds]);
     const byId = new Map(examples.rows.map((row) => [String(row.id), row]));
 
-    return selected.map(({ row, candidate, historical, ids }) => ({
+    return selected.map(({ row, candidate, historical, ids, skipReasons, officialCandidate }) => ({
       current: {
         matchId: String(row.match_id), kickoffAt: row.kickoff_at, league: String(row.league),
-        homeTeam: String(row.home_team), awayTeam: String(row.away_team), state: String(row.state),
+        homeTeam: String(row.home_team), awayTeam: String(row.away_team),
+        state: officialCandidate ? String(row.state) : 'MATCH_ONLY',
+        predictionDecision: String(row.decision ?? 'SKIP'), skipReasons,
         marketType: String(candidate!.marketType ?? ''), marketName: String(candidate!.marketName ?? ''),
         line: candidate!.line == null ? null : Number(candidate!.line), selection: String(candidate!.selection ?? ''),
         openingOdds: Number(candidate!.openingOdds), currentOdds: Number(candidate!.currentOdds),

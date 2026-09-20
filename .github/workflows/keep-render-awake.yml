@@ -61,6 +61,9 @@ jobs:
 
           echo "BETAPP root HTTP: ${root_code:-000}"
           echo "BETAPP health HTTP: ${health_code:-000}"
+          if [[ "$health_code" == "200" ]]; then
+            curl --location --silent --show-error --connect-timeout 20 --max-time 60 "$HEALTH_URL"               | jq -c '{status,databaseStatus:.database.status,worker,providers}'
+          fi
 
           diag_file="$(mktemp)"
           diag_code="000"

@@ -73,6 +73,7 @@ jobs:
             jq -c '{
               thresholds,
               historical,
+              dryRun,
               current: {
                 targets: .current.targets,
                 withOddsAnalysis: .current.withOddsAnalysis,

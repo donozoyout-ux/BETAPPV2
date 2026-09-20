@@ -1,4 +1,5 @@
 type DashboardData = { matches: Array<Record<string, unknown>>; providers: Array<Record<string, unknown>>;
+  recentFinishedMatches?: Array<Record<string, unknown>>; archiveSummary?: Record<string, unknown> | null;
   qualification?: Array<Record<string, unknown>>; cornerAnalyses?: Array<Record<string, unknown>>;
   datasetAudit?: Record<string, unknown> | null; validation?: Record<string, unknown> | null;
   backfill?: Array<Record<string, unknown>>; odds?: Array<Record<string, unknown>>;
@@ -37,6 +38,16 @@ function finiteNumber(value: unknown, fallback = 0): number {
 function formatDate(value: unknown, options: Intl.DateTimeFormatOptions): string {
   const date = new Date(String(value));
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul', ...options });
+}
+
+function istanbulDateKey(value: unknown): string {
+  const date = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(date.getTime())) return '';
+  const parts = new Intl.DateTimeFormat('en', {
+    timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(date);
+  const part = (type: string) => parts.find((item) => item.type === type)?.value ?? '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
 }
 
 
@@ -148,6 +159,10 @@ export function renderDashboard(data: DashboardData): string {
   const audit = (data.datasetAudit?.report ?? null) as DatasetAuditView | null;
   const validation = (data.validation?.report ?? null) as ValidationView | null;
   const matches = data.matches ?? [];
+  const recentFinishedMatches = data.recentFinishedMatches ?? [];
+  const archiveSummary = data.archiveSummary ?? {};
+  const todayKey = istanbulDateKey(new Date());
+  const todayMatches = matches.filter((match) => istanbulDateKey(match.kickoff_at) === todayKey);
   const odds = data.odds ?? [];
   const analyses = data.cornerAnalyses ?? [];
   const oddsAnalyses = data.oddsAnalyses ?? [];
@@ -164,7 +179,11 @@ export function renderDashboard(data: DashboardData): string {
   const oddsIntelligence = data.oddsIntelligence ?? [];
   const predictionDiagnostics = data.predictionDiagnostics;
   const predictionThresholds = (predictionDiagnostics?.thresholds ?? {}) as Record<string, unknown>;
+  const predictionHistorical = (predictionDiagnostics?.historical ?? {}) as Record<string, unknown>;
   const requiredHistoricalSample = finiteNumber(predictionThresholds.minimumHistoricalSample, 30);
+  const historicalExampleCount = finiteNumber(predictionHistorical.eligible ?? predictionHistorical.total);
+  const archivedOddsMatchCount = finiteNumber(archiveSummary.finished_matches_with_odds);
+  const preKickoffSnapshotCount = finiteNumber(archiveSummary.pre_kickoff_snapshots);
   const healthyProviders = data.providers.filter((provider) => provider.status === 'healthy').length;
   const percent = (value: unknown) => `${(finiteNumber(value) * 100).toFixed(1)}%`;
   const sources = data.providers.length ? data.providers : [
@@ -189,7 +208,18 @@ export function renderDashboard(data: DashboardData): string {
     return `<article class="match" data-search-row><div class="match-time">${escapeHtml(formatDate(match.kickoff_at, { hour: '2-digit', minute: '2-digit' }))}<small>${escapeHtml(formatDate(match.kickoff_at, { day: '2-digit', month: 'short' }))}</small></div>
       <div class="teams"><span>${escapeHtml(match.home_team)} — ${escapeHtml(match.away_team)}</span><small>${escapeHtml(match.league)} · ${matchOdds} oran kaydı · ${escapeHtml(decision)}</small></div>
       <div style="display:flex;align-items:center;gap:6px"><span class="status ${status === 'live' ? 'live' : ''}">${escapeHtml(status === 'live' ? 'Canlı' : status === 'scheduled' ? 'Planlandı' : status)}</span><a class="status" href="${escapeHtml(actionHref)}">${hasCorner ? 'DETAY' : 'ANALİZ'}</a></div></article>`;
-  }).join('') : renderEmpty('⌁', 'Henüz maç verisi yok', 'Collector ilk senkronizasyonunu tamamladığında bugünün desteklenen lig maçları burada görünecek.');
+  }).join('') : renderEmpty('⌁', 'Yaklaşan maç görünmüyor', 'Önümüzdeki 7 gün içinde desteklenen liglerde maç yoksa arşiv ve geçmiş analizler aşağıda gösterilmeye devam eder.');
+  const recentFinishedCards = recentFinishedMatches.length ? recentFinishedMatches.map((match) => {
+    const score = match.home_score == null || match.away_score == null ? 'Sonuç yok'
+      : `${escapeHtml(match.home_score)} - ${escapeHtml(match.away_score)}`;
+    return `<article class="match" data-search-row>
+      <div class="match-time">${score}<small>${escapeHtml(formatDate(match.kickoff_at, { day: '2-digit', month: 'short' }))}</small></div>
+      <div class="teams"><span>${escapeHtml(match.home_team)} — ${escapeHtml(match.away_team)}</span>
+        <small>${escapeHtml(match.league)} · ${escapeHtml(match.odds_snapshots ?? 0)} geçmiş oran kaydı · ${escapeHtml(match.odds_markets ?? 0)} market</small></div>
+      <span class="status">Bitti</span>
+    </article>`;
+  }).join('') : renderEmpty('◷', 'Henüz bitmiş maç arşivi yok', 'Maçlar sonuçlandıkça geçmiş sonuç ve oran kayıtları burada görünecek.');
+
   const oddsRows = odds.length ? odds.slice(0, 100).map((odd) => {
     const movement = finiteNumber(odd.movement_percent);
     const movementClass = movement > 0 ? 'up' : movement < 0 ? 'down' : 'flat';
@@ -548,7 +578,13 @@ export function renderDashboard(data: DashboardData): string {
   const datasetHealth = audit ? `<div class="grid"><article class="card"><strong>Geçmiş maç</strong><p>${escapeHtml(audit.totalMatches)}</p></article><article class="card"><strong>Korner kapsaması</strong><p>${percent(audit.cornerCoverage?.complete?.rate)}</p></article><article class="card"><strong>Lig</strong><p>${escapeHtml(audit.perCompetition?.length ?? 0)}</p></article><article class="card"><strong>Sezon</strong><p>${escapeHtml(audit.perSeason?.length ?? 0)}</p></article></div>` : renderEmpty('◫', 'Dataset henüz hazır değil', 'Historical backfill ve audit tamamlandığında kalite özeti burada görünecek.');
   const calibrationRows = validation ? Object.entries(validation.calibration ?? {}).map(([bucket, item]) => `<tr><td>${escapeHtml(bucket)}</td><td>${escapeHtml(item.count)}</td><td>${percent(item.averagePredictedProbability)}</td><td>${percent(item.actualHitRate)}</td><td>${percent(item.absoluteCalibrationError)}</td></tr>`).join('') : '';
   const modelValidation = validation ? `<div class="grid"><article class="card"><strong>MAE</strong><p>${finiteNumber(validation.mae).toFixed(3)}</p></article><article class="card"><strong>RMSE</strong><p>${finiteNumber(validation.rmse).toFixed(3)}</p></article><article class="card"><strong>Brier</strong><p>${finiteNumber(validation.brier).toFixed(4)}</p></article><article class="card"><strong>Log loss</strong><p>${finiteNumber(validation.logLoss).toFixed(4)}</p></article></div><div class="scroll" style="margin-top:10px"><table><thead><tr><th>Bucket</th><th>Count</th><th>Predicted</th><th>Actual</th><th>Abs. error</th></tr></thead><tbody>${calibrationRows}</tbody></table></div>` : renderEmpty('∿', 'Backtest sonucu yok', 'Model doğrulaması çalıştırıldığında hata ve kalibrasyon metrikleri burada gösterilecek.');
-  const waitingNotice = matches.length || odds.length ? '' : `<div class="notice"><span class="notice-mark">i</span><div><strong>İlk veri senkronizasyonu bekleniyor</strong><p>Uygulama ve veritabanı hazır. Collector devreye girdiğinde bu ekran otomatik olarak 60 saniyede bir yenilenir.</p></div></div>`;
+  const waitingNotice = todayMatches.length
+    ? ''
+    : matches.length
+      ? `<div class="notice"><span class="notice-mark">i</span><div><strong>Bugün desteklenen liglerde maç yok</strong><p>Sistem boş değil. Önümüzdeki 7 günlük fikstür, geçmiş sonuçlar ve oran arşivi aşağıda gösteriliyor.</p></div></div>`
+      : (historicalExampleCount > 0 || archivedOddsMatchCount > 0)
+        ? `<div class="notice"><span class="notice-mark">i</span><div><strong>Bugün ve önümüzdeki 7 günde maç görünmüyor</strong><p>Geçmiş analiz arşivi aktif: ${historicalExampleCount} historical örnek ve ${archivedOddsMatchCount} gerçek oran geçmişi bulunan bitmiş maç mevcut.</p></div></div>`
+        : `<div class="notice"><span class="notice-mark">i</span><div><strong>Veri senkronizasyonu bekleniyor</strong><p>Collector devreye girdiğinde fikstür ve oranlar otomatik olarak burada görünür.</p></div></div>`;
 
   const officialPredictionCount = officialPredictions.length;
   const reviewCandidateCount = predictionReviewCandidates.length;
@@ -578,7 +614,8 @@ export function renderDashboard(data: DashboardData): string {
       <a class="brand" href="/"><span class="brand-mark">B</span><span>BETAPP<small>Futbol Analiz Sistemi</small></span></a>
       <div class="side-group"><div class="side-label">Menü</div><nav class="side-nav" aria-label="Ana menü">
         <a class="active" href="#overview"><span class="nav-icon">⌂</span>Ana Sayfa</a>
-        <a href="#matches"><span class="nav-icon">◫</span>Bugünün Maçları</a>
+        <a href="#matches"><span class="nav-icon">◫</span>Maçlar</a>
+        <a href="#archive"><span class="nav-icon">◷</span>Veri Arşivi</a>
         <a href="#predictions"><span class="nav-icon">◎</span>Tahminler</a>
         <a href="#odds-analysis"><span class="nav-icon">↗</span>Oran Eşleşmeleri</a>
         <a href="#prediction-history"><span class="nav-icon">◷</span>Geçmiş Tahminler</a>
@@ -593,27 +630,41 @@ export function renderDashboard(data: DashboardData): string {
       </header>
       <main class="content">
         <section class="command-hero" id="overview">
-          <article class="hero-main"><p class="eyebrow">Bugünün analizi</p><h1>Bugün ${matches.length} maç<br>takip ediliyor.</h1>
-            <p class="hero-copy">Maç verileri, oran hareketleri ve geçmişte benzer oranlara sahip maçlar birlikte inceleniyor. Resmi tahmin oluşmadığında sebebi açık Türkçe ile gösteriyoruz.</p></article>
+          <article class="hero-main"><p class="eyebrow">BETAPP canlı durum</p><h1>${todayMatches.length
+              ? `Bugün ${todayMatches.length} maç<br>takip ediliyor.`
+              : matches.length
+                ? `Bugün maç yok.<br>Önümüzdeki 7 günde ${matches.length} maç var.`
+                : `Bugün maç yok.<br>Geçmiş analiz arşivi hazır.`}</h1>
+            <p class="hero-copy">Sistem yalnız bugünkü maçları göstermiyor. Yaklaşan fikstür, geçmiş oran arşivi, tamamlanan maçlar ve historical analiz örnekleri tek ekranda izleniyor.</p></article>
           <article class="hero-status"><div class="hero-status-head"><strong>Şu anda ne oluyor?</strong><span class="badge ${healthyProviders ? 'ok' : 'partial'}">${healthyProviders ? 'Sistem çalışıyor' : 'Veri bekleniyor'}</span></div>
-            <div class="hero-status-list"><div class="health-row"><span>Maç verileri</span><b>${matches.length ? 'Alınıyor' : 'Bekleniyor'}</b></div>
-              <div class="health-row"><span>Oranlar</span><b>${odds.length ? 'Takip ediliyor' : 'Bekleniyor'}</b></div>
-              <div class="health-row"><span>Geçmiş karşılaştırma</span><b>${oddsSimilarity.length ? 'Hazır' : 'Veri birikiyor'}</b></div>
-              <div class="health-row"><span>Genel sistem kontrolü</span><b>${escapeHtml(translateSystemStatus(globalAuditStatus))}</b></div></div></article>
+            <div class="hero-status-list"><div class="health-row"><span>Yaklaşan fikstür</span><b>${matches.length ? `${matches.length} maç` : 'Bu hafta görünmüyor'}</b></div>
+              <div class="health-row"><span>Canlı oranlar</span><b>${odds.length ? `${odds.length} kayıt` : 'Maç bekleniyor'}</b></div>
+              <div class="health-row"><span>Historical örnekler</span><b>${historicalExampleCount}</b></div>
+              <div class="health-row"><span>Geçmiş oran snapshotları</span><b>${preKickoffSnapshotCount.toLocaleString('tr-TR')}</b></div></div></article>
         </section>
-        <section class="metrics" aria-label="Bugünün özeti">
-          <article class="metric"><span class="metric-label">Bugünün maçları</span><strong class="metric-value">${matches.length}</strong><span class="metric-note">Takip edilen maç</span></article>
-          <article class="metric"><span class="metric-label">Resmi tahmin</span><strong class="metric-value">${officialPredictionCount}</strong><span class="metric-note">Tüm koşulları geçen</span></article>
-          <article class="metric ${reviewCandidateCount ? 'alert' : ''}"><span class="metric-label">İnceleme adayı</span><strong class="metric-value">${reviewCandidateCount}</strong><span class="metric-note">Resmi tahmine yaklaşan</span></article>
-          <article class="metric"><span class="metric-label">Tahmin oluşturulmadı</span><strong class="metric-value">${rejectedPredictionCount}</strong><span class="metric-note">Koşulları henüz eksik</span></article>
-          <article class="metric"><span class="metric-label">Oran kaydı</span><strong class="metric-value">${odds.length}</strong><span class="metric-note">Takip edilen oran satırı</span></article>
+        <section class="metrics" aria-label="Sistem özeti">
+          <article class="metric"><span class="metric-label">Bugün</span><strong class="metric-value">${todayMatches.length}</strong><span class="metric-note">Bugünkü desteklenen maç</span></article>
+          <article class="metric"><span class="metric-label">Yaklaşan 7 gün</span><strong class="metric-value">${matches.length}</strong><span class="metric-note">Fikstürdeki maç</span></article>
+          <article class="metric"><span class="metric-label">Historical örnek</span><strong class="metric-value">${historicalExampleCount}</strong><span class="metric-note">Benzerlik motoru verisi</span></article>
+          <article class="metric"><span class="metric-label">Oran geçmişi olan maç</span><strong class="metric-value">${archivedOddsMatchCount}</strong><span class="metric-note">Gerçek pre-match arşivi</span></article>
+          <article class="metric"><span class="metric-label">Geçmiş snapshot</span><strong class="metric-value">${preKickoffSnapshotCount.toLocaleString('tr-TR')}</strong><span class="metric-note">Gerçek pre-match kayıt</span></article>
           <article class="metric"><span class="metric-label">Çalışan veri kaynağı</span><strong class="metric-value">${healthyProviders}</strong><span class="metric-note">Aktif bağlantı</span></article>
         </section>
         ${waitingNotice}
 
-        <section class="section" id="matches"><div class="section-title"><div><span class="section-kicker">Bugün</span><h2>Bugünün Maçları</h2><p>Maçların saati, lig bilgisi ve sistemdeki mevcut durumu.</p></div></div>
-          <div class="workspace"><article class="panel"><div class="panel-head"><h3>Takip edilen maçlar</h3><span class="count">${matches.length}</span></div><div class="panel-body match-list">${matchCards}</div></article>
+        <section class="section" id="matches"><div class="section-title"><div><span class="section-kicker">Fikstür</span><h2>Önümüzdeki 7 Gün</h2><p>Bugün maç yoksa bile sıradaki desteklenen lig maçları burada görünür.</p></div></div>
+          <div class="workspace"><article class="panel"><div class="panel-head"><h3>Yaklaşan maçlar</h3><span class="count">${matches.length}</span></div><div class="panel-body match-list">${matchCards}</div></article>
             <article class="panel" id="odds"><div class="panel-head"><h3>Güncel oranlar</h3><span class="count">${odds.length}</span></div><div class="panel-body odds-list">${oddsRows}</div></article></div></section>
+
+        <section class="section" id="archive"><div class="section-title"><div><span class="section-kicker">Sistem boş değil</span><h2>Veri Arşivi</h2><p>Canlı maç olmasa da sistemin elindeki gerçek geçmiş veriyi burada görebilirsin.</p></div></div>
+          <div class="grid">
+            <article class="card"><strong>Historical analiz örnekleri</strong><p style="font-size:1.45rem;color:var(--text);font-weight:900">${historicalExampleCount}</p><p>Geçmiş oran benzerliği için uygun örnek.</p></article>
+            <article class="card"><strong>Gerçek oran geçmişi olan maç</strong><p style="font-size:1.45rem;color:var(--text);font-weight:900">${archivedOddsMatchCount}</p><p>Kickoff öncesi gerçek snapshot bulunan bitmiş maç.</p></article>
+            <article class="card"><strong>Pre-match snapshot</strong><p style="font-size:1.45rem;color:var(--text);font-weight:900">${preKickoffSnapshotCount.toLocaleString('tr-TR')}</p><p>Oran Rotası ve geçmiş eşleşme motorunun gerçek ham verisi.</p></article>
+            <article class="card"><strong>Geçmiş tahmin kaydı</strong><p style="font-size:1.45rem;color:var(--text);font-weight:900">${predictionHistory.length}</p><p>Son kayıtlar aşağıdaki geçmiş bölümünde listelenir.</p></article>
+          </div>
+          <div class="section-title"><div><h2>Son Tamamlanan Maçlar</h2><p>Skor ve elimizdeki geçmiş oran kayıtlarıyla birlikte.</p></div></div>
+          <article class="panel"><div class="panel-body match-list">${recentFinishedCards}</div></article></section>
 
         <section class="section" id="predictions"><div class="section-title"><div><span class="section-kicker">Tahminler</span><h2>Tahmin Durumu</h2><p>Resmi tahminler, incelemeye değer adaylar ve neden tahmin oluşturulmadığı.</p></div></div>
           ${predictionDiagnosticSummary}

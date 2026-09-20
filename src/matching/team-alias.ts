@@ -1,9 +1,11 @@
 const replacements: Array<[RegExp, string]> = [
   [/\bman\s+utd\b/g, 'manchester united'],
   [/\bman\s+united\b/g, 'manchester united'],
+  [/\bmanchester\s+utd\b/g, 'manchester united'],
   [/\bman\s+city\b/g, 'manchester city'],
   [/\binter\s+milan\b/g, 'inter'],
   [/\bparis\s+saint[- ]germain\b/g, 'psg'],
+  [/\bfenerbahce\b/g, 'fenerbahce'],
   [/\bbayern\s+munchen\b/g, 'bayern munich'],
 ];
 

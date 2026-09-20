@@ -13,6 +13,7 @@ import { predictionConfig } from '../../src/predictions/config.js';
 import { evaluatePrediction } from '../../src/predictions/engine.js';
 import { PredictionRepository } from '../../src/predictions/service.js';
 import type { AnalysisItem } from '../../src/odds-analysis/types.js';
+import { HistoricalRepository } from '../../src/db/historical-repository.js';
 
 describe('FootballRepository integration', () => {
   let container: Awaited<ReturnType<PostgreSqlContainer['start']>> | undefined;
@@ -136,10 +137,34 @@ describe('FootballRepository integration', () => {
     expect(Number(count.rows[0].count)).toBe(1);
   });
 
+  it('preserves historical provenance, precedence, coverage and resumable job state', async () => {
+    const observedAt = new Date('2026-09-17T12:00:00Z');
+    const fixture = { providerExternalId: 'history-fm-1',
+      league: { providerExternalId: '47', name: 'Premier League', country: 'England', logoUrl: null, sourceUpdatedAt: observedAt, raw: {} },
+      homeTeam: { providerExternalId: 'history-home', name: 'Fenerbahçe', shortName: null, country: 'Türkiye', logoUrl: null, sourceUpdatedAt: observedAt, raw: {} },
+      awayTeam: { providerExternalId: 'history-away', name: 'PSG', shortName: null, country: 'France', logoUrl: null, sourceUpdatedAt: observedAt, raw: {} },
+      kickoffAt: new Date('2026-09-17T18:00:00Z'), status: 'finished' as const, round: null, season: '2025/26',
+      homeScore: 2, awayScore: 1, sourceUpdatedAt: observedAt, raw: {} };
+    await repository.upsertMatch('fotmob', fixture);
+    const statistics = { matchProviderExternalId: fixture.providerExternalId, sourceUpdatedAt: observedAt, raw: { source: 'fotmob' }, statistics:
+      ['corners','yellow_cards','total_shots','shots_on_target','fouls_committed','ball_possession','offsides','expected_goals']
+        .map((key) => ({ key, label: key, period: 'ALL', homeValue: 4, awayValue: 3 })) };
+    const historical = new HistoricalRepository(pool);
+    expect((await historical.save('fotmob', fixture, statistics, observedAt, 'ref-1')).action).toBe('inserted');
+    expect((await historical.save('fotmob', fixture, statistics, observedAt, 'ref-1')).action).toBe('updated');
+    const provenance = await pool.query('SELECT count(*) FROM historical_stat_provenance WHERE provider=\'fotmob\'');
+    expect(Number(provenance.rows[0]!.count)).toBe(1);
+    const job = await historical.startJob('fotmob', '47', '2025/26', 1);
+    await historical.updateJob(job.id, { requested: 1, received: 1, inserted: 1, updated: 0, duplicates: 0, errors: 0, cursor: { index: 1 } }, 'COMPLETED');
+    const resumed = await historical.startJob('fotmob', '47', '2025/26', 1);
+    expect(resumed.cursor).toMatchObject({ index: 1 });
+    expect((await historical.coverageAudit()).find((row) => row.season === '2025/26')).toMatchObject({ results: 1, corners: 1, cards: 1, offsides: 1, referee: 1 });
+  });
+
   it('validates migrations, checkpoint, profiles, replay, rollback and advisory locks', async () => {
     const migrations = await migrationStatus(pool);
     expect(migrations.pendingMigrations).toEqual([]);
-    expect(migrations.schemaVersion).toBe('010_prediction_self_audit_v4.sql');
+    expect(migrations.schemaVersion).toBe('011_free_historical_data_v1.sql');
     const health = await repository.databaseHealth();
     expect(health.status).toBe('ok');
     await repository.markStarted('fotmob', 'integration-checkpoint', { index: 0 });

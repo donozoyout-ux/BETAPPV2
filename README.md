@@ -71,6 +71,23 @@ SofascoreProvider -> dayanıklı HTTP istemcisi -> Collector Worker
 - Dashboard ve API, değişebilir `ADAY TAHMİN`, kilitli resmi tahmin, `GEÇ`, sonuç ve yalnız locked kayıtları kullanan performans/kalibrasyon verilerini ayırır. Her yüzde N ile birlikte gösterilir; “Reference Paper Return” stored reference odds'a dayalı teorik ölçümdür, executable return değildir.
 - Ayrıntılı pipeline, SKIP, settlement, lock, calibration ve sınırlar: [`docs/prediction-v1.md`](docs/prediction-v1.md).
 
+### Free Historical Data V1
+
+- FotMob, geçmiş maç istatistikleri için öncelikli ve etkin kaynaktır. `historical:backfill` job'u yeniden başlatılabilir, idempotenttir ve her import için kaynak/payload hash/normalizasyon sürümü provenance kaydı tutar.
+- StatBunker, SoccerStats ve AdamChoi bu sürümde yalnız qualification durumundadır. Açık otomatik erişim izni olmadan production collector başlatılamaz. FootyStats HTML scraper kesinlikle kapalıdır; yalnız belgelenmiş API için ayrı yetkilendirme değerlendirilir.
+- Historical istatistikler historical odds değildir. Hiçbir istatistik kaydı ODDS_V1/PREDICTION_V1 odds similarity örneği üretmez.
+
+```bash
+# FotMob geçmiş maç/statistik backfill (BACKFILL_ENABLED=true gerekir)
+npm run historical:backfill -- --provider=fotmob --competition=PremierLeague --season=2025-2026
+
+# Provider-independent kapsama yüzdeleri
+npm run historical:audit
+
+# Güvenli policy/robots qualification
+npm run providers:qualify -- --provider=statbunker
+```
+
 ## Yerel kurulum
 
 Gereksinimler: Node.js 22+, npm ve PostgreSQL 16+.

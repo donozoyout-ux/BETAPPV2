@@ -7,6 +7,10 @@ import { FlashscoreProvider, IddaaProvider } from '../providers/public-page-prov
 import { SofascoreProvider } from '../providers/sofascore.js';
 import type { ProviderQualification } from './types.js';
 import { NowgoalProvider } from '../providers/nowgoal.js';
+import { StatBunkerQualificationProvider } from '../providers/statbunker/qualification.js';
+import { SoccerStatsQualificationProvider } from '../providers/soccerstats.js';
+import { AdamChoiQualificationProvider } from '../providers/adamchoi.js';
+import { PolicyQualificationProvider } from '../providers/policy-qualification.js';
 
 function printReport(report: ProviderQualification) {
   console.log(`\n${report.provider.toUpperCase()}\nConnection: ${report.connection}`);
@@ -25,11 +29,16 @@ const providers = [
   new IddaaProvider(config),
   new FlashscoreProvider(config),
   new NowgoalProvider(config, logger),
+  new StatBunkerQualificationProvider(), new SoccerStatsQualificationProvider(), new AdamChoiQualificationProvider(),
+  new PolicyQualificationProvider('footystats'),
 ];
+const requested = process.argv.slice(2).find((item) => item.startsWith('--provider='))?.slice('--provider='.length);
+const selectedProviders = requested ? providers.filter((provider) => provider.name === requested) : providers;
+if (requested && !selectedProviders.length) throw new Error(`Unknown provider: ${requested}`);
 
 console.log('PROVIDER QUALIFICATION');
 try {
-  for (const provider of providers) {
+  for (const provider of selectedProviders) {
     const report = await provider.qualify();
     await repository.save(report);
     printReport(report);

@@ -29,6 +29,7 @@ jobs:
 
           ROOT_URL="https://betappv2.onrender.com/?keepalive=${GITHUB_RUN_ID}"
           HEALTH_URL="https://betappv2.onrender.com/health?keepalive=${GITHUB_RUN_ID}"
+          DIAG_URL="https://betappv2.onrender.com/api/predictions/diagnostics?keepalive=${GITHUB_RUN_ID}"
 
           root_code="$(curl \
             --location \
@@ -58,6 +59,35 @@ jobs:
 
           echo "BETAPP root HTTP: ${root_code:-000}"
           echo "BETAPP health HTTP: ${health_code:-000}"
+
+          diag_file="$(mktemp)"
+          diag_code="000"
+          for attempt in 1 2 3 4 5 6 7 8; do
+            diag_code="$(curl --location --silent --show-error --output "$diag_file" --write-out '%{http_code}'               --connect-timeout 20 --max-time 60 "$DIAG_URL" || true)"
+            [[ "$diag_code" == "200" ]] && break
+            echo "Prediction diagnostics not ready yet (HTTP ${diag_code:-000}, attempt $attempt/8)"
+            sleep 15
+          done
+          echo "BETAPP diagnostics HTTP: ${diag_code:-000}"
+          if [[ "$diag_code" == "200" ]]; then
+            jq -c '{
+              thresholds,
+              historical,
+              current: {
+                targets: .current.targets,
+                withOddsAnalysis: .current.withOddsAnalysis,
+                predictionRuns: .current.predictionRuns,
+                predictRuns: .current.predictRuns,
+                skipRuns: .current.skipRuns,
+                runsWithHistoricalEvidence: .current.runsWithHistoricalEvidence,
+                maximumHistoricalSettledSample: .current.maximumHistoricalSettledSample,
+                topSkipReasons: .current.topSkipReasons
+              }
+            }' "$diag_file"
+          else
+            echo "Prediction diagnostics endpoint unavailable in this deployment."
+          fi
+          rm -f "$diag_file"
 
           # Any HTTP response means the Render service was reached/woken.
           # Fail only when both requests could not reach the service at all.

@@ -90,20 +90,28 @@ export function renderDashboard(data: DashboardData): string {
 
   const matchCards = matches.length ? matches.map((match) => {
     const status = String(match.status ?? 'scheduled');
-    return `<article class="match"><div class="match-time">${escapeHtml(formatDate(match.kickoff_at, { hour: '2-digit', minute: '2-digit' }))}<small>${escapeHtml(formatDate(match.kickoff_at, { day: '2-digit', month: 'short' }))}</small></div>
-      <div class="teams"><span>${escapeHtml(match.home_team)} — ${escapeHtml(match.away_team)}</span><small>${escapeHtml(match.league)}</small></div>
-      <span class="status ${status === 'live' ? 'live' : ''}">${escapeHtml(status)}</span></article>`;
+    const matchId = String(match.id ?? '');
+    const matchOdds = odds.filter((odd) => String(odd.match_id ?? '') === matchId).length;
+    const hasCorner = analyses.some((analysis) => String(analysis.match_id ?? '') === matchId);
+    const officialPrediction = predictions.find((prediction) => String(prediction.match_id ?? '') === matchId);
+    const previewPrediction = predictionPreviews.find((prediction) => String(prediction.match_id ?? '') === matchId);
+    const prediction = officialPrediction ?? previewPrediction;
+    const decision = prediction
+      ? String(prediction.decision) === 'SKIP' ? 'GEÇ' : officialPrediction ? 'RESMİ' : 'ADAY'
+      : '—';
+    const actionHref = hasCorner && matchId ? `/matches/${encodeURIComponent(matchId)}/corners` : '#odds-analysis';
+    return `<article class="match" data-search-row><div class="match-time">${escapeHtml(formatDate(match.kickoff_at, { hour: '2-digit', minute: '2-digit' }))}<small>${escapeHtml(formatDate(match.kickoff_at, { day: '2-digit', month: 'short' }))}</small></div>
+      <div class="teams"><span>${escapeHtml(match.home_team)} — ${escapeHtml(match.away_team)}</span><small>${escapeHtml(match.league)} · Odds ${matchOdds} · Tahmin ${escapeHtml(decision)}</small></div>
+      <div style="display:flex;align-items:center;gap:6px"><span class="status ${status === 'live' ? 'live' : ''}">${escapeHtml(status)}</span><a class="status" href="${escapeHtml(actionHref)}">${hasCorner ? 'DETAY' : 'ANALİZ'}</a></div></article>`;
   }).join('') : renderEmpty('⌁', 'Henüz maç verisi yok', 'Collector ilk senkronizasyonunu tamamladığında bugünün desteklenen lig maçları burada görünecek.');
-
-  const oddsRows = odds.length ? odds.slice(0, 80).map((odd) => {
+  const oddsRows = odds.length ? odds.slice(0, 100).map((odd) => {
     const movement = finiteNumber(odd.movement_percent);
     const movementClass = movement > 0 ? 'up' : movement < 0 ? 'down' : 'flat';
     const movementLabel = `${movement > 0 ? '+' : ''}${movement.toFixed(2)}%`;
-    return `<article class="odd"><div class="odd-match"><span>${escapeHtml(odd.home_team)} — ${escapeHtml(odd.away_team)}</span><small>${escapeHtml(formatDate(odd.kickoff_at, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }))} · ${escapeHtml(String(odd.provider).replace('nowgoal:', ''))}</small></div>
+    return `<article class="odd" data-search-row><div class="odd-match"><span>${escapeHtml(odd.home_team)} — ${escapeHtml(odd.away_team)}</span><small>${escapeHtml(formatDate(odd.kickoff_at, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }))} · ${escapeHtml(String(odd.provider).replace('nowgoal:', ''))}</small></div>
       <div class="odd-market"><span>${escapeHtml(odd.selection)}</span><small>${escapeHtml(odd.market_name)}${odd.line == null ? '' : ` · ${escapeHtml(odd.line)}`}</small></div>
       <span class="price">${finiteNumber(odd.current_odds).toFixed(2)}</span><span class="movement ${movementClass}">${escapeHtml(movementLabel)}</span></article>`;
   }).join('') : renderEmpty('↗', 'Nowgoal oranları bekleniyor', 'Maçlar FotMob ile eşleştikten sonra 1X2, Asya handikapı, gol ve korner oranları burada listelenecek.');
-
   const providerCards = sources.map((provider) => {
     const status = String(provider.status ?? 'unknown');
     const badgeClass = status === 'healthy' ? 'ok' : status === 'degraded' ? 'partial' : 'neutral';
@@ -147,13 +155,13 @@ export function renderDashboard(data: DashboardData): string {
     const candidate = (prediction.selected_candidate ?? null) as Record<string, unknown> | null;
     const skip = String(prediction.decision) === 'SKIP';
     const reasons = (prediction.reasons ?? prediction.skip_reasons ?? []) as unknown[];
-    return `<article class="card"><div class="row"><strong>${escapeHtml(prediction.home_team)} — ${escapeHtml(prediction.away_team)}</strong>
-      <span class="badge ${skip ? 'partial' : 'ok'}">${skip ? '⏭ GEÇ' : locked ? '🔒 RESMİ TAHMİN' : 'ADAY TAHMİN — DEĞİŞEBİLİR'}</span></div>
-      <p>${escapeHtml(prediction.league)} · ${escapeHtml(formatDate(prediction.kickoff_at, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }))}</p>
-      ${skip ? `<p>Neden: ${reasons.map(escapeHtml).join(' · ') || 'Veri eşiği karşılanmadı'}</p>` : `<p><strong>${escapeHtml(prediction.market_type ?? candidate?.marketType)} ${escapeHtml(prediction.line ?? candidate?.line ?? '')} · ${escapeHtml(prediction.selection ?? candidate?.selection)}</strong></p>
-      <p>Prediction Score: ${escapeHtml(prediction.prediction_score ?? candidate?.predictionScore)}/100 · Reference odds: ${escapeHtml(prediction.reference_odds ?? candidate?.referenceOdds)}</p>
-      <p>Historical Similar Matches: N=${escapeHtml(prediction.historical_settled_sample_size ?? (candidate?.historical as Record<string, unknown> | undefined)?.settledSampleSize ?? 0)}</p>`}
-      <p style="color:var(--muted)">Deterministik kayıt · gerçek bahis yürütme yetkisi yoktur.</p></article>`;
+    const score = prediction.prediction_score ?? candidate?.predictionScore;
+    const scoreClass = finiteNumber(score) >= 85 ? 'ok' : finiteNumber(score) >= 75 ? 'partial' : 'neutral';
+    return `<article class="card prediction-card" data-search-row><div class="row"><div><strong>${escapeHtml(prediction.home_team)} — ${escapeHtml(prediction.away_team)}</strong><p>${escapeHtml(prediction.league)} · ${escapeHtml(formatDate(prediction.kickoff_at, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }))}</p></div>
+      <span class="badge ${skip ? 'partial' : locked ? 'ok' : 'neutral'}">${skip ? 'GEÇ' : locked ? 'RESMİ' : 'ADAY'}</span></div>
+      ${skip ? `<p><strong>Neden:</strong> ${reasons.map(escapeHtml).join(' · ') || 'Veri eşiği karşılanmadı'}</p>` : `<p><strong>${escapeHtml(prediction.market_type ?? candidate?.marketType)} ${escapeHtml(prediction.line ?? candidate?.line ?? '')} · ${escapeHtml(prediction.selection ?? candidate?.selection)}</strong></p>
+      <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:10px"><span class="badge ${scoreClass}">Score ${escapeHtml(score)}/100</span><span class="badge neutral">Odds ${escapeHtml(prediction.reference_odds ?? candidate?.referenceOdds)}</span><span class="badge neutral">Historical N=${escapeHtml(prediction.historical_settled_sample_size ?? (candidate?.historical as Record<string, unknown> | undefined)?.settledSampleSize ?? 0)}</span></div>`}
+      <p style="color:var(--muted-2)">Deterministik kayıt · gerçek bahis yürütme yetkisi yoktur.</p></article>`;
   }).join('') || renderEmpty('◇', 'Henüz tahmin kaydı yok', 'ODDS_V1 verisi oluşunca aday tahminler ve resmi SKIP kararları burada görünecek.');
   const predictionHistoryRows = predictionHistory.length ? predictionHistory.map((prediction) => {
     const skip = String(prediction.decision) === 'SKIP';

@@ -34,7 +34,7 @@ describe('renderDashboard', () => {
         ],
       }],
     });
-    expect(html).toContain('Geçmiş İkizler &amp; Sonuç Haritası');
+    expect(html).toContain('Geçmiş İkizler & Sonuç Haritası');
     expect(html).toContain('Bu hesabı oluşturan en yakın geçmiş maçlar');
     expect(html).toContain('Sonuç Haritası');
     expect(html).toContain('Kanıt farkı');

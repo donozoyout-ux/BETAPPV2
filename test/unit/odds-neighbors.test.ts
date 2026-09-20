@@ -79,12 +79,24 @@ describe('Odds Neighbor Engine V2', () => {
     expect(calculateEvidenceStrength(analysis.pastTwins, analysis.evidenceGap, 1)).toBe('VERY_LOW');
   });
 
-  it('chronological backtest only offers earlier records as candidates', () => {
+  it('chronological backtest only uses earlier records and scores the real target outcome', () => {
     const records = [
-      { ...match('a', '2028-01-01T18:00:00Z'), route: route('a') },
-      { ...match('b', '2029-01-01T18:00:00Z'), route: route('b') },
+      { ...match('a', '2028-01-01T18:00:00Z', [2,1]), route: route('a') },
+      { ...match('b', '2029-01-01T18:00:00Z', [0,0]), route: route('b') },
     ];
     const report = chronologicalNeighborBacktest(records);
-    expect(report).toMatchObject({ targets: 2, targetsWithNeighbors: 1 });
+    expect(report).toMatchObject({
+      targets: 2,
+      targetsWithNeighbors: 1,
+      evaluableTargets: 1,
+      positiveTargets: 0,
+      targetPositiveRate: 0,
+    });
+    expect(report.buckets[0]).toMatchObject({
+      bucket: '1-4',
+      evaluableTargets: 1,
+      positiveTargets: 0,
+      targetPositiveRate: 0,
+    });
   });
 });

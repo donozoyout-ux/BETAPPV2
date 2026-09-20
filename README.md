@@ -76,6 +76,7 @@ SofascoreProvider -> dayanıklı HTTP istemcisi -> Collector Worker
 - FotMob, geçmiş maç istatistikleri için öncelikli ve etkin kaynaktır. `historical:backfill` job'u yeniden başlatılabilir, idempotenttir ve her import için kaynak/payload hash/normalizasyon sürümü provenance kaydı tutar.
 - StatBunker, SoccerStats ve AdamChoi bu sürümde yalnız qualification durumundadır. Açık otomatik erişim izni olmadan production collector başlatılamaz. FootyStats HTML scraper kesinlikle kapalıdır; yalnız belgelenmiş API için ayrı yetkilendirme değerlendirilir.
 - Historical istatistikler historical odds değildir. Hiçbir istatistik kaydı ODDS_V1/PREDICTION_V1 odds similarity örneği üretmez.
+- Canlı, sınırlı FotMob audit ve diğer kaynaklar için gerçek qualification kaydı: [`docs/free-historical-data-v2-qualification.md`](docs/free-historical-data-v2-qualification.md).
 
 ```bash
 # FotMob geçmiş maç/statistik backfill (BACKFILL_ENABLED=true gerekir)
@@ -83,6 +84,12 @@ npm run historical:backfill -- --provider=fotmob --competition=PremierLeague --s
 
 # Provider-independent kapsama yüzdeleri
 npm run historical:audit
+
+# PostgreSQL'e yazmadan sınırlı canlı FotMob örneklemesi
+npm run historical:dry-run -- --competition=PremierLeague --season=2024-2025 --sample=12
+
+# Sadece robots.txt üzerinden, kalıcı kayıt oluşturmayan source-policy sorgusu
+npm run historical:qualify -- --provider=statbunker
 
 # Güvenli policy/robots qualification
 npm run providers:qualify -- --provider=statbunker
@@ -210,6 +217,7 @@ DB_TEST_SCHEMA=betapp_test_integration npm run test:integration:db
 | `PROVIDER_TIMEOUT_MS` | `10000` | İstek timeout'u |
 | `PROVIDER_REQUESTS_PER_SECOND` | `2` | Süreç başına provider hız limiti |
 | `PROVIDER_MAX_RETRIES` | `4` | 408/429/5xx ve ağ hatası retry sayısı |
+| `HISTORICAL_REQUEST_DELAY_MS` | `750` | Her historical match-detail isteği arasındaki ek koruyucu bekleme |
 | `SOFASCORE_BASE_URL` | `https://api.sofascore.com/api/v1` | Provider base URL; bölgesel/WAF engelinde değiştirilebilir |
 | `FOTMOB_BASE_URL` | `https://www.fotmob.com/api/data` | FotMob public web veri endpoint'i |
 | `IDDAA_BASE_URL` | `https://www.iddaa.com` | Iddaa public site qualification adresi |

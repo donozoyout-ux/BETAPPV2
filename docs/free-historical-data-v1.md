@@ -18,6 +18,8 @@ Provider precedence is deterministic: FotMob, then StatBunker, then SoccerStats,
 
 `historical_backfill_jobs` stores provider/competition/season cursor, counters, errors, timestamps, and terminal status. The FotMob CLI updates the job after every fixture, resumes from its cursor by default, and treats one fixture failure as a partial job rather than crashing the whole run.
 
+`historical:dry-run` is a separate read-only command: it has no database pool or repository dependency, samples a bounded number of completed match-detail payloads, applies the normal bounded HTTP client plus circuit breaker, and honours `HISTORICAL_REQUEST_DELAY_MS` (750 ms by default). Match-detail responses have a five-minute process-local cache to avoid duplicate qualification/backfill requests. It is a coverage sample, not a historical-odds import.
+
 `npm run historical:audit` reports match/result and field coverage for corners, cards, shots, shots on target, fouls, offsides, possession, xG, and referee per competition/season.
 
 New provider data remains outside official Prediction V1 until its quality, coverage, and replay behavior are independently reviewed.

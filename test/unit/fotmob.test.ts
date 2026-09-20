@@ -38,4 +38,13 @@ describe('FotMobProvider', () => {
     ]);
     await expect(provider.getMatchStatistics('2')).resolves.toMatchObject({ statistics: [] });
   });
+
+  it('uses a short-lived process-local cache for duplicate match-detail reads', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ content: { stats: { Periods: { All: { stats: [] } } } } }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const provider = new FotMobProvider(config, createLogger(config));
+    await provider.getMatchStatistics('same-match');
+    await provider.getMatchStatistics('same-match');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

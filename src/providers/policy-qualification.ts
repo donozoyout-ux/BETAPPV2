@@ -3,15 +3,28 @@ import { providerCapabilities, type ProviderQualification, type QualifiableProvi
 import { historicalProviderPolicies } from '../historical/provider-policy.js';
 import type { HistoricalProviderId } from '../historical/types.js';
 
-async function robotsStatus(baseUrl: string): Promise<{ status: number | null; note: string }> {
+type RobotsStatus = { status: number | null; note: string };
+
+function classifyRobots(body: string): string {
+  const wildcard = body.match(/user-agent:\s*\*([\s\S]*?)(?=\n\s*user-agent:|$)/i)?.[1] ?? '';
+  if (!wildcard) return 'ROBOTS_UNCLEAR';
+  if (/^\s*disallow:\s*\/\s*$/im.test(wildcard)) return 'ROBOTS_RESTRICTED';
+  if (/^\s*disallow:\s*$/im.test(wildcard)) return 'ROBOTS_ALLOWED';
+  if (!/^\s*disallow:/im.test(wildcard)) return 'ROBOTS_ALLOWED';
+  return 'ROBOTS_UNCLEAR';
+}
+
+async function robotsStatus(baseUrl: string): Promise<RobotsStatus> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5_000);
   try {
     const response = await fetch(`${baseUrl}/robots.txt`, { signal: controller.signal,
       headers: { 'user-agent': 'BETAPP-V2/2.0 (+provider-qualification)' } });
-    return { status: response.status, note: response.ok ? 'robots.txt erişilebilir; otomasyon izni ayrıca manuel doğrulanmalı.' : 'robots.txt erişilemedi.' };
+    const body = await response.text();
+    const classification = response.ok ? classifyRobots(body) : 'ROBOTS_RESTRICTED';
+    return { status: response.status, note: `${classification}; robots.txt erişilebilir olsa bile kullanım koşulları ayrıca doğrulanmalı.` };
   } catch {
-    return { status: null, note: 'robots.txt sorgusu başarısız; manuel inceleme gerekli.' };
+    return { status: null, note: 'ROBOTS_UNCLEAR; robots.txt sorgusu başarısız, manuel inceleme gerekli.' };
   } finally { clearTimeout(timer); }
 }
 

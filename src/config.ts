@@ -42,6 +42,9 @@ const schema = z.object({
   PROVIDER_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(60_000).default(10_000),
   PROVIDER_REQUESTS_PER_SECOND: z.coerce.number().positive().max(10).default(2),
   PROVIDER_MAX_RETRIES: z.coerce.number().int().min(0).max(10).default(4),
+  // Historical imports are intentionally slower than the live collector. This is an
+  // additional per-match pause; the provider HTTP rate limit still applies as well.
+  HISTORICAL_REQUEST_DELAY_MS: z.coerce.number().int().min(0).max(60_000).default(750),
   SOFASCORE_BASE_URL: z.string().url().default('https://api.sofascore.com/api/v1'),
   FOTMOB_BASE_URL: z.string().url().default('https://www.fotmob.com/api/data'),
   IDDAA_BASE_URL: z.string().url().default('https://www.iddaa.com'),

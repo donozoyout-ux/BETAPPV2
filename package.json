@@ -24,6 +24,8 @@
     "data:backfill": "tsx src/corners/backfill-cli.ts",
     "data:audit": "tsx src/data/audit-cli.ts",
     "historical:backfill": "tsx src/historical/backfill-cli.ts",
+    "historical:dry-run": "tsx src/historical/dry-run-cli.ts",
+    "historical:qualify": "tsx src/historical/qualification-cli.ts",
     "historical:audit": "tsx src/historical/audit-cli.ts",
     "corners:profiles": "tsx src/corners/profiles-cli.ts",
     "corners:analyze": "tsx src/corners/analyze-cli.ts",

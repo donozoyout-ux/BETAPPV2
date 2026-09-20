@@ -52,6 +52,7 @@ export class FotMobProvider implements FootballDataProvider, QualifiableProvider
   private readonly http: ResilientHttpClient;
   private readonly baseUrl: string;
   private readonly supportedLeagueIds: Set<number>;
+  private readonly detailsCache = new Map<string, { expiresAt: number; payload: DetailsPayload }>();
 
   constructor(config: AppConfig, logger: Logger) {
     this.baseUrl = config.FOTMOB_BASE_URL.replace(/\/$/, '');
@@ -103,7 +104,14 @@ export class FotMobProvider implements FootballDataProvider, QualifiableProvider
   }
 
   private async details(matchId: string): Promise<DetailsPayload> {
-    return this.http.getJson<DetailsPayload>(`/matchDetails?matchId=${encodeURIComponent(matchId)}`);
+    const cached = this.detailsCache.get(matchId);
+    if (cached && cached.expiresAt > Date.now()) return cached.payload;
+    const payload = await this.http.getJson<DetailsPayload>(`/matchDetails?matchId=${encodeURIComponent(matchId)}`);
+    // Qualification and a backfill can ask for the same detail payload more than once.
+    // Keep it process-local and short-lived so we reduce duplicate traffic without
+    // treating cached data as persisted historical evidence.
+    this.detailsCache.set(matchId, { payload, expiresAt: Date.now() + 5 * 60_000 });
+    return payload;
   }
 
   async getMatchStatistics(matchProviderExternalId: string): Promise<MatchStatistics> {

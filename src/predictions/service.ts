@@ -81,7 +81,7 @@ export class PredictionRepository {
       FROM matches m JOIN LATERAL(SELECT * FROM odds_analysis_runs ar WHERE ar.match_id=m.id
         ORDER BY ar.created_at DESC,ar.id DESC LIMIT 1) r ON true
       LEFT JOIN odds_analysis_items i ON i.run_id=r.id WHERE ${whereSql}
-      GROUP BY m.id,r.id ORDER BY m.kickoff_at`, params);
+      GROUP BY m.id,r.id,r.input_hash ORDER BY m.kickoff_at`, params);
     return result.rows.map((row) => ({ matchId: row.match_id, competitionId: row.competition_id,
       kickoffAt: new Date(row.kickoff_at), oddsInputHash: row.odds_input_hash,
       oddsItems: (row.items as Array<Record<string, unknown>>).map(analysisItem) }));

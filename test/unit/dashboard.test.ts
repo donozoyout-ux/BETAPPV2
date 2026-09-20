@@ -12,7 +12,7 @@ describe('renderDashboard', () => {
     expect(html).toContain('&lt;b&gt;A&lt;/b&gt;');
   });
 
-  it('renders a compact historical odds-match view instead of the raw ODDS_V1 card flood', () => {
+  it('renders historical odds matches in plain Turkish', () => {
     const html = renderDashboard({ providers: [], matches: [],
       oddsAnalyses: Array.from({ length: 20 }, (_, index) => ({ id: index })),
       oddsSimilarity: [{
@@ -23,27 +23,68 @@ describe('renderDashboard', () => {
           historicalHitRate: 0.61, averageSimilarity: 0.91, scope: 'SAME_COMPETITION' },
         matches: [
           { rank: 1, kickoffAt: '2026-04-11T15:00:00Z', league: 'Premier League',
-            homeTeam: 'Old Home', awayTeam: 'Old Away', selection: 'HOME',
+            homeTeam: 'Old Home', awayTeam: 'Old Away', marketType: 'MATCH_RESULT', selection: 'HOME',
             openingOdds: 2.08, currentOdds: 1.86, probabilityDeltaPp: 5.9, featureLeadMinutes: 90,
             outcome: 'WIN', homeScore: 2, awayScore: 0, homeCorners: 6, awayCorners: 4 },
-          { rank: 2, kickoffAt: '2026-03-02T20:00:00Z', league: 'Premier League',
-            homeTeam: 'Past A', awayTeam: 'Past B', selection: 'HOME',
-            openingOdds: 2.12, currentOdds: 1.88, probabilityDeltaPp: 5.5, featureLeadMinutes: 90,
-            outcome: 'LOSS', homeScore: 0, awayScore: 1, homeCorners: 3, awayCorners: 5 },
         ],
       }],
     });
-    expect(html).toContain('Tarihsel Oran Eşleşmeleri');
-    expect(html).toContain('En yakın geçmiş oran eşleşmeleri · en fazla 5 maç');
+    expect(html).toContain('Oran Eşleşmeleri');
+    expect(html).toContain('En çok benzeyen geçmiş maçlar');
     expect(html).toContain('Arsenal — Chelsea');
     expect(html).toContain('Old Home — Old Away');
     expect(html).toContain('2.08 → 1.86');
-    expect(html).toContain('WIN');
-    expect(html).not.toContain('Piyasa Olasılığı');
-    expect(html).not.toContain('Bookmaker Teyidi');
+    expect(html).toContain('Kazandı');
+    expect(html).toContain('Benzer geçmiş maç: 44');
+    expect(html).not.toContain('Historical N=');
+    expect(html).not.toContain('+6.20 pp');
     expect(html).not.toMatch(/KESİN|GARANTİ|BANKO|%100/);
   });
-  it('renders the UI V3 command center and self-audit navigation', () => {
+
+  it('separates official predictions, review candidates and rejected matches', () => {
+    const html = renderDashboard({
+      providers: [{ provider: 'fotmob', status: 'healthy' }, { provider: 'nowgoal', status: 'healthy' }],
+      matches: [],
+      predictions: [
+        { match_id: 'official-1', decision: 'PREDICT', state: 'LOCKED_PREDICTION', home_team: 'Takım A', away_team: 'Takım B',
+          league: 'Süper Lig', kickoff_at: '2026-09-20T18:00:00Z', market_type: 'TOTAL_GOALS', line: 2.5, selection: 'OVER',
+          prediction_score: 81, historical_settled_sample_size: 34, historical_hit_rate: 0.62, reference_odds: 1.88 },
+        { match_id: 'reject-1', decision: 'SKIP', state: 'LOCKED_SKIP', home_team: 'Takım C', away_team: 'Takım D',
+          league: 'Süper Lig', kickoff_at: '2026-09-20T19:00:00Z',
+          skip_reasons: ['ODDS_NOT_ELIGIBLE','MOVEMENT_NOT_SUPPORTED'] },
+      ],
+      predictionReviewCandidates: [{
+        matchId: 'review-1', homeTeam: 'Fenerbahçe', awayTeam: 'Eyüpspor', league: 'Süper Lig',
+        kickoffAt: '2026-09-20T17:00:00Z', skipReasons: ['INSUFFICIENT_HISTORICAL_SAMPLE','MOVEMENT_NOT_SUPPORTED'],
+        candidate: { marketType: 'TOTAL_GOALS', line: 2.5, selection: 'OVER', openingOdds: 2.05, currentOdds: 1.88,
+          probabilityDeltaPp: 0.8, predictionScore: 68, bookmakerCount: 4, agreementRatio: 0.75,
+          dataQualityGrade: 'GOOD', confidenceGrade: 'LIMITED',
+          historical: { settledSampleSize: 13, historicalHitRate: 0.58 } },
+      }],
+      predictionDiagnostics: {
+        thresholds: { minimumHistoricalSample: 30 },
+        historical: { total: 116, eligible: 116 },
+        current: { targets: 24, withOddsAnalysis: 15, predictRuns: 1, skipRuns: 14,
+          maximumHistoricalSettledSample: 13,
+          topSkipReasons: [
+            { reason: 'ODDS_NOT_ELIGIBLE', count: 14 },
+            { reason: 'MOVEMENT_NOT_SUPPORTED', count: 14 },
+          ] },
+      },
+    });
+    expect(html).toContain('Resmi Tahminler');
+    expect(html).toContain('İnceleme Adayları');
+    expect(html).toContain('Tahmin Oluşturulmayan Maçlar');
+    expect(html).toContain('Fenerbahçe — Eyüpspor');
+    expect(html).toContain('Benzer geçmiş maç: 13 / gereken 30');
+    expect(html).toContain('Oran verisi henüz yeterli değil');
+    expect(html).toContain('Oran hareketi yeterince güçlü değil');
+    expect(html).not.toContain('ODDS_NOT_ELIGIBLE');
+    expect(html).not.toContain('MOVEMENT_NOT_SUPPORTED');
+    expect(html).not.toContain('INSUFFICIENT_HISTORICAL_SAMPLE');
+  });
+
+  it('renders the main navigation and system status in plain Turkish', () => {
     const html = renderDashboard({
       providers: [{ provider: 'fotmob', status: 'healthy' }, { provider: 'nowgoal', status: 'healthy' }],
       matches: [],
@@ -52,14 +93,16 @@ describe('renderDashboard', () => {
       predictionSelfAuditRootCauses: [],
       predictionAdaptiveRuleProposals: [],
     });
-    expect(html).toContain('BETAPP Command Center');
-    expect(html).toContain('BETAPP UI V3');
-    expect(html).toContain('Maç Merkezi');
-    expect(html).toContain('Tahmin Merkezi');
-    expect(html).toContain('Self‑Audit Merkezi');
-    expect(html).toContain('V4 · Öneriler');
-    expect(html).toContain('data-global-search');
-    expect(html).toContain('autoApply=false');
+    expect(html).toContain('Futbol Analiz Sistemi');
+    expect(html).toContain('Ana Sayfa');
+    expect(html).toContain('Bugünün Maçları');
+    expect(html).toContain('Tahminler');
+    expect(html).toContain('Oran Eşleşmeleri');
+    expect(html).toContain('Geçmiş Tahminler');
+    expect(html).toContain('Sistem Kontrolü');
+    expect(html).toContain('Çalışıyor');
+    expect(html).toContain('Sağlıklı');
+    expect(html).not.toContain('BETAPP Command Center');
+    expect(html).not.toContain('SELF-AUDIT V1');
   });
-
 });

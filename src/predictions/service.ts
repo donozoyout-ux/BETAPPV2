@@ -719,6 +719,48 @@ export class PredictionRepository {
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
       .map(([reason, count]) => ({ reason, count }));
 
+    let dryRun: Record<string, unknown>;
+    try {
+      const [targets, examples] = await Promise.all([this.loadTargets(), this.loadHistoricalExamples()]);
+      const dryReasonCounts = new Map<string, number>();
+      let wouldPredict = 0;
+      let wouldSkip = 0;
+      let dryMaximumHistoricalSettledSample = 0;
+      const drySamples: Array<Record<string, unknown>> = [];
+      for (const target of targets) {
+        try {
+          const evaluation = evaluatePrediction(target, examples, now, config);
+          if (evaluation.decision === 'PREDICT') wouldPredict += 1; else wouldSkip += 1;
+          for (const reason of evaluation.skipReasons) {
+            dryReasonCounts.set(reason, (dryReasonCounts.get(reason) ?? 0) + 1);
+          }
+          const bestHistoricalN = evaluation.candidates.reduce((best, candidate) =>
+            Math.max(best, candidate.historical.settledSampleSize), 0);
+          dryMaximumHistoricalSettledSample = Math.max(dryMaximumHistoricalSettledSample, bestHistoricalN);
+          if (drySamples.length < 8) drySamples.push({
+            matchId: target.matchId, kickoffAt: target.kickoffAt, decision: evaluation.decision,
+            skipReasons: evaluation.skipReasons, bestHistoricalSettledSample: bestHistoricalN,
+            candidateCount: evaluation.candidates.length,
+          });
+        } catch (error) {
+          dryReasonCounts.set('EVALUATION_EXCEPTION', (dryReasonCounts.get('EVALUATION_EXCEPTION') ?? 0) + 1);
+          if (drySamples.length < 8) drySamples.push({
+            matchId: target.matchId, kickoffAt: target.kickoffAt, decision: 'ERROR',
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+      dryRun = {
+        targets: targets.length, historicalExamples: examples.length, wouldPredict, wouldSkip,
+        maximumHistoricalSettledSample: dryMaximumHistoricalSettledSample,
+        topReasons: [...dryReasonCounts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+          .map(([reason, count]) => ({ reason, count })),
+        sampleRuns: drySamples,
+      };
+    } catch (error) {
+      dryRun = { error: error instanceof Error ? error.message : String(error) };
+    }
+
     return {
       modelVersion: config.modelVersion,
       thresholds: {
@@ -733,6 +775,7 @@ export class PredictionRepository {
         eligible: Number(historical.rows[0]?.eligible ?? 0),
         byMarket: historicalByMarket.rows.map((row) => ({ marketType: String(row.market_type), settled: Number(row.settled) })),
       },
+      dryRun,
       current: {
         targets: Number(currentTargets.rows[0]?.targets ?? 0),
         withOddsAnalysis: Number(currentTargets.rows[0]?.with_analysis ?? 0),
@@ -873,52 +916,59 @@ export class PredictionService {
       this.repository.latestSegmentSelfAudits(this.config),
     ]);
     let previews = 0; let lockedPredictions = 0; let lockedSkips = 0; let missed = 0;
-    let selfAuditBlocked = 0; let selfAuditSegmentBlocked = 0;
+    let selfAuditBlocked = 0; let selfAuditSegmentBlocked = 0; let targetErrors = 0;
+    const errors: Array<{ matchId: string; message: string }> = [];
     for (const target of targets) {
-      let evaluation = this.attachSelfAudit(evaluatePrediction(target, examples, now, this.config), selfAudit);
-      evaluation = this.attachSegmentSelfAudit(evaluation, segmentAudits);
-      const window = lockWindowState(target.kickoffAt, now, this.config);
-      if (window.missed) {
-        evaluation = this.rehashDecision({ ...evaluation, decision: 'SKIP', selectedCandidate: null,
-          skipReasons: [...new Set([...evaluation.skipReasons, 'LOCK_WINDOW_MISSED' as const])],
-        }, 'LOCK_WINDOW_MISSED');
-        const runId = await this.repository.saveRun(evaluation, this.config);
-        // A missed pre-kickoff window is itself an official, auditable SKIP. The
-        // unique journal constraint preserves the first decision if another worker
-        // observes the same match concurrently.
-        if (target.kickoffAt > now && await this.repository.lock(evaluation, runId, now, window.minutesToKickoff, this.config)) lockedSkips += 1;
-        missed += 1;
-        continue;
-      }
-      if (window.eligible && selfAudit?.status === 'PAUSED' && selfAudit.guardActive && evaluation.decision === 'PREDICT') {
-        evaluation = this.rehashDecision({
-          ...evaluation,
-          decision: 'SKIP',
-          selectedCandidate: null,
-          skipReasons: [...new Set([...evaluation.skipReasons, 'SELF_AUDIT_PAUSED' as const])],
-        }, 'SELF_AUDIT_PAUSED');
-        selfAuditBlocked += 1;
-      } else if (window.eligible && evaluation.decision === 'PREDICT') {
-        const pausedSegments = this.matchingSegmentAudits(evaluation, segmentAudits)
-          .filter((audit) => audit.status === 'PAUSED' && audit.guardActive).map((audit) => audit.segmentKey).sort();
-        if (pausedSegments.length) {
+      try {
+        let evaluation = this.attachSelfAudit(evaluatePrediction(target, examples, now, this.config), selfAudit);
+        evaluation = this.attachSegmentSelfAudit(evaluation, segmentAudits);
+        const window = lockWindowState(target.kickoffAt, now, this.config);
+        if (window.missed) {
+          evaluation = this.rehashDecision({ ...evaluation, decision: 'SKIP', selectedCandidate: null,
+            skipReasons: [...new Set([...evaluation.skipReasons, 'LOCK_WINDOW_MISSED' as const])],
+          }, 'LOCK_WINDOW_MISSED');
+          const runId = await this.repository.saveRun(evaluation, this.config);
+          if (target.kickoffAt > now && await this.repository.lock(evaluation, runId, now, window.minutesToKickoff, this.config)) lockedSkips += 1;
+          missed += 1;
+          continue;
+        }
+        if (window.eligible && selfAudit?.status === 'PAUSED' && selfAudit.guardActive && evaluation.decision === 'PREDICT') {
           evaluation = this.rehashDecision({
             ...evaluation,
             decision: 'SKIP',
             selectedCandidate: null,
-            skipReasons: [...new Set([...evaluation.skipReasons, 'SELF_AUDIT_SEGMENT_PAUSED' as const])],
-          }, `SELF_AUDIT_SEGMENT_PAUSED:${pausedSegments.join(',')}`);
-          selfAuditSegmentBlocked += 1;
+            skipReasons: [...new Set([...evaluation.skipReasons, 'SELF_AUDIT_PAUSED' as const])],
+          }, 'SELF_AUDIT_PAUSED');
+          selfAuditBlocked += 1;
+        } else if (window.eligible && evaluation.decision === 'PREDICT') {
+          const pausedSegments = this.matchingSegmentAudits(evaluation, segmentAudits)
+            .filter((audit) => audit.status === 'PAUSED' && audit.guardActive).map((audit) => audit.segmentKey).sort();
+          if (pausedSegments.length) {
+            evaluation = this.rehashDecision({
+              ...evaluation,
+              decision: 'SKIP',
+              selectedCandidate: null,
+              skipReasons: [...new Set([...evaluation.skipReasons, 'SELF_AUDIT_SEGMENT_PAUSED' as const])],
+            }, `SELF_AUDIT_SEGMENT_PAUSED:${pausedSegments.join(',')}`);
+            selfAuditSegmentBlocked += 1;
+          }
         }
-      }
-      const runId = await this.repository.saveRun(evaluation, this.config);
-      previews += 1;
-      if (window.eligible && await this.repository.lock(evaluation, runId, now, window.minutesToKickoff, this.config)) {
-        if (evaluation.decision === 'PREDICT') lockedPredictions += 1; else lockedSkips += 1;
+        const runId = await this.repository.saveRun(evaluation, this.config);
+        previews += 1;
+        if (window.eligible && await this.repository.lock(evaluation, runId, now, window.minutesToKickoff, this.config)) {
+          if (evaluation.decision === 'PREDICT') lockedPredictions += 1; else lockedSkips += 1;
+        }
+      } catch (error) {
+        targetErrors += 1;
+        if (errors.length < 10) errors.push({
+          matchId: target.matchId,
+          message: error instanceof Error ? error.message : String(error),
+        });
       }
     }
     return { matches: targets.length, previews, lockedPredictions, lockedSkips, missed, selfAuditBlocked, selfAuditSegmentBlocked,
       selfAuditStatus: selfAudit?.status ?? 'NOT_AVAILABLE', selfAuditGuardActive: selfAudit?.guardActive ?? false,
-      activePausedSegments: segmentAudits.filter((audit) => audit.status === 'PAUSED' && audit.guardActive).length };
+      activePausedSegments: segmentAudits.filter((audit) => audit.status === 'PAUSED' && audit.guardActive).length,
+      targetErrors, errors };
   }
 }

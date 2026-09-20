@@ -649,6 +649,104 @@ export class PredictionRepository {
     }));
   }
 
+  async diagnostics(now = new Date(), config: PredictionConfig = predictionConfig) {
+    const [historical, historicalByMarket, currentTargets, currentRuns] = await Promise.all([
+      this.pool.query<{ total: number; eligible: number }>(`SELECT count(*)::integer total,
+        count(*) FILTER(WHERE analysis_eligible=true)::integer eligible FROM prediction_historical_examples
+        WHERE model_version=$1 AND config_hash=$2`, [config.modelVersion,predictionConfigHash(config)]),
+      this.pool.query<{ market_type: string; settled: number }>(`SELECT market_type,count(*)::integer settled
+        FROM prediction_historical_examples WHERE model_version=$1 AND config_hash=$2 AND analysis_eligible=true
+        GROUP BY market_type ORDER BY settled DESC,market_type`, [config.modelVersion,predictionConfigHash(config)]),
+      this.pool.query<{ targets: number; with_analysis: number }>(`SELECT count(*)::integer targets,
+        count(*) FILTER(WHERE ar.id IS NOT NULL)::integer with_analysis
+        FROM matches m LEFT JOIN LATERAL(
+          SELECT id FROM odds_analysis_runs WHERE match_id=m.id ORDER BY created_at DESC,id DESC LIMIT 1
+        ) ar ON true
+        WHERE m.status IN('scheduled','live') AND m.kickoff_at>=$1::timestamptz-interval '3 hours'
+          AND m.kickoff_at<$1::timestamptz+interval '48 hours'`, [now]),
+      this.pool.query(`SELECT DISTINCT ON(r.match_id) r.match_id,r.decision,r.skip_reasons,r.candidates,r.selected_candidate,
+        m.kickoff_at,l.name league,ht.name home_team,at.name away_team
+        FROM prediction_runs r JOIN matches m ON m.id=r.match_id JOIN leagues l ON l.id=m.league_id
+        JOIN teams ht ON ht.id=m.home_team_id JOIN teams at ON at.id=m.away_team_id
+        WHERE m.status IN('scheduled','live') AND m.kickoff_at>=$1::timestamptz-interval '3 hours'
+          AND m.kickoff_at<$1::timestamptz+interval '48 hours'
+        ORDER BY r.match_id,r.created_at DESC,r.id DESC`, [now]),
+    ]);
+
+    const skipReasonCounts = new Map<string, number>();
+    let predictRuns = 0;
+    let skipRuns = 0;
+    let runsWithHistoricalEvidence = 0;
+    let maximumHistoricalSettledSample = 0;
+    const sampleRuns: Array<Record<string, unknown>> = [];
+
+    const parseArray = (value: unknown): Array<Record<string, unknown>> => {
+      if (Array.isArray(value)) return value.filter((item): item is Record<string, unknown> =>
+        Boolean(item) && typeof item === 'object');
+      if (typeof value === 'string') {
+        try {
+          const parsed = JSON.parse(value);
+          return Array.isArray(parsed) ? parsed.filter((item): item is Record<string, unknown> =>
+            Boolean(item) && typeof item === 'object') : [];
+        } catch { return []; }
+      }
+      return [];
+    };
+
+    for (const row of currentRuns.rows) {
+      if (String(row.decision) === 'PREDICT') predictRuns += 1; else skipRuns += 1;
+      const reasons = Array.isArray(row.skip_reasons) ? row.skip_reasons.map(String)
+        : typeof row.skip_reasons === 'string' ? (() => { try { return JSON.parse(row.skip_reasons) as string[]; } catch { return []; } })()
+        : [];
+      for (const reason of reasons) skipReasonCounts.set(reason, (skipReasonCounts.get(reason) ?? 0) + 1);
+      const candidates = parseArray(row.candidates);
+      const bestHistoricalN = candidates.reduce((best, candidate) => {
+        const historicalEvidence = candidate.historical && typeof candidate.historical === 'object'
+          ? candidate.historical as Record<string, unknown> : null;
+        return Math.max(best, Number(historicalEvidence?.settledSampleSize ?? 0));
+      }, 0);
+      if (bestHistoricalN > 0) runsWithHistoricalEvidence += 1;
+      maximumHistoricalSettledSample = Math.max(maximumHistoricalSettledSample, bestHistoricalN);
+      if (sampleRuns.length < 8) sampleRuns.push({
+        matchId: String(row.match_id), kickoffAt: row.kickoff_at, league: String(row.league),
+        homeTeam: String(row.home_team), awayTeam: String(row.away_team), decision: String(row.decision),
+        skipReasons: reasons, bestHistoricalSettledSample: bestHistoricalN,
+        hasSelectedCandidate: row.selected_candidate != null,
+      });
+    }
+
+    const topSkipReasons = [...skipReasonCounts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([reason, count]) => ({ reason, count }));
+
+    return {
+      modelVersion: config.modelVersion,
+      thresholds: {
+        minimumHistoricalSample: config.minimumHistoricalSample,
+        minimumPredictionScore: config.minimumPredictionScore,
+        minimumBookmakerCount: config.minimumBookmakerCount,
+        minimumCompleteStateCount: config.minimumCompleteStateCount,
+        officialWindowStartMinutes: config.officialWindowStartMinutes,
+      },
+      historical: {
+        total: Number(historical.rows[0]?.total ?? 0),
+        eligible: Number(historical.rows[0]?.eligible ?? 0),
+        byMarket: historicalByMarket.rows.map((row) => ({ marketType: String(row.market_type), settled: Number(row.settled) })),
+      },
+      current: {
+        targets: Number(currentTargets.rows[0]?.targets ?? 0),
+        withOddsAnalysis: Number(currentTargets.rows[0]?.with_analysis ?? 0),
+        predictionRuns: currentRuns.rows.length,
+        predictRuns,
+        skipRuns,
+        runsWithHistoricalEvidence,
+        maximumHistoricalSettledSample,
+        topSkipReasons,
+        sampleRuns,
+      },
+    };
+  }
+
   async today(timeZone = 'Europe/Istanbul') {
     return (await this.pool.query(`SELECT j.*,m.kickoff_at,l.name league,ht.name home_team,at.name away_team,s.outcome,
       CASE WHEN j.decision='PREDICT' THEN 'LOCKED_PREDICTION' ELSE 'LOCKED_SKIP' END state,

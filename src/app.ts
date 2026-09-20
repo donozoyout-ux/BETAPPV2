@@ -4,6 +4,7 @@ import type { AppConfig } from './config.js';
 import type { FootballRepository } from './db/repository.js';
 import type { OddsAnalysisRepository } from './db/odds-analysis-repository.js';
 import { renderCornerDetail, renderDashboard } from './dashboard.js';
+import { historicalOddsBackfillAudit } from './historical-odds/audit.js';
 import type { Logger } from './logger.js';
 import type { PredictionRepository } from './predictions/service.js';
 import type { OddsIntelligenceRepository } from './odds-neighbors/repository.js';
@@ -53,6 +54,7 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
         preKickoffSnapshots: 0, excludedPostKickoffSnapshots: 0, providers: [], earliestKickoff: null, latestKickoff: null },
       routeReadiness: { matchesWithRoute: 0, matchesWithMovementReadyRoute: 0, routes: 0, movementReadyRoutes: 0,
         scannedMatchRouteCoverage: 0, scannedMatchMovementCoverage: 0 },
+      historicalBackfill: historicalOddsBackfillAudit(),
       markets: [], competitionSeasons: [],
     };
   });

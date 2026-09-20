@@ -5,6 +5,7 @@ import { buildOddsIntelligence } from './engine.js';
 import { oddsNeighborConfig } from './config.js';
 import { chronologicalNeighborBacktest } from './backtest.js';
 import type { HistoricalNeighborInput, MatchOutcomeData, OddsIntelligence, OddsRoute, SearchMode } from './types.js';
+import { historicalOddsBackfillAudit } from '../historical-odds/audit.js';
 
 type Row = Record<string, unknown>;
 function snapshot(row: Record<string, unknown>): OddsSnapshot { return { matchId: String(row.match_id), provider: String(row.provider), marketType: String(row.market_type), marketName: String(row.market_name), line: row.line == null ? null : Number(row.line), selection: String(row.selection), oddsDecimal: Number(row.odds_decimal), capturedAt: new Date(String(row.captured_at)) }; }
@@ -206,6 +207,7 @@ export class OddsIntelligenceRepository {
         scannedMatchRouteCoverage: result.rows.length ? matchesWithRoute / result.rows.length : 0,
         scannedMatchMovementCoverage: result.rows.length ? matchesWithMovementReadyRoute / result.rows.length : 0,
       },
+      historicalBackfill: historicalOddsBackfillAudit(),
       markets: [...marketStats.values()].map((item) => ({
         marketType: item.marketType,
         marketName: item.marketName,

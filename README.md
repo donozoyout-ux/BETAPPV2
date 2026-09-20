@@ -77,6 +77,7 @@ SofascoreProvider -> dayanıklı HTTP istemcisi -> Collector Worker
 - StatBunker, SoccerStats ve AdamChoi bu sürümde yalnız qualification durumundadır. Açık otomatik erişim izni olmadan production collector başlatılamaz. FootyStats HTML scraper kesinlikle kapalıdır; yalnız belgelenmiş API için ayrı yetkilendirme değerlendirilir.
 - Historical istatistikler historical odds değildir. Hiçbir istatistik kaydı ODDS_V1/PREDICTION_V1 odds similarity örneği üretmez.
 - Canlı, sınırlı FotMob audit ve diğer kaynaklar için gerçek qualification kaydı: [`docs/free-historical-data-v2-qualification.md`](docs/free-historical-data-v2-qualification.md).
+- Nowgoal'un geçmiş diary satırları için gerçek qualification kaydı: [`docs/nowgoal-historical-odds-qualification-v1.md`](docs/nowgoal-historical-odds-qualification-v1.md). Bu satırlar kaynak zaman damgası taşımadığından historical odds backfill bilinçli olarak uygulanmamıştır.
 
 ### Odds Neighbor Engine V2
 

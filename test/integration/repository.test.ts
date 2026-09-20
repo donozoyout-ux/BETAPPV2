@@ -427,7 +427,7 @@ describe('FootballRepository integration', () => {
     const historicalKickoff = new Date('2098-01-02T18:00:00Z'); const targetKickoff = new Date('2099-01-02T18:00:00Z');
     const fixture = (externalId: string, kickoffAt: Date, status: 'scheduled' | 'finished', homeScore: number | null, awayScore: number | null) => ({
       providerExternalId: externalId,
-      league: { providerExternalId: 'neighbor-league', name: 'Neighbor League', country: 'Test', logoUrl: null, sourceUpdatedAt: observedAt, raw: {} },
+      league: { providerExternalId: '47', name: 'Premier League', country: 'England', logoUrl: null, sourceUpdatedAt: observedAt, raw: {} },
       homeTeam: { providerExternalId: `${externalId}-home`, name: `${externalId} Home`, shortName: null, country: 'Test', logoUrl: null, sourceUpdatedAt: observedAt, raw: {} },
       awayTeam: { providerExternalId: `${externalId}-away`, name: `${externalId} Away`, shortName: null, country: 'Test', logoUrl: null, sourceUpdatedAt: observedAt, raw: {} },
       kickoffAt, status, round: null, season: '2098/99', homeScore, awayScore, sourceUpdatedAt: observedAt, raw: {},

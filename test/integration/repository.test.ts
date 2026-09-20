@@ -215,7 +215,7 @@ describe('FootballRepository integration', () => {
       }
     }
     const predictionRepository = new PredictionRepository(pool);
-    const targetAnalysis = await new OddsAnalysisRepository(pool).analyzeAndSave(targetId);
+    const targetAnalysis = await new OddsAnalysisRepository(pool).analyzeAndSave(targetId, targetCurrent);
     expect(targetAnalysis?.inserted).toBe(true);
     const loadedTargets = await predictionRepository.loadTargets('m.id=$1', [targetId]);
     expect(loadedTargets).toHaveLength(1);

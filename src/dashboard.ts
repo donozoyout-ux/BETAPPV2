@@ -360,16 +360,16 @@ export function renderDashboard(data: DashboardData): string {
     const pauseUntil = predictionSelfAudit.pauseUntil == null ? null
       : formatDate(predictionSelfAudit.pauseUntil, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
     const guardText = status === 'PAUSED' && guardActive
-      ? `Koruma aktif${pauseUntil ? ` · ${pauseUntil} tarihine kadar` : ''}. Yeni resmi PREDICT yerine GEÇ kaydı oluşturulur.`
+      ? `Koruma aktif${pauseUntil ? ` · ${pauseUntil} tarihine kadar` : ''}. Yeni resmi tahminler geçici olarak bekletilir.`
       : status === 'PAUSED'
-        ? 'Koruma süresi doldu · recovery modunda yeni sonuç toplanmasına izin verilir.'
-        : 'Geçmiş kayıtlar değiştirilmez; audit yalnız yeni resmi tahmin kapısını kontrol eder.';
+        ? 'Koruma süresi doldu; sistem yeniden sonuç toplamaya başladı.'
+        : 'Geçmiş kayıtlar değiştirilmez; bu kontrol yalnız yeni resmi tahminleri izler.';
     return `<div class="grid"><article class="card"><div class="row"><strong>Genel güvenlik kontrolü</strong>
-      <span class="badge ${badgeClass}">${escapeHtml(effectiveStatus)}</span></div>
-      <p>Son örnek N=${escapeHtml(predictionSelfAudit.recentSampleSize ?? 0)} · Binary N=${escapeHtml(predictionSelfAudit.recentBinarySampleSize ?? 0)}</p>
-      <p>Positive rate: <strong>${escapeHtml(positiveRate)}</strong> · Reference Paper ROI: <strong>${escapeHtml(roi)}</strong></p>
-      <p>Calibration MAE: ${escapeHtml(calibration)} · Kayıp serisi: ${escapeHtml(predictionSelfAudit.lossStreak ?? 0)}</p>
-      ${reasons.length ? `<p style="color:${guardActive ? 'var(--red)' : 'var(--amber)'}">Neden: ${reasons.map(escapeHtml).join(' · ')}</p>` : ''}
+      <span class="badge ${badgeClass}">${escapeHtml(translateSystemStatus(effectiveStatus))}</span></div>
+      <p>Son kontrol edilen örnek: ${escapeHtml(predictionSelfAudit.recentSampleSize ?? 0)} · Sonuçlanmış örnek: ${escapeHtml(predictionSelfAudit.recentBinarySampleSize ?? 0)}</p>
+      <p>Başarılı sonuç oranı: <strong>${escapeHtml(positiveRate)}</strong> · Deneme getirisi: <strong>${escapeHtml(roi)}</strong></p>
+      <p>Kalibrasyon farkı: ${escapeHtml(calibration)} · Üst üste kayıp: ${escapeHtml(predictionSelfAudit.lossStreak ?? 0)}</p>
+      ${reasons.length ? `<p style="color:${guardActive ? 'var(--red)' : 'var(--amber)'}">Sistem performansta dikkat edilmesi gereken bir durum algıladı.</p>` : ''}
       <p style="color:var(--muted)">${escapeHtml(guardText)}</p>
       </article></div>`;
   })() : renderEmpty('◇', 'Self-Audit henüz çalışmadı', 'Worker ilk döngüsünde tahmin performansını otomatik kontrol edecek.');
@@ -391,11 +391,11 @@ export function renderDashboard(data: DashboardData): string {
       const roi = item.recentReferencePaperRoi == null ? '—'
         : `${(finiteNumber(item.recentReferencePaperRoi) * 100).toFixed(1)}%`;
       return `<tr><td>${escapeHtml(scope)}</td><td><strong>${escapeHtml(label)}</strong></td>
-        <td><span class="badge ${badgeClass}">${escapeHtml(effectiveStatus)}</span></td>
+        <td><span class="badge ${badgeClass}">${escapeHtml(translateSystemStatus(effectiveStatus))}</span></td>
         <td>${escapeHtml(item.recentSampleSize ?? 0)}</td><td>${escapeHtml(rate)}</td><td>${escapeHtml(roi)}</td>
         <td>${escapeHtml(item.lossStreak ?? 0)}</td></tr>`;
     }).join('');
-    return `<details><summary>Lig ve bahis türü kontrolü · Lig ve bahis türü ayrıntıları · PAUSED ${activePaused} · WATCH ${watch}</summary>
+    return `<details><summary>Lig ve bahis türü kontrolü · Lig ve bahis türü ayrıntıları · Durduruldu ${activePaused} · İzleniyor ${watch}</summary>
       <div class="details-body"><p style="color:var(--muted)">Sadece sorunlu market/lig kapatılır. Genel V1 freni ayrıca çalışmaya devam eder.</p>
       <div class="scroll"><table><thead><tr><th>Kapsam</th><th>Segment</th><th>Durum</th><th>Son N</th>
       <th>Positive rate</th><th>Ref. ROI</th><th>Kayıp serisi</th></tr></thead><tbody>${rows}</tbody></table></div></div></details>`;
@@ -419,12 +419,12 @@ export function renderDashboard(data: DashboardData): string {
         : `${finiteNumber(item.referencePaperRoiGap) >= 0 ? '+' : ''}${(finiteNumber(item.referencePaperRoiGap) * 100).toFixed(1)} pp`;
       const evidence = `${(finiteNumber(item.evidenceStrength) * 100).toFixed(0)}%`;
       return `<tr><td>${escapeHtml(item.dimension)}</td><td><strong>${escapeHtml(item.bucketLabel)}</strong></td>
-        <td><span class="badge ${badgeClass}">${escapeHtml(status)}</span></td>
+        <td><span class="badge ${badgeClass}">${escapeHtml(translateSystemStatus(status))}</span></td>
         <td>${escapeHtml(item.binarySampleSize ?? 0)}</td><td>${escapeHtml(rate)}</td><td>${escapeHtml(roi)}</td>
         <td>${escapeHtml(rateGap)}</td><td>${escapeHtml(roiGap)}</td>
         <td>${escapeHtml(evidence)}</td><td>${escapeHtml(item.rootCauseScore ?? 0)}</td></tr>`;
     }).join('');
-    return `<details><summary>Performans nedenleri · Performans nedenleri · HIGH RISK ${highRisk} · WATCH ${watch}</summary>
+    return `<details><summary>Performans nedenleri · Performans nedenleri · Yüksek risk ${highRisk} · İzleniyor ${watch}</summary>
       <div class="details-body"><p style="color:var(--muted)">Teşhis katmanıdır; tek başına resmi tahmini durdurmaz.
       Faktör performansı aynı dönem genel baseline ile karşılaştırılır.</p>
       <div class="scroll"><table><thead><tr><th>Faktör</th><th>Bucket</th><th>Durum</th><th>Binary N</th>
@@ -479,9 +479,9 @@ export function renderDashboard(data: DashboardData): string {
         <td>${escapeHtml(interaction)}</td><td>${escapeHtml(evidence)}</td><td>${escapeHtml(item.proposalScore ?? 0)}</td>
         <td><span class="badge ${decisionClass}">${escapeHtml(decision)}</span></td></tr>`;
     }).join('');
-    return `<details><summary>Sistem önerileri · Kural önerileri · PROPOSED ${proposed} · APPROVED ${approved} · REJECTED ${rejected}</summary>
+    return `<details><summary>Sistem önerileri · Kural önerileri · Öneri ${proposed} · Onaylandı ${approved} · Reddedildi ${rejected}</summary>
       <div class="details-body"><p style="color:var(--muted)">V4 yalnız öneri üretir. autoApply=false ve executionAuthority=false.
-      APPROVED durumu bile PredictionConfig'i veya tahmin motorunu otomatik değiştirmez.</p>
+      Onaylandı durumu bile PredictionConfig'i veya tahmin motorunu otomatik değiştirmez.</p>
       <div class="scroll"><table><thead><tr><th>Risk</th><th>Önerilen koşul</th><th>N</th><th>Rate farkı</th>
       <th>ROI farkı</th><th>Interaction</th><th>Kanıt</th><th>Proposal score</th><th>Karar</th></tr></thead>
       <tbody>${rows}</tbody></table></div></div></details>`;

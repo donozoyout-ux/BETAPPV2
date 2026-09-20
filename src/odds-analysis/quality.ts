@@ -18,7 +18,11 @@ export function calculateDataQuality(consensus: ConsensusResult, cutoff: Date, c
   if (consensus.bookmakerCount < config.minimumBookmakerCount) warnings.push(`only ${consensus.bookmakerCount} bookmakers available`);
   const hasOpeningAndCurrent = consensus.completeStateBookmakerCount >= config.minimumBookmakerCount
     && consensus.minimumCompleteStateCount >= 2;
-  if (!hasOpeningAndCurrent) warnings.push('insufficient complete opening/current market states');
+  if (!hasOpeningAndCurrent) {
+    warnings.push(consensus.minimumCompleteStateCount <= 1
+      ? 'FIRST_COMPLETE_ODDS_MEASUREMENT'
+      : 'INSUFFICIENT_COMPLETE_ODDS_STATES');
+  }
   if (ageMinutes > config.staleSnapshotMinutes) warnings.push(`latest snapshot is stale (${Math.round(ageMinutes)} minutes old)`);
   const marketCompleteness = consensus.bookmakerCount > 0 ? 1 : 0;
   const validOpening = consensus.minimumCompleteStateCount >= 1 ? 1 : 0;

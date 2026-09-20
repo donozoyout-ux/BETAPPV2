@@ -62,4 +62,25 @@ describe('renderDashboard', () => {
     expect(html).toContain('autoApply=false');
   });
 
+  it('groups predictions into official, review, and compact rejected sections without raw reason flood', () => {
+    const reviewCandidate = { marketType: 'MATCH_RESULT', marketName: '1X2', line: null, selection: 'HOME',
+      referenceOdds: 1.9, openingOdds: 2.05, currentOdds: 1.9, probabilityDeltaPp: 0.8, predictionScore: 58,
+      bookmakerCount: 2, agreementRatio: 0.71, completeStateBookmakerCount: 1, minimumCompleteStateCount: 1,
+      dataQualityGrade: 'LIMITED', confidenceGrade: 'LIMITED', warnings: [],
+      historical: { settledSampleSize: 5, historicalHitRate: 0.6, averageSimilarity: 0.82 } };
+    const skipped = Array.from({ length: 15 }, (_, index) => ({ match_id: `m-${index}`,
+      kickoff_at: '2026-09-20T18:00:00Z', league: 'League', home_team: `<b>Home ${index}</b>`, away_team: 'Away',
+      state: 'PREVIEW', decision: 'SKIP', candidates: index === 0 ? [reviewCandidate] : [],
+      skip_reasons: ['ODDS_NOT_ELIGIBLE', 'MOVEMENT_NOT_SUPPORTED'] }));
+    const html = renderDashboard({ providers: [], matches: [], predictionPreviews: skipped });
+    expect(html).toContain('Resmi Tahminler');
+    expect(html).toContain('İnceleme Adayları');
+    expect(html).toContain('Elenen Maçlar');
+    expect(html).toContain('İNCELEME ADAYI');
+    expect(html).toContain('Tüm elenen maçları göster');
+    expect(html).toContain('Oran verisi henüz yeterli değil');
+    expect(html).not.toContain('ODDS_NOT_ELIGIBLE');
+    expect(html).not.toContain('<b>Home');
+  });
+
 });

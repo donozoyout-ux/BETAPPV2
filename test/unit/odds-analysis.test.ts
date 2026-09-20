@@ -115,7 +115,7 @@ describe('ODDS ANALYSIS V1 safety and quality', () => {
     const result = analyzeOdds('m1', kickoff, oneState, { generatedAt: new Date('2026-09-20T17:40:00Z') });
     expect(result.items).toHaveLength(3);
     expect(result.items.every((item) => !item.analysisEligible)).toBe(true);
-    expect(result.items[0]!.warnings.join(' ')).toMatch(/opening\/current/);
+    expect(result.items[0]!.warnings).toContain('FIRST_COMPLETE_ODDS_MEASUREMENT');
   });
 
   it('does not promote repeated snapshots for only one selection into complete state coverage', () => {
@@ -127,6 +127,15 @@ describe('ODDS ANALYSIS V1 safety and quality', () => {
     expect(marketState.completeStateCount).toBeGreaterThan(1);
     expect(marketState.hasDistinctCompleteStates).toBe(false);
     expect(marketState.movements.every((movement) => movement.minimumMarketSelectionSnapshotCount === 1)).toBe(true);
+  });
+
+  it('counts only bookmakers with two genuine complete states as complete-state coverage', () => {
+    const data = ['p1','p2','p3'].flatMap((provider) => market(provider));
+    const result = analyzeOdds('m1', kickoff, data, { generatedAt: new Date('2026-09-20T17:40:00Z') });
+    expect(result.items).toHaveLength(3);
+    expect(result.items.every((entry) => entry.completeStateBookmakerCount === 3)).toBe(true);
+    expect(result.items.every((entry) => entry.minimumCompleteStateCount === 2)).toBe(true);
+    expect(result.items.every((entry) => entry.analysisEligible)).toBe(true);
   });
 
   it('strictly excludes snapshots at or after kickoff and prevents future leakage', () => {

@@ -111,7 +111,13 @@ async function runCycle(): Promise<void> {
     catch (error) { logger.error({ err: error }, 'Odds collector cycle failed'); }
   }
   if (!stopped) {
-    try { await predictionService.refreshPreviewsAndLocks(); }
+    try {
+      const result = await predictionService.refreshPreviewsAndLocks();
+      logger.info({ targets: result.targets, savedRuns: result.savedRuns, officialPredictions: result.officialPredictions,
+        skips: result.skips, reviewCandidates: result.reviewCandidates, targetErrors: result.targetErrors },
+      'Prediction cycle completed');
+      for (const error of result.errors) logger.warn(error, 'Prediction target failed; continuing');
+    }
     catch (error) { logger.error({ err: error }, 'Prediction preview/lock cycle failed; continuing'); }
   }
 }

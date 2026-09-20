@@ -10,18 +10,21 @@ const stable = (value: unknown): unknown => Array.isArray(value) ? value.map(sta
   ? Object.fromEntries(Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b))
     .map(([key, item]) => [key, stable(item)])) : value;
 
-function reason(item: AnalysisItem, candidate: PredictionCandidate, config: PredictionConfig): SkipReason | null {
-  if (![...supported].some((name) => item.marketType.toUpperCase().includes(name))) return 'UNSUPPORTED_MARKET';
-  if (!item.analysisEligible) return 'ODDS_NOT_ELIGIBLE';
-  if (item.dataQuality.score < config.minimumDataQualityScore) return 'LOW_DATA_QUALITY';
-  if (item.modelConfidence.score < config.minimumConfidenceScore) return 'LOW_MODEL_CONFIDENCE';
-  if (item.bookmakerCount < config.minimumBookmakerCount) return 'INSUFFICIENT_BOOKMAKERS';
-  if (item.minimumCompleteStateCount < config.minimumCompleteStateCount) return 'INSUFFICIENT_COMPLETE_STATES';
-  if (!['SUPPORT', 'STRONG_SUPPORT'].includes(item.movementClass)) return 'MOVEMENT_NOT_SUPPORTED';
-  if (candidate.historical.status === 'INSUFFICIENT_SAMPLE') return 'INSUFFICIENT_HISTORICAL_SAMPLE';
-  if (candidate.cornerConfirmation === 'CONFLICT') return 'CONFLICTING_CORNER_MODEL';
-  if (candidate.predictionScore < config.minimumPredictionScore) return 'LOW_PREDICTION_SCORE';
-  return null;
+function reasons(item: AnalysisItem, candidate: PredictionCandidate, config: PredictionConfig): SkipReason[] {
+  const result: SkipReason[] = [];
+  if (![...supported].some((name) => item.marketType.toUpperCase().includes(name))) result.push('UNSUPPORTED_MARKET');
+  if (!item.analysisEligible) result.push('ODDS_NOT_ELIGIBLE');
+  if (item.dataQuality.score < config.minimumDataQualityScore) result.push('LOW_DATA_QUALITY');
+  if (item.modelConfidence.score < config.minimumConfidenceScore) result.push('LOW_MODEL_CONFIDENCE');
+  if (item.bookmakerCount < config.minimumBookmakerCount) result.push('INSUFFICIENT_BOOKMAKERS');
+  // Both values below are observations from the current ODDS analysis item, never copied thresholds.
+  if (item.completeStateBookmakerCount < config.minimumBookmakerCount
+    || item.minimumCompleteStateCount < config.minimumCompleteStateCount) result.push('INSUFFICIENT_COMPLETE_STATES');
+  if (!['SUPPORT', 'STRONG_SUPPORT'].includes(item.movementClass)) result.push('MOVEMENT_NOT_SUPPORTED');
+  if (candidate.historical.status === 'INSUFFICIENT_SAMPLE') result.push('INSUFFICIENT_HISTORICAL_SAMPLE');
+  if (candidate.cornerConfirmation === 'CONFLICT') result.push('CONFLICTING_CORNER_MODEL');
+  if (candidate.predictionScore < config.minimumPredictionScore) result.push('LOW_PREDICTION_SCORE');
+  return result;
 }
 
 function candidate(item: AnalysisItem, competitionId: string, kickoffAt: Date, examples: HistoricalExample[], config: PredictionConfig) {
@@ -38,7 +41,9 @@ function candidate(item: AnalysisItem, competitionId: string, kickoffAt: Date, e
     predictionScore: scored.score, scoreComponents: scored.components, bookmakerCount: item.bookmakerCount,
     agreementRatio: item.movementAgreementRatio, dataQualityScore: item.dataQuality.score,
     dataQualityGrade: item.dataQuality.grade, confidenceScore: item.modelConfidence.score,
-    confidenceGrade: item.modelConfidence.grade, movementClass: item.movementClass, analysisEligible: item.analysisEligible, historical,
+    confidenceGrade: item.modelConfidence.grade, movementClass: item.movementClass, analysisEligible: item.analysisEligible,
+    snapshotCount: item.snapshotCount, completeStateBookmakerCount: item.completeStateBookmakerCount,
+    minimumCompleteStateCount: item.minimumCompleteStateCount, historical,
     cornerModelProbability: gap == null ? null : item.currentFairProbability + gap / 100,
     marketFairProbability: item.currentFairProbability, modelMarketGapPp: gap,
     // ODDS data quality is not Corner Engine quality. The latter is unavailable
@@ -54,12 +59,12 @@ function candidate(item: AnalysisItem, competitionId: string, kickoffAt: Date, e
 export function evaluatePrediction(target: PredictionTarget, examples: HistoricalExample[], generatedAt = new Date(),
   config: PredictionConfig = predictionConfig): PredictionEvaluation {
   const candidates = target.oddsItems.map((item) => candidate(item, target.competitionId, target.kickoffAt, examples, config));
-  const reasonPairs = target.oddsItems.map((item, index) => reason(item, candidates[index]!, config));
-  const qualifying = candidates.filter((_item, index) => reasonPairs[index] == null)
+  const reasonPairs = target.oddsItems.map((item, index) => reasons(item, candidates[index]!, config));
+  const qualifying = candidates.filter((_item, index) => reasonPairs[index]!.length === 0)
     .sort((a, b) => b.predictionScore - a.predictionScore || b.historical.settledSampleSize - a.historical.settledSampleSize
       || `${a.marketType}:${a.marketName}:${a.line}:${a.selection}`.localeCompare(`${b.marketType}:${b.marketName}:${b.line}:${b.selection}`));
   const selectedCandidate = qualifying[0] ?? null;
-  const skipReasons = [...new Set(reasonPairs.filter((item): item is SkipReason => item != null))];
+  const skipReasons = [...new Set(reasonPairs.flat())];
   if (!target.oddsItems.length) skipReasons.push('NO_ODDS_ANALYSIS');
   const hashPayload = { matchId: target.matchId, kickoffAt: target.kickoffAt.toISOString(), oddsInputHash: target.oddsInputHash,
     historical: candidates.map((item) => item.historical.exampleIds), configHash: predictionConfigHash(config) };

@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 import { analyzeOdds } from '../odds-analysis/engine.js';
+import { defaultConfig as oddsConfig } from '../odds-analysis/config.js';
+import { buildBookmakerMarkets } from '../odds-analysis/movement.js';
 import type { AnalysisItem, OddsSnapshot } from '../odds-analysis/types.js';
 import type { DatabasePool } from '../db/pool.js';
 import { predictionConfig, predictionConfigHash, type PredictionConfig } from './config.js';
@@ -14,6 +16,20 @@ import { evaluateRootCauses, selfAuditV3Config,
 import { adaptiveRuleConfigHash, adaptiveRuleEvaluationInputHash, generateAdaptiveRuleProposals, selfAuditV4Config,
   type AdaptiveRuleConfig } from './self-audit-v4.js';
 import type { HistoricalExample, PredictionEvaluation, PredictionTarget, SettlementOutcome } from './types.js';
+import { bestDisplayCandidate, classifyPredictionDisplay, formatPredictionReason, predictionGateGaps } from './presentation.js';
+
+function presentPredictionRow(row: Record<string, unknown>): Record<string, unknown> {
+  const candidate = bestDisplayCandidate(row);
+  const reasons = Array.isArray(row.skip_reasons) ? row.skip_reasons.map(String) : [];
+  return { ...row, display_tier: classifyPredictionDisplay(row), display_candidate: candidate,
+    display_reasons: reasons.map((code) => ({ code, text: formatPredictionReason(code) })),
+    gate_gaps: candidate ? predictionGateGaps(candidate) : [] };
+}
+
+function safeErrorMessage(error: unknown): string {
+  return (error instanceof Error ? error.message : String(error))
+    .replace(/postgres(?:ql)?:\/\/[^@\s]+@/gi, 'postgresql://[redacted]@').slice(0, 300);
+}
 
 function analysisItem(row: Record<string, unknown>): AnalysisItem {
   return {
@@ -524,12 +540,13 @@ export class PredictionRepository {
   }
 
   async previews() {
-    return (await this.pool.query(`SELECT DISTINCT ON(r.match_id) r.*,m.kickoff_at,l.name league,ht.name home_team,at.name away_team,
+    const rows = (await this.pool.query(`SELECT DISTINCT ON(r.match_id) r.*,m.kickoff_at,l.name league,ht.name home_team,at.name away_team,
       CASE WHEN j.id IS NULL THEN 'PREVIEW' ELSE CASE WHEN j.decision='PREDICT' THEN 'LOCKED_PREDICTION' ELSE 'LOCKED_SKIP' END END state
       FROM prediction_runs r JOIN matches m ON m.id=r.match_id JOIN leagues l ON l.id=m.league_id
       JOIN teams ht ON ht.id=m.home_team_id JOIN teams at ON at.id=m.away_team_id
       LEFT JOIN prediction_journal j ON j.match_id=r.match_id AND j.model_version=r.model_version
       WHERE m.kickoff_at>now() AND j.id IS NULL ORDER BY r.match_id,r.created_at DESC,r.id DESC`)).rows;
+    return rows.map(presentPredictionRow);
   }
 
   async oddsSimilarityShowcase(matchLimit = 4, exampleLimit = 5, now = new Date()) {
@@ -650,7 +667,7 @@ export class PredictionRepository {
   }
 
   async diagnostics(now = new Date(), config: PredictionConfig = predictionConfig) {
-    const [historical, historicalByMarket, currentTargets, currentRuns] = await Promise.all([
+    const [historical, historicalByMarket, currentTargets, currentRuns, targetRows] = await Promise.all([
       this.pool.query<{ total: number; eligible: number }>(`SELECT count(*)::integer total,
         count(*) FILTER(WHERE analysis_eligible=true)::integer eligible FROM prediction_historical_examples
         WHERE model_version=$1 AND config_hash=$2`, [config.modelVersion,predictionConfigHash(config)]),
@@ -671,6 +688,7 @@ export class PredictionRepository {
         WHERE m.status IN('scheduled','live') AND m.kickoff_at>=$1::timestamptz-interval '3 hours'
           AND m.kickoff_at<$1::timestamptz+interval '48 hours'
         ORDER BY r.match_id,r.created_at DESC,r.id DESC`, [now]),
+      this.loadTargets("m.status IN('scheduled','live') AND m.kickoff_at>=$1::timestamptz-interval '3 hours' AND m.kickoff_at<$1::timestamptz+interval '48 hours'", [now]),
     ]);
 
     const skipReasonCounts = new Map<string, number>();
@@ -721,7 +739,8 @@ export class PredictionRepository {
 
     let dryRun: Record<string, unknown>;
     try {
-      const [targets, examples] = await Promise.all([this.loadTargets(), this.loadHistoricalExamples()]);
+      const targets = targetRows;
+      const examples = await this.loadHistoricalExamples();
       const dryReasonCounts = new Map<string, number>();
       let wouldPredict = 0;
       let wouldSkip = 0;
@@ -761,6 +780,80 @@ export class PredictionRepository {
       dryRun = { error: error instanceof Error ? error.message : String(error) };
     }
 
+    const warningCounts = new Map<string, number>();
+    const completeStateDistribution: Record<'zero' | 'one' | 'twoOrMore', number> = { zero: 0, one: 0, twoOrMore: 0 };
+    const bookmakerDistribution: Record<string, number> = {};
+    const movementClasses: Record<string, number> = {
+      STRONG_SUPPORT: 0, SUPPORT: 0, NEUTRAL: 0, OPPOSE: 0, STRONG_OPPOSE: 0,
+    };
+    const historicalNs: number[] = [];
+    const diagnosticIds = targetRows.slice(0, 10).map((target) => target.matchId);
+    const snapshotRows = diagnosticIds.length ? (await this.pool.query(`SELECT match_id,provider,market_type,market_name,line,
+      selection,odds_decimal,captured_at FROM odds_snapshots WHERE match_id=ANY($1::uuid[]) AND captured_at<$2
+      ORDER BY captured_at,id`, [diagnosticIds, now])).rows : [];
+    const snapshotsByMatch = new Map<string, OddsSnapshot[]>();
+    for (const row of snapshotRows) {
+      const matchId = String(row.match_id);
+      const snapshot: OddsSnapshot = { matchId, provider: String(row.provider), marketType: String(row.market_type),
+        marketName: String(row.market_name), line: row.line == null ? null : Number(row.line), selection: String(row.selection),
+        oddsDecimal: Number(row.odds_decimal), capturedAt: new Date(String(row.captured_at)) };
+      snapshotsByMatch.set(matchId, [...(snapshotsByMatch.get(matchId) ?? []), snapshot]);
+    }
+    const runByMatch = new Map(currentRuns.rows.map((row) => [String(row.match_id), row]));
+    const perMatch = targetRows.slice(0, 10).map((target) => {
+      const best = [...target.oddsItems].sort((left, right) => right.score - left.score)[0] ?? null;
+      const row = runByMatch.get(target.matchId);
+      const bestHistoricalN = row ? parseArray(row.candidates).reduce((highest, value) => {
+        const historicalEvidence = value.historical && typeof value.historical === 'object'
+          ? value.historical as Record<string, unknown> : null;
+        return Math.max(highest, Number(historicalEvidence?.settledSampleSize ?? 0));
+      }, 0) : 0;
+      historicalNs.push(bestHistoricalN);
+      if (!best) return { matchId: target.matchId, kickoffAt: target.kickoffAt, analysisEligible: false,
+        warnings: ['NO_ODDS_ANALYSIS'], historicalN: bestHistoricalN };
+      for (const warning of best.warnings) warningCounts.set(warning, (warningCounts.get(warning) ?? 0) + 1);
+      const state = best.minimumCompleteStateCount <= 0 ? 'zero'
+        : best.minimumCompleteStateCount === 1 ? 'one' : 'twoOrMore';
+      completeStateDistribution[state] += 1;
+      const bookmakerBucket = best.bookmakerCount >= 3 ? '3+' : String(best.bookmakerCount);
+      bookmakerDistribution[bookmakerBucket] = (bookmakerDistribution[bookmakerBucket] ?? 0) + 1;
+      movementClasses[best.movementClass] = (movementClasses[best.movementClass] ?? 0) + 1;
+      const snapshots = snapshotsByMatch.get(target.matchId) ?? [];
+      const markets = buildBookmakerMarkets(snapshots).filter((market) => market.marketType === best.marketType
+        && market.marketName === best.marketName && market.line === best.line);
+      const openings = markets.flatMap((market) => market.openingCompleteAt ? [market.openingCompleteAt.getTime()] : []);
+      const currents = markets.flatMap((market) => market.currentCompleteAt ? [market.currentCompleteAt.getTime()] : []);
+      const latest = snapshots.map((snapshot) => snapshot.capturedAt.getTime());
+      return { matchId: target.matchId, kickoffAt: target.kickoffAt, league: row?.league,
+        homeTeam: row?.home_team, awayTeam: row?.away_team, marketType: best.marketType, marketName: best.marketName,
+        line: best.line, selection: best.selection, bookmakerCount: best.bookmakerCount,
+        completeStateBookmakerCount: best.completeStateBookmakerCount,
+        minimumCompleteStateCount: best.minimumCompleteStateCount, snapshotCount: best.snapshotCount,
+        openingCompleteAt: openings.length ? new Date(Math.min(...openings)) : null,
+        currentCompleteAt: currents.length ? new Date(Math.max(...currents)) : null,
+        latestCapturedAt: latest.length ? new Date(Math.max(...latest)) : null,
+        openingOdds: best.openingOdds, currentOdds: best.currentOdds, probabilityDeltaPp: best.probabilityDeltaPp,
+        movementAgreementRatio: best.movementAgreementRatio, movementClass: best.movementClass,
+        minimumProbabilityChangePp: oddsConfig.minimumProbabilityChangePp,
+        minimumAgreementRatio: oddsConfig.minimumAgreementRatio,
+        analysisEligible: best.analysisEligible, warnings: best.warnings, historicalN: bestHistoricalN };
+    });
+    const sortedHistoricalN = historicalNs.sort((left, right) => left - right);
+    const middle = Math.floor(sortedHistoricalN.length / 2);
+    const medianHistoricalN = !sortedHistoricalN.length ? 0 : sortedHistoricalN.length % 2
+      ? sortedHistoricalN[middle]! : (sortedHistoricalN[middle - 1]! + sortedHistoricalN[middle]!) / 2;
+    const analyzedTargets = targetRows.filter((target) => target.oddsItems.length > 0);
+    const eligibleMatches = analyzedTargets.filter((target) => target.oddsItems.some((item) => item.analysisEligible)).length;
+    const oddsEligibility = {
+      totalAnalyzedMatches: analyzedTargets.length, eligibleMatches,
+      ineligibleMatches: analyzedTargets.length - eligibleMatches,
+      topWarnings: [...warningCounts.entries()].sort((left, right) => right[1] - left[1])
+        .map(([warning, count]) => ({ warning, text: formatPredictionReason(warning), count })),
+      completeStateDistribution, bookmakerDistribution, movementClasses,
+      historicalN: { min: sortedHistoricalN[0] ?? 0, median: medianHistoricalN, max: sortedHistoricalN.at(-1) ?? 0 },
+      perMatch,
+    };
+
     return {
       modelVersion: config.modelVersion,
       thresholds: {
@@ -786,18 +879,22 @@ export class PredictionRepository {
         maximumHistoricalSettledSample,
         topSkipReasons,
         sampleRuns,
+        oddsEligibility,
       },
     };
   }
 
   async today(timeZone = 'Europe/Istanbul') {
-    return (await this.pool.query(`SELECT j.*,m.kickoff_at,l.name league,ht.name home_team,at.name away_team,s.outcome,
+    const rows = (await this.pool.query(`SELECT j.*,r.selected_candidate,r.candidates,r.skip_reasons,m.kickoff_at,l.name league,
+      ht.name home_team,at.name away_team,s.outcome,
       CASE WHEN j.decision='PREDICT' THEN 'LOCKED_PREDICTION' ELSE 'LOCKED_SKIP' END state,
       CASE WHEN s.id IS NULL AND j.decision='PREDICT' THEN 'PENDING' WHEN s.id IS NULL THEN NULL ELSE 'SETTLED' END settlement_state
-      FROM prediction_journal j JOIN matches m ON m.id=j.match_id JOIN leagues l ON l.id=m.league_id
+      FROM prediction_journal j JOIN prediction_runs r ON r.id=j.prediction_run_id
+      JOIN matches m ON m.id=j.match_id JOIN leagues l ON l.id=m.league_id
       JOIN teams ht ON ht.id=m.home_team_id JOIN teams at ON at.id=m.away_team_id
       LEFT JOIN prediction_settlements s ON s.prediction_journal_id=j.id
       WHERE (m.kickoff_at AT TIME ZONE $1)::date=(now() AT TIME ZONE $1)::date ORDER BY m.kickoff_at`, [timeZone])).rows;
+    return rows.map(presentPredictionRow);
   }
 
   async history(limit = 50, offset = 0) {
@@ -916,17 +1013,23 @@ export class PredictionService {
       this.repository.latestSegmentSelfAudits(this.config),
     ]);
     let previews = 0; let lockedPredictions = 0; let lockedSkips = 0; let missed = 0;
+    let reviewCandidates = 0; let skips = 0; let officialPredictions = 0;
     let selfAuditBlocked = 0; let selfAuditSegmentBlocked = 0; let targetErrors = 0;
     const errors: Array<{ matchId: string; message: string }> = [];
     for (const target of targets) {
       try {
         let evaluation = this.attachSelfAudit(evaluatePrediction(target, examples, now, this.config), selfAudit);
         evaluation = this.attachSegmentSelfAudit(evaluation, segmentAudits);
+        const displayTier = classifyPredictionDisplay({ decision: evaluation.decision,
+          selected_candidate: evaluation.selectedCandidate, candidates: evaluation.candidates,
+          skip_reasons: evaluation.skipReasons });
+        if (displayTier === 'REVIEW') reviewCandidates += 1;
         const window = lockWindowState(target.kickoffAt, now, this.config);
         if (window.missed) {
           evaluation = this.rehashDecision({ ...evaluation, decision: 'SKIP', selectedCandidate: null,
             skipReasons: [...new Set([...evaluation.skipReasons, 'LOCK_WINDOW_MISSED' as const])],
           }, 'LOCK_WINDOW_MISSED');
+          skips += 1;
           const runId = await this.repository.saveRun(evaluation, this.config);
           if (target.kickoffAt > now && await this.repository.lock(evaluation, runId, now, window.minutesToKickoff, this.config)) lockedSkips += 1;
           missed += 1;
@@ -953,20 +1056,25 @@ export class PredictionService {
             selfAuditSegmentBlocked += 1;
           }
         }
+        if (evaluation.decision === 'PREDICT') officialPredictions += 1; else skips += 1;
         const runId = await this.repository.saveRun(evaluation, this.config);
         previews += 1;
-        if (window.eligible && await this.repository.lock(evaluation, runId, now, window.minutesToKickoff, this.config)) {
+        // REVIEW is a transient presentation tier. It must never enter the immutable official journal/performance data.
+        if (window.eligible && displayTier !== 'REVIEW'
+          && await this.repository.lock(evaluation, runId, now, window.minutesToKickoff, this.config)) {
           if (evaluation.decision === 'PREDICT') lockedPredictions += 1; else lockedSkips += 1;
         }
       } catch (error) {
         targetErrors += 1;
         if (errors.length < 10) errors.push({
           matchId: target.matchId,
-          message: error instanceof Error ? error.message : String(error),
+          message: safeErrorMessage(error),
         });
       }
     }
-    return { matches: targets.length, previews, lockedPredictions, lockedSkips, missed, selfAuditBlocked, selfAuditSegmentBlocked,
+    return { matches: targets.length, targets: targets.length, previews, savedRuns: previews + missed,
+      officialPredictions, lockedPredictions, lockedSkips, skips, reviewCandidates, missed,
+      selfAuditBlocked, selfAuditSegmentBlocked,
       selfAuditStatus: selfAudit?.status ?? 'NOT_AVAILABLE', selfAuditGuardActive: selfAudit?.guardActive ?? false,
       activePausedSegments: segmentAudits.filter((audit) => audit.status === 'PAUSED' && audit.guardActive).length,
       targetErrors, errors };

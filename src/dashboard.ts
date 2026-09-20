@@ -9,6 +9,7 @@ type DashboardData = { matches: Array<Record<string, unknown>>; providers: Array
   predictionSelfAuditRootCauses?: Array<Record<string, unknown>>;
   predictionAdaptiveRuleProposals?: Array<Record<string, unknown>>;
   oddsSimilarity?: Array<Record<string, unknown>>;
+  oddsIntelligence?: Array<Record<string, unknown>>;
   predictionReviewCandidates?: Array<Record<string, unknown>>;
   predictionDiagnostics?: Record<string, unknown> | null };
 type ValidationMetric = { count?: unknown; sample?: unknown; averagePredictedProbability?: unknown; actualHitRate?: unknown;
@@ -160,6 +161,7 @@ export function renderDashboard(data: DashboardData): string {
   const predictionSelfAuditRootCauses = data.predictionSelfAuditRootCauses ?? [];
   const predictionAdaptiveRuleProposals = data.predictionAdaptiveRuleProposals ?? [];
   const oddsSimilarity = data.oddsSimilarity ?? [];
+  const oddsIntelligence = data.oddsIntelligence ?? [];
   const predictionDiagnostics = data.predictionDiagnostics;
   const predictionThresholds = (predictionDiagnostics?.thresholds ?? {}) as Record<string, unknown>;
   const requiredHistoricalSample = finiteNumber(predictionThresholds.minimumHistoricalSample, 30);
@@ -309,6 +311,17 @@ export function renderDashboard(data: DashboardData): string {
     oddsAnalyses.length
       ? 'Oranlar takip ediliyor. Yeterli gerçek historical odds örneği oluştuğunda Geçmiş İkizler ve Sonuç Haritası burada açılacak.'
       : 'Önce maçların oran verileri toplanacak, ardından gerçek geçmiş oran kayıtlarıyla karşılaştırılacak.');
+  const oddsIntelligenceCards = oddsIntelligence.length ? oddsIntelligence.map((entry) => {
+    const match = (entry.match ?? {}) as Record<string, unknown>; const route = (entry.oddsRoute ?? {}) as Record<string, unknown>;
+    const twins = Array.isArray(entry.pastTwins) ? entry.pastTwins as Array<Record<string, unknown>> : [];
+    const map = Array.isArray(entry.resultMap) ? entry.resultMap as Array<Record<string, unknown>> : [];
+    const routeValues = Array.isArray(route.snapshots) ? route.snapshots as Array<Record<string, unknown>> : [];
+    const routeText = routeValues.map((item) => finiteNumber(item.medianOdds).toFixed(2)).join(' → ');
+    const resultRows = map.filter((item) => finiteNumber(item.sampleSize) > 0).slice(0, 4).map((item) =>
+      `<li>${escapeHtml(translateMarket(item.market))} ${item.line == null ? '' : escapeHtml(item.line)} · ${escapeHtml(translateSelection(item.selection))}: <strong>${escapeHtml(item.positiveCount)}/${escapeHtml(item.sampleSize)}</strong> (${percent(item.positiveRate)})</li>`).join('');
+    const conflicts = Array.isArray(entry.conflictCheck) ? entry.conflictCheck as Array<Record<string, unknown>> : [];
+    return `<article class="card" data-search-row><div class="row"><div><span class="section-kicker">Oran Rotası</span><h3>${escapeHtml(match.homeTeam)} — ${escapeHtml(match.awayTeam)}</h3><p>${escapeHtml(match.league)} · ${escapeHtml(routeText || 'Yeterli gerçek snapshot yok')}</p></div><span class="badge neutral">${escapeHtml(route.direction ?? 'FLAT')} · ${escapeHtml(route.strength ?? 'WEAK')}</span></div><p class="evidence-note">Geçmiş İkizler: ${escapeHtml(twins.length)} · Kanıt seviyesi: ${escapeHtml(entry.evidenceStrength ?? 'VERY_LOW')} · Mod: ${escapeHtml(entry.searchMode ?? 'CLOSEST_NEIGHBORS')}</p><div class="evidence-strip"><div class="evidence-box"><small>Sonuç Haritası</small><strong>${escapeHtml(map.length)}</strong><span>gözlemlenebilir market</span></div><div class="evidence-box"><small>Çelişki Kontrolü</small><strong>${escapeHtml(conflicts.filter((item) => item.state === 'CONFLICT').length)}</strong><span>ters sinyal</span></div></div><ul class="details-list">${resultRows || '<li>Sonuç haritası için yeterli gerçek sonuç yok.</li>'}</ul><p class="evidence-note">Geçmiş benzerlik ve sonuç dağılımıdır; resmi tahmin veya bahis kararı değildir.</p></article>`;
+  }).join('') : renderEmpty('↗', 'Oran rotası için veri birikiyor', 'Yalnız gerçek pre-match odds snapshotları yeterli olduğunda analiz görünür.');
   const officialPredictions = predictions.filter((item) => String(item.decision) === 'PREDICT');
   const reviewMatchIds = new Set(predictionReviewCandidates.map((item) => String(item.matchId ?? '')));
   const rejectedByMatch = new Map<string, Record<string, unknown>>();
@@ -613,6 +626,9 @@ export function renderDashboard(data: DashboardData): string {
 
         <section class="section" id="odds-analysis"><div class="section-title"><div><span class="section-kicker">BETAPP Farkı</span><h2>Geçmiş İkizler & Sonuç Haritası</h2><p>Benzer oran profillerini buluyor, o grubun farklı marketlerde nasıl sonuçlandığını ve lig tabanından farkını açıklıyoruz.</p></div></div>
           <div class="similarity-grid">${oddsSimilarityCards}</div></section>
+
+        <section class="section"><div class="section-title"><div><span class="section-kicker">Odds Neighbor Engine V2</span><h2>Oran Rotası · Geçmiş İkizler · Çelişki Kontrolü</h2><p>Bu katman Prediction V1’den ayrıdır; yalnız açıklayıcı geçmiş oran analizi üretir.</p></div></div>
+          <div class="grid">${oddsIntelligenceCards}</div></section>
 
         <section class="section" id="prediction-history"><div class="section-title"><div><span class="section-kicker">Geçmiş</span><h2>Geçmiş Tahminler</h2><p>Resmi tahminlerin ve sonuçların geçmiş kaydı.</p></div></div>
           <div class="scroll"><table><thead><tr><th>Tarih</th><th>Maç</th><th>Tahmin</th><th>Skor</th><th>Sonuç</th></tr></thead><tbody>${predictionHistoryRows}</tbody></table></div>

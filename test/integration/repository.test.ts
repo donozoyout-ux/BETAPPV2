@@ -14,6 +14,7 @@ import { evaluatePrediction } from '../../src/predictions/engine.js';
 import { PredictionRepository } from '../../src/predictions/service.js';
 import type { AnalysisItem } from '../../src/odds-analysis/types.js';
 import { HistoricalRepository } from '../../src/db/historical-repository.js';
+import { OddsIntelligenceRepository } from '../../src/odds-neighbors/repository.js';
 
 describe('FootballRepository integration', () => {
   let container: Awaited<ReturnType<PostgreSqlContainer['start']>> | undefined;
@@ -164,7 +165,7 @@ describe('FootballRepository integration', () => {
   it('validates migrations, checkpoint, profiles, replay, rollback and advisory locks', async () => {
     const migrations = await migrationStatus(pool);
     expect(migrations.pendingMigrations).toEqual([]);
-    expect(migrations.schemaVersion).toBe('011_free_historical_data_v1.sql');
+    expect(migrations.schemaVersion).toBe('012_odds_neighbor_engine_v2.sql');
     const health = await repository.databaseHealth();
     expect(health.status).toBe('ok');
     await repository.markStarted('fotmob', 'integration-checkpoint', { index: 0 });
@@ -419,6 +420,41 @@ describe('FootballRepository integration', () => {
        WHERE provider='fotmob' AND entity_type='statistics' AND external_id='large-payload-regression'`,
     );
     expect(result.rows[0]!.bytes).toBeLessThanOrEqual(65_536);
+  });
+
+  it('builds odds routes and result maps from real snapshot rows without Prediction V1 writes', async () => {
+    const observedAt = new Date('2097-01-01T10:00:00Z');
+    const historicalKickoff = new Date('2098-01-02T18:00:00Z'); const targetKickoff = new Date('2099-01-02T18:00:00Z');
+    const fixture = (externalId: string, kickoffAt: Date, status: 'scheduled' | 'finished', homeScore: number | null, awayScore: number | null) => ({
+      providerExternalId: externalId,
+      league: { providerExternalId: 'neighbor-league', name: 'Neighbor League', country: 'Test', logoUrl: null, sourceUpdatedAt: observedAt, raw: {} },
+      homeTeam: { providerExternalId: `${externalId}-home`, name: `${externalId} Home`, shortName: null, country: 'Test', logoUrl: null, sourceUpdatedAt: observedAt, raw: {} },
+      awayTeam: { providerExternalId: `${externalId}-away`, name: `${externalId} Away`, shortName: null, country: 'Test', logoUrl: null, sourceUpdatedAt: observedAt, raw: {} },
+      kickoffAt, status, round: null, season: '2098/99', homeScore, awayScore, sourceUpdatedAt: observedAt, raw: {},
+    });
+    const historyFixture = fixture('neighbor-history', historicalKickoff, 'finished', 2, 1);
+    const targetFixture = fixture('neighbor-target', targetKickoff, 'scheduled', null, null);
+    const historyId = await repository.upsertMatch('fotmob', historyFixture); const targetId = await repository.upsertMatch('fotmob', targetFixture);
+    await new HistoricalRepository(pool).save('fotmob', historyFixture, { matchProviderExternalId: historyFixture.providerExternalId, sourceUpdatedAt: observedAt,
+      raw: {}, statistics: ['corners','yellow_cards','red_cards'].map((key) => ({ key, label: key, period: 'ALL', homeValue: 5, awayValue: 4 })) });
+    const odds = new OddsRepository(pool);
+    const appendMarket = async (matchId: string, providerMatchId: string, start: Date) => {
+      for (const provider of ['nowgoal:neighbor-a','nowgoal:neighbor-b']) for (const [selection, opening, latest] of [['OVER',2.05,1.91],['UNDER',1.80,1.95]] as const) {
+        await odds.append(matchId, { provider, providerMatchId, marketType: 'TOTAL_GOALS', marketName: 'Total Goals', line: 2.5, selection, oddsDecimal: opening, capturedAt: start });
+        await odds.append(matchId, { provider, providerMatchId, marketType: 'TOTAL_GOALS', marketName: 'Total Goals', line: 2.5, selection, oddsDecimal: latest, capturedAt: new Date(start.getTime() + 60 * 60_000) });
+      }
+    };
+    await appendMarket(historyId, 'neighbor-history', new Date('2098-01-01T10:00:00Z'));
+    await appendMarket(targetId, 'neighbor-target', new Date('2099-01-01T10:00:00Z'));
+    const beforeJournal = Number((await pool.query('SELECT count(*) FROM prediction_journal')).rows[0]!.count);
+    const intelligence = await new OddsIntelligenceRepository(pool).byMatch(targetId, new Date('2099-01-01T14:00:00Z'));
+    expect(intelligence?.primaryMarket).toMatchObject({ marketType: 'TOTAL_GOALS', line: 2.5 });
+    expect(intelligence?.oddsRoute.snapshots).toHaveLength(2);
+    expect(intelligence?.pastTwins.map((item) => item.matchId)).toContain(historyId);
+    expect(intelligence?.resultMap.find((item) => item.market === 'TOTAL_CORNERS' && item.line === 8.5 && item.selection === 'OVER'))
+      .toMatchObject({ sampleSize: 1, positiveCount: 1 });
+    expect(intelligence?.executionAuthority).toBe(false);
+    expect(Number((await pool.query('SELECT count(*) FROM prediction_journal')).rows[0]!.count)).toBe(beforeJournal);
   });
 
 });

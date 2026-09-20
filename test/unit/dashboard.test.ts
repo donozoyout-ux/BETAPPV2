@@ -52,6 +52,21 @@ describe('renderDashboard', () => {
     expect(html).not.toMatch(/KESİN|GARANTİ|BANKO|%100/);
   });
 
+  it('renders Odds Neighbor V2 terminology with escaped route content', () => {
+    const html = renderDashboard({ providers: [], matches: [], oddsIntelligence: [{
+      match: { homeTeam: '<img>', awayTeam: 'B', league: 'Lig' }, oddsRoute: { direction: 'UP', strength: 'MODERATE',
+        snapshots: [{ medianOdds: 2.05 }, { medianOdds: 1.91 }] }, pastTwins: [{ id: 1 }], evidenceStrength: 'LOW',
+      searchMode: 'CLOSEST_NEIGHBORS', resultMap: [{ market: 'TOTAL_GOALS', line: 2.5, selection: 'OVER', positiveCount: 8, sampleSize: 10, positiveRate: 0.8 }],
+      conflictCheck: [{ state: 'CONFLICT' }],
+    }] });
+    expect(html).toContain('Oran Rotası · Geçmiş İkizler · Çelişki Kontrolü');
+    expect(html).toContain('2.05 → 1.91');
+    expect(html).toContain('Geçmiş İkizler: 1');
+    expect(html).toContain('&lt;img&gt;');
+    expect(html).not.toContain('<img>');
+    expect(html).not.toMatch(/KESİN|GARANTİ|BANKO/);
+  });
+
   it('separates official predictions, review candidates and rejected matches', () => {
     const html = renderDashboard({
       providers: [{ provider: 'fotmob', status: 'healthy' }, { provider: 'nowgoal', status: 'healthy' }],

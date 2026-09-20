@@ -6,9 +6,10 @@ import type { OddsAnalysisRepository } from './db/odds-analysis-repository.js';
 import { renderCornerDetail, renderDashboard } from './dashboard.js';
 import type { Logger } from './logger.js';
 import type { PredictionRepository } from './predictions/service.js';
+import type { OddsIntelligenceRepository } from './odds-neighbors/repository.js';
 
 export function buildApp(config: AppConfig, repository: FootballRepository, logger: Logger,
-  oddsAnalysis?: OddsAnalysisRepository, predictions?: PredictionRepository) {
+  oddsAnalysis?: OddsAnalysisRepository, predictions?: PredictionRepository, oddsIntelligence?: OddsIntelligenceRepository) {
   const app = Fastify({ loggerInstance: logger });
   void app.register(helmet, { contentSecurityPolicy: false });
 
@@ -23,13 +24,13 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
   });
 
   app.get('/api/dashboard', async () => {
-    const [data, today, previews, reviewCandidates, history, performance, selfAudit, segmentAudits, rootCauses, adaptiveProposals, oddsSimilarity, predictionDiagnostics] = await Promise.all([repository.dashboardData('Europe/Istanbul'),
+    const [data, today, previews, reviewCandidates, history, performance, selfAudit, segmentAudits, rootCauses, adaptiveProposals, oddsSimilarity, predictionDiagnostics, oddsIntelligenceData] = await Promise.all([repository.dashboardData('Europe/Istanbul'),
       predictions?.today() ?? [], predictions?.previews() ?? [], predictions?.reviewCandidates() ?? [], predictions?.history(20) ?? [], predictions?.performance() ?? null,
       predictions?.latestSelfAudit() ?? null, predictions?.latestSegmentSelfAudits() ?? [], predictions?.latestRootCauseAudits() ?? [],
-      predictions?.latestAdaptiveRuleProposals() ?? [], predictions?.oddsSimilarityShowcase(4, 5) ?? [], predictions?.diagnostics() ?? null]);
+      predictions?.latestAdaptiveRuleProposals() ?? [], predictions?.oddsSimilarityShowcase(4, 5) ?? [], predictions?.diagnostics() ?? null, oddsIntelligence?.upcoming(4) ?? []]);
     return { ...data, predictions: today, predictionPreviews: previews, predictionReviewCandidates: reviewCandidates, predictionHistory: history,
       predictionPerformance: performance, predictionSelfAudit: selfAudit, predictionSelfAuditSegments: segmentAudits,
-      predictionSelfAuditRootCauses: rootCauses, predictionAdaptiveRuleProposals: adaptiveProposals, oddsSimilarity, predictionDiagnostics };
+      predictionSelfAuditRootCauses: rootCauses, predictionAdaptiveRuleProposals: adaptiveProposals, oddsSimilarity, predictionDiagnostics, oddsIntelligence: oddsIntelligenceData };
   });
   app.get('/api/odds/upcoming', async () => ({ odds: await repository.upcomingOdds(1000) }));
   app.get('/api/backfill/status', async () => repository.backfillStatus());
@@ -39,6 +40,14 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
     modelVersion: 'PREDICTION_V1', maxCurrentMatches: 4, maxHistoricalMatchesPerCurrent: 5,
     matches: predictions ? await predictions.oddsSimilarityShowcase(4, 5) : [],
   }));
+  app.get<{ Querystring: { mode?: 'CLOSEST_NEIGHBORS' | 'ODDS_BAND' } }>('/api/odds-intelligence/upcoming', async (request) => ({
+    engineVersion: 'ODDS_NEIGHBOR_V2', executionAuthority: false, aiPredictionAuthority: false,
+    analyses: oddsIntelligence ? await oddsIntelligence.upcoming(20, new Date(), request.query.mode === 'ODDS_BAND' ? 'ODDS_BAND' : 'CLOSEST_NEIGHBORS') : [],
+  }));
+  app.get<{ Params: { matchId: string } }>('/api/odds-intelligence/:matchId', async (request) => {
+    const analysis = oddsIntelligence ? await oddsIntelligence.byMatch(request.params.matchId) : null;
+    return analysis ?? { matchId: request.params.matchId, status: 'NOT_GENERATED', analysis: null, executionAuthority: false, aiPredictionAuthority: false };
+  });
   app.get<{ Params: { matchId: string } }>('/api/odds-analysis/:matchId', async (request) => {
     const analysis = oddsAnalysis ? await oddsAnalysis.byMatch(request.params.matchId) : null;
     return analysis ?? { matchId: request.params.matchId, status: 'NOT_GENERATED', analysis: null };
@@ -73,14 +82,14 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
   app.get<{ Params: { matchId: string } }>('/api/predictions/:matchId', async (request) => predictions
     ? predictions.detail(request.params.matchId) : { matchId: request.params.matchId, state: 'NOT_GENERATED', journal: null, runs: [] });
   app.get('/', async (_request, reply) => {
-    const [data, today, previews, reviewCandidates, history, performance, selfAudit, segmentAudits, rootCauses, adaptiveProposals, oddsSimilarity, predictionDiagnostics] = await Promise.all([repository.dashboardData('Europe/Istanbul'),
+    const [data, today, previews, reviewCandidates, history, performance, selfAudit, segmentAudits, rootCauses, adaptiveProposals, oddsSimilarity, predictionDiagnostics, oddsIntelligenceData] = await Promise.all([repository.dashboardData('Europe/Istanbul'),
       predictions?.today() ?? [], predictions?.previews() ?? [], predictions?.reviewCandidates() ?? [], predictions?.history(20) ?? [], predictions?.performance() ?? null,
       predictions?.latestSelfAudit() ?? null, predictions?.latestSegmentSelfAudits() ?? [], predictions?.latestRootCauseAudits() ?? [],
-      predictions?.latestAdaptiveRuleProposals() ?? [], predictions?.oddsSimilarityShowcase(4, 5) ?? [], predictions?.diagnostics() ?? null]);
+      predictions?.latestAdaptiveRuleProposals() ?? [], predictions?.oddsSimilarityShowcase(4, 5) ?? [], predictions?.diagnostics() ?? null, oddsIntelligence?.upcoming(4) ?? []]);
     return reply.type('text/html; charset=utf-8').send(renderDashboard({ ...data, predictions: today,
       predictionPreviews: previews, predictionReviewCandidates: reviewCandidates, predictionHistory: history, predictionPerformance: performance,
       predictionSelfAudit: selfAudit, predictionSelfAuditSegments: segmentAudits,
-      predictionSelfAuditRootCauses: rootCauses, predictionAdaptiveRuleProposals: adaptiveProposals, oddsSimilarity, predictionDiagnostics }));
+      predictionSelfAuditRootCauses: rootCauses, predictionAdaptiveRuleProposals: adaptiveProposals, oddsSimilarity, predictionDiagnostics, oddsIntelligence: oddsIntelligenceData }));
   });
   app.get<{ Params: { matchId: string } }>('/matches/:matchId/corners', async (request, reply) => {
     const detail = await repository.cornerAnalysisDetail(request.params.matchId);

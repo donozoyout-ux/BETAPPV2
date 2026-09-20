@@ -391,6 +391,7 @@ export class FootballRepository {
       'prediction_adaptive_rule_runs_latest_idx','prediction_adaptive_rule_proposals_latest_idx',
       'prediction_adaptive_rule_proposals_risk_idx');
     requiredIndexes.push('historical_stat_provenance_match_idx','historical_backfill_jobs_status_idx');
+    requiredIndexes.push('odds_snapshots_neighbor_market_idx','matches_status_kickoff_idx');
     const checks = { connection: false, read: false, write: false, transaction: false, advisoryLock: false,
       migrationTable: false, requiredTables: false, requiredIndexes: false };
     try {

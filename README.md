@@ -78,6 +78,18 @@ SofascoreProvider -> dayanıklı HTTP istemcisi -> Collector Worker
 - Historical istatistikler historical odds değildir. Hiçbir istatistik kaydı ODDS_V1/PREDICTION_V1 odds similarity örneği üretmez.
 - Canlı, sınırlı FotMob audit ve diğer kaynaklar için gerçek qualification kaydı: [`docs/free-historical-data-v2-qualification.md`](docs/free-historical-data-v2-qualification.md).
 
+### Odds Neighbor Engine V2
+
+- **Oran Rotası**, yalnız gerçek, kickoff-öncesi `odds_snapshots` noktalarından bookmaker-normalize median rota oluşturur; ara oran türetmez.
+- **Geçmiş İkizler**, Prediction V1'den bağımsızdır. Aynı market/line/selection için `CLOSEST_NEIGHBORS` veya ayrı anlam taşıyan `ODDS_BAND` araması yapar; her maç kendi 0–100 similarity skoru ile döner.
+- **Sonuç Haritası** ikizleri yalnız gerçek historical odds kanıtıyla seçer; ardından skor ve mevcutsa FotMob historical stats ile goals, BTTS, corners ve cards dağılımlarını zenginleştirir. Eksik alanların paydası ayrı tutulur. İlk yarı golü, gerçek devre skoru yoksa üretilmez.
+- **Kanıt Farkı** aynı lig tabanını tercih eder, örnek yetersizse global desteklenen liglere düşer; Wilson %95 aralığı ve ayrı kanıt seviyesi sunar. **Çelişki Kontrolü** açıklayıcıdır; resmi tahmin veya bahis kararı değildir.
+
+```bash
+# Chronological, cutoff-safe odds-neighbor backtest
+npm run odds-neighbors:backtest
+```
+
 ```bash
 # FotMob geçmiş maç/statistik backfill (BACKFILL_ENABLED=true gerekir)
 npm run historical:backfill -- --provider=fotmob --competition=PremierLeague --season=2025-2026

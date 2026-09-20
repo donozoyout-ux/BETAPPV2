@@ -212,7 +212,7 @@ export function renderDashboard(data: DashboardData): string {
     return `<article class="source"><div class="source-top"><span class="source-name">${escapeHtml(name)}</span>
       <span class="badge ${badgeClass}">${escapeHtml(statusLabel)}</span></div>
       <p>${escapeHtml(explanation)} · ${status === 'healthy' ? 'veri geliyor' : statusLabel.toLocaleLowerCase('tr-TR')}</p></article>`;
-  }).join('' + [
+  }).join('') + [
     ['StatBunker', '⚠ Kullanım izni kontrol ediliyor', 'partial'],
     ['SoccerStats', '⚠ Kullanım izni kontrol ediliyor', 'partial'],
     ['AdamChoi', '⚠ Kullanım izni kontrol ediliyor', 'partial'],

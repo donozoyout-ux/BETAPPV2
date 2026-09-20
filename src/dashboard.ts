@@ -444,23 +444,22 @@ export function renderDashboard(data: DashboardData): string {
     const thresholds = (predictionDiagnostics.thresholds ?? {}) as Record<string, unknown>;
     const topReasons = Array.isArray(current.topSkipReasons)
       ? current.topSkipReasons as Array<Record<string, unknown>> : [];
-    const reasonText = topReasons.slice(0, 4).map((item) =>
-      `${String(item.reason ?? 'UNKNOWN')} (${finiteNumber(item.count)})`).join(' · ') || 'Henüz skip nedeni yok';
+    const reasonItems = topReasons.slice(0, 4).map((item) =>
+      `<li>${escapeHtml(translateReason(item.reason))} <strong>(${finiteNumber(item.count)} maç)</strong></li>`).join('');
     const histMax = finiteNumber(current.maximumHistoricalSettledSample);
-    const histMin = finiteNumber(thresholds.minimumHistoricalSample);
-    const histClass = histMax >= histMin ? 'ok' : 'partial';
+    const histMin = finiteNumber(thresholds.minimumHistoricalSample, requiredHistoricalSample);
     const analyzed = finiteNumber(current.withOddsAnalysis);
     const targets = finiteNumber(current.targets);
-    return `<article class="card" style="margin-bottom:10px"><div class="row"><div><strong>Tahmin Tanı Merkezi</strong>
-      <p>Canlı gate durumunu gösterir; neden PREDICT çıkmadığını doğrudan DB'den özetler.</p></div>
-      <a class="top-chip" href="/api/predictions/diagnostics">Diagnostics API</a></div>
+    return `<article class="card" style="margin-bottom:12px"><div class="row"><div><strong>Şu anda neden resmi tahmin az?</strong>
+      <p>Sistem canlı maçları değerlendiriyor ve hangi şartların eksik olduğunu Türkçe özetliyor.</p></div></div>
       <div class="grid" style="margin-top:12px">
-        <article class="audit-mini"><small>Güncel hedef</small><strong>${targets}</strong><span>Odds analysis olan: ${analyzed}</span></article>
-        <article class="audit-mini"><small>Prediction run</small><strong>${finiteNumber(current.predictionRuns)}</strong><span>PREDICT ${finiteNumber(current.predictRuns)} · GEÇ ${finiteNumber(current.skipRuns)}</span></article>
-        <article class="audit-mini"><small>Historical evidence</small><strong><span class="badge ${histClass}">MAX N=${histMax}</span></strong><span>Resmi eşik N≥${histMin}</span></article>
-        <article class="audit-mini"><small>Eligible history</small><strong>${finiteNumber(historical.eligible)}</strong><span>Toplam örnek ${finiteNumber(historical.total)}</span></article>
+        <article class="audit-mini"><small>Takip edilen maç</small><strong>${targets}</strong><span>Oran analizi hazır: ${analyzed}</span></article>
+        <article class="audit-mini"><small>Resmi tahmin</small><strong>${finiteNumber(current.predictRuns)}</strong><span>Tahmin oluşturulmayan: ${finiteNumber(current.skipRuns)}</span></article>
+        <article class="audit-mini"><small>En yüksek benzer maç sayısı</small><strong>${histMax}</strong><span>Resmi tahmin için gereken: ${histMin}</span></article>
+        <article class="audit-mini"><small>Uygun geçmiş veri</small><strong>${finiteNumber(historical.eligible)}</strong><span>Toplam geçmiş örnek: ${finiteNumber(historical.total)}</span></article>
       </div>
-      <p style="margin-top:12px"><strong>En sık GEÇ nedenleri:</strong> ${escapeHtml(reasonText)}</p></article>`;
+      <p style="margin:12px 0 5px"><strong>En sık eksik olan şartlar:</strong></p>
+      <ul style="margin:0;padding-left:18px;color:var(--muted)">${reasonItems || '<li>Henüz yeterli değerlendirme verisi yok.</li>'}</ul></article>`;
   })() : '';
 
   const adaptiveRuleSummary = predictionAdaptiveRuleProposals.length ? (() => {

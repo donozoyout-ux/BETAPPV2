@@ -95,6 +95,134 @@ export class OddsIntelligenceRepository {
       { mode: 'CLOSEST_NEIGHBORS', limit: oddsNeighborConfig.closestLimit }, now);
   }
 
+  async historyAudit(limit = 5000) {
+    const safeLimit = Math.max(1, Math.min(50_000, Math.trunc(limit)));
+    const summary = await this.pool.query(`SELECT
+      (SELECT count(*)::integer FROM matches WHERE status='finished') total_finished_matches,
+      (SELECT count(DISTINCT m.id)::integer FROM matches m JOIN odds_snapshots os ON os.match_id=m.id
+        WHERE m.status='finished' AND os.captured_at<m.kickoff_at) matches_with_pre_kickoff_odds,
+      (SELECT count(*)::bigint FROM matches m JOIN odds_snapshots os ON os.match_id=m.id
+        WHERE m.status='finished' AND os.captured_at<m.kickoff_at) pre_kickoff_snapshots,
+      (SELECT count(*)::bigint FROM matches m JOIN odds_snapshots os ON os.match_id=m.id
+        WHERE m.status='finished' AND os.captured_at>=m.kickoff_at) excluded_post_kickoff_snapshots`);
+
+    const result = await this.pool.query(`SELECT m.id match_id,m.league_id competition_id,m.kickoff_at,m.season,l.name league,
+      ht.name home_team,at.name away_team,m.home_score,m.away_score,
+      NULL::numeric home_corners,NULL::numeric away_corners,NULL::numeric home_yellow_cards,NULL::numeric away_yellow_cards,
+      NULL::numeric home_red_cards,NULL::numeric away_red_cards,
+      COALESCE(jsonb_agg(jsonb_build_object('match_id',os.match_id,'provider',os.provider,'market_type',os.market_type,
+        'market_name',os.market_name,'line',os.line,'selection',os.selection,'odds_decimal',os.odds_decimal,
+        'captured_at',os.captured_at) ORDER BY os.captured_at,os.id),'[]'::jsonb) snapshots
+      FROM matches m JOIN leagues l ON l.id=m.league_id JOIN teams ht ON ht.id=m.home_team_id JOIN teams at ON at.id=m.away_team_id
+      JOIN odds_snapshots os ON os.match_id=m.id AND os.captured_at<m.kickoff_at
+      WHERE m.status='finished'
+      GROUP BY m.id,l.name,ht.name,at.name
+      ORDER BY m.kickoff_at,m.id
+      LIMIT $1`, [safeLimit]);
+
+    const marketStats = new Map<string, {
+      marketType: string; marketName: string; line: number | null; selection: string;
+      matches: Set<string>; routes: number; movementReadyRoutes: number; observationSum: number; bookmakerSum: number;
+      strong: number; moderate: number; weak: number;
+    }>();
+    const competitionSeasons = new Map<string, {
+      league: string; season: string; matches: number; matchesWithRoute: number; matchesWithMovementReadyRoute: number;
+    }>();
+    const providers = new Set<string>();
+    let routes = 0;
+    let movementReadyRoutes = 0;
+    let matchesWithRoute = 0;
+    let matchesWithMovementReadyRoute = 0;
+    let earliestKickoff: Date | null = null;
+    let latestKickoff: Date | null = null;
+
+    for (const row of result.rows) {
+      const data = outcome(row);
+      const snapshots = (row.snapshots as Row[]).map(snapshot);
+      for (const item of snapshots) providers.add(item.provider);
+      const built = routeCandidates(data, snapshots, data.kickoffAt);
+      const hasRoute = built.length > 0;
+      const hasMovementRoute = built.some((route) => route.genuineObservations >= 2);
+      if (hasRoute) matchesWithRoute += 1;
+      if (hasMovementRoute) matchesWithMovementReadyRoute += 1;
+      routes += built.length;
+      movementReadyRoutes += built.filter((route) => route.genuineObservations >= 2).length;
+      earliestKickoff = earliestKickoff == null || data.kickoffAt < earliestKickoff ? data.kickoffAt : earliestKickoff;
+      latestKickoff = latestKickoff == null || data.kickoffAt > latestKickoff ? data.kickoffAt : latestKickoff;
+
+      const season = String(row.season ?? 'UNKNOWN');
+      const competitionKey = `${data.league}|${season}`;
+      const competition = competitionSeasons.get(competitionKey) ?? {
+        league: data.league, season, matches: 0, matchesWithRoute: 0, matchesWithMovementReadyRoute: 0,
+      };
+      competition.matches += 1;
+      if (hasRoute) competition.matchesWithRoute += 1;
+      if (hasMovementRoute) competition.matchesWithMovementReadyRoute += 1;
+      competitionSeasons.set(competitionKey, competition);
+
+      for (const route of built) {
+        const key = identity(route);
+        const item = marketStats.get(key) ?? {
+          marketType: route.marketType, marketName: route.marketName, line: route.line, selection: route.selection,
+          matches: new Set<string>(), routes: 0, movementReadyRoutes: 0, observationSum: 0, bookmakerSum: 0,
+          strong: 0, moderate: 0, weak: 0,
+        };
+        item.matches.add(data.matchId);
+        item.routes += 1;
+        if (route.genuineObservations >= 2) item.movementReadyRoutes += 1;
+        item.observationSum += route.genuineObservations;
+        item.bookmakerSum += route.bookmakers.length;
+        if (route.strength === 'STRONG') item.strong += 1;
+        else if (route.strength === 'MODERATE') item.moderate += 1;
+        else item.weak += 1;
+        marketStats.set(key, item);
+      }
+    }
+
+    const summaryRow = summary.rows[0] ?? {};
+    const totalFinishedMatches = Number(summaryRow.total_finished_matches ?? 0);
+    const matchesWithPreKickoffOdds = Number(summaryRow.matches_with_pre_kickoff_odds ?? 0);
+    return {
+      generatedAt: new Date(),
+      scanLimit: safeLimit,
+      scannedMatches: result.rows.length,
+      truncated: matchesWithPreKickoffOdds > result.rows.length,
+      archive: {
+        totalFinishedMatches,
+        matchesWithPreKickoffOdds,
+        finishedMatchOddsCoverage: totalFinishedMatches ? matchesWithPreKickoffOdds / totalFinishedMatches : 0,
+        preKickoffSnapshots: Number(summaryRow.pre_kickoff_snapshots ?? 0),
+        excludedPostKickoffSnapshots: Number(summaryRow.excluded_post_kickoff_snapshots ?? 0),
+        providers: [...providers].sort(),
+        earliestKickoff,
+        latestKickoff,
+      },
+      routeReadiness: {
+        matchesWithRoute,
+        matchesWithMovementReadyRoute,
+        routes,
+        movementReadyRoutes,
+        scannedMatchRouteCoverage: result.rows.length ? matchesWithRoute / result.rows.length : 0,
+        scannedMatchMovementCoverage: result.rows.length ? matchesWithMovementReadyRoute / result.rows.length : 0,
+      },
+      markets: [...marketStats.values()].map((item) => ({
+        marketType: item.marketType,
+        marketName: item.marketName,
+        line: item.line,
+        selection: item.selection,
+        matches: item.matches.size,
+        routes: item.routes,
+        movementReadyRoutes: item.movementReadyRoutes,
+        averageObservations: item.routes ? item.observationSum / item.routes : 0,
+        averageBookmakers: item.routes ? item.bookmakerSum / item.routes : 0,
+        strength: { strong: item.strong, moderate: item.moderate, weak: item.weak },
+      })).sort((a, b) => b.matches - a.matches || a.marketType.localeCompare(b.marketType)
+        || String(a.line ?? '').localeCompare(String(b.line ?? '')) || a.selection.localeCompare(b.selection)),
+      competitionSeasons: [...competitionSeasons.values()]
+        .sort((a, b) => a.league.localeCompare(b.league) || a.season.localeCompare(b.season)),
+    };
+  }
+
   async backtest() {
     const result = await this.pool.query(`SELECT m.id match_id,m.league_id competition_id,m.kickoff_at,l.name league,ht.name home_team,at.name away_team,
       m.home_score,m.away_score,h.home_corners,h.away_corners,h.home_yellow_cards,h.away_yellow_cards,h.home_red_cards,h.away_red_cards,

@@ -23,13 +23,13 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
   });
 
   app.get('/api/dashboard', async () => {
-    const [data, today, previews, history, performance, selfAudit, segmentAudits, rootCauses, adaptiveProposals, oddsSimilarity] = await Promise.all([repository.dashboardData('Europe/Istanbul'),
+    const [data, today, previews, history, performance, selfAudit, segmentAudits, rootCauses, adaptiveProposals, oddsSimilarity, predictionDiagnostics] = await Promise.all([repository.dashboardData('Europe/Istanbul'),
       predictions?.today() ?? [], predictions?.previews() ?? [], predictions?.history(20) ?? [], predictions?.performance() ?? null,
       predictions?.latestSelfAudit() ?? null, predictions?.latestSegmentSelfAudits() ?? [], predictions?.latestRootCauseAudits() ?? [],
-      predictions?.latestAdaptiveRuleProposals() ?? [], predictions?.oddsSimilarityShowcase(4, 5) ?? []]);
+      predictions?.latestAdaptiveRuleProposals() ?? [], predictions?.oddsSimilarityShowcase(4, 5) ?? [], predictions?.diagnostics() ?? null]);
     return { ...data, predictions: today, predictionPreviews: previews, predictionHistory: history,
       predictionPerformance: performance, predictionSelfAudit: selfAudit, predictionSelfAuditSegments: segmentAudits,
-      predictionSelfAuditRootCauses: rootCauses, predictionAdaptiveRuleProposals: adaptiveProposals, oddsSimilarity };
+      predictionSelfAuditRootCauses: rootCauses, predictionAdaptiveRuleProposals: adaptiveProposals, oddsSimilarity, predictionDiagnostics };
   });
   app.get('/api/odds/upcoming', async () => ({ odds: await repository.upcomingOdds(1000) }));
   app.get('/api/backfill/status', async () => repository.backfillStatus());
@@ -51,6 +51,11 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
   app.get('/api/predictions/performance', async () => predictions ? predictions.performance() : {
     totalOfficialDecisions: 0, predictCount: 0, skipCount: 0, pending: 0, settled: 0,
   });
+  app.get('/api/predictions/diagnostics', async () => predictions ? predictions.diagnostics() : {
+    modelVersion: 'PREDICTION_V1', historical: { total: 0, eligible: 0, byMarket: [] },
+    current: { targets: 0, withOddsAnalysis: 0, predictionRuns: 0, predictRuns: 0, skipRuns: 0,
+      runsWithHistoricalEvidence: 0, maximumHistoricalSettledSample: 0, topSkipReasons: [], sampleRuns: [] },
+  });
   app.get('/api/predictions/self-audit', async () => predictions ? (await predictions.latestSelfAudit() ?? {
     status: 'NOT_AVAILABLE', reasons: ['SELF_AUDIT_NOT_RUN'],
   }) : { status: 'NOT_AVAILABLE', reasons: ['SELF_AUDIT_NOT_CONFIGURED'] });
@@ -68,14 +73,14 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
   app.get<{ Params: { matchId: string } }>('/api/predictions/:matchId', async (request) => predictions
     ? predictions.detail(request.params.matchId) : { matchId: request.params.matchId, state: 'NOT_GENERATED', journal: null, runs: [] });
   app.get('/', async (_request, reply) => {
-    const [data, today, previews, history, performance, selfAudit, segmentAudits, rootCauses, adaptiveProposals, oddsSimilarity] = await Promise.all([repository.dashboardData('Europe/Istanbul'),
+    const [data, today, previews, history, performance, selfAudit, segmentAudits, rootCauses, adaptiveProposals, oddsSimilarity, predictionDiagnostics] = await Promise.all([repository.dashboardData('Europe/Istanbul'),
       predictions?.today() ?? [], predictions?.previews() ?? [], predictions?.history(20) ?? [], predictions?.performance() ?? null,
       predictions?.latestSelfAudit() ?? null, predictions?.latestSegmentSelfAudits() ?? [], predictions?.latestRootCauseAudits() ?? [],
-      predictions?.latestAdaptiveRuleProposals() ?? [], predictions?.oddsSimilarityShowcase(4, 5) ?? []]);
+      predictions?.latestAdaptiveRuleProposals() ?? [], predictions?.oddsSimilarityShowcase(4, 5) ?? [], predictions?.diagnostics() ?? null]);
     return reply.type('text/html; charset=utf-8').send(renderDashboard({ ...data, predictions: today,
       predictionPreviews: previews, predictionHistory: history, predictionPerformance: performance,
       predictionSelfAudit: selfAudit, predictionSelfAuditSegments: segmentAudits,
-      predictionSelfAuditRootCauses: rootCauses, predictionAdaptiveRuleProposals: adaptiveProposals, oddsSimilarity }));
+      predictionSelfAuditRootCauses: rootCauses, predictionAdaptiveRuleProposals: adaptiveProposals, oddsSimilarity, predictionDiagnostics }));
   });
   app.get<{ Params: { matchId: string } }>('/matches/:matchId/corners', async (request, reply) => {
     const detail = await repository.cornerAnalysisDetail(request.params.matchId);

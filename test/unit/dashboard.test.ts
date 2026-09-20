@@ -21,6 +21,11 @@ describe('renderDashboard', () => {
           marketName: '1X2', line: null, selection: 'HOME', openingOdds: 2.10, currentOdds: 1.85,
           probabilityDeltaPp: 6.2, predictionScore: 82, historicalSettledSampleSize: 44,
           historicalHitRate: 0.61, averageSimilarity: 0.91, scope: 'SAME_COMPETITION' },
+        evidenceGap: { similarRate: 0.61, baselineRate: 0.45, gapPp: 16, baselineSampleSize: 120, baselineScope: 'SAME_COMPETITION' },
+        resultMap: [
+          { marketType: 'TOTAL_GOALS', marketName: 'Total Goals', line: 2.5, selection: 'OVER', sampleSize: 10, positiveCount: 8, positiveRate: 0.8 },
+          { marketType: 'MATCH_RESULT', marketName: '1X2', line: null, selection: 'HOME', sampleSize: 10, positiveCount: 6, positiveRate: 0.6 },
+        ],
         matches: [
           { rank: 1, kickoffAt: '2026-04-11T15:00:00Z', league: 'Premier League',
             homeTeam: 'Old Home', awayTeam: 'Old Away', marketType: 'MATCH_RESULT', selection: 'HOME',
@@ -29,8 +34,14 @@ describe('renderDashboard', () => {
         ],
       }],
     });
-    expect(html).toContain('Oran Eşleşmeleri');
-    expect(html).toContain('En çok benzeyen geçmiş maçlar');
+    expect(html).toContain('Geçmiş İkizler &amp; Sonuç Haritası');
+    expect(html).toContain('Bu hesabı oluşturan en yakın geçmiş maçlar');
+    expect(html).toContain('Sonuç Haritası');
+    expect(html).toContain('Kanıt farkı');
+    expect(html).toContain('+16.0 puan');
+    expect(html).toContain('Lig tabanı');
+    expect(html).toContain('Toplam Gol 2.5 · ÜST');
+    expect(html).toContain('(8/10)');
     expect(html).toContain('Arsenal — Chelsea');
     expect(html).toContain('Old Home — Old Away');
     expect(html).toContain('2.08 → 1.86');

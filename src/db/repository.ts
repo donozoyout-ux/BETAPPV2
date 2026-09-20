@@ -471,7 +471,7 @@ export class FootballRepository {
   }
 
   async dashboardData(timeZone: string) {
-    const [matches, providers, qualification, cornerAnalyses, oddsAnalyses, datasetAudit, validation, backfill, odds] = await Promise.all([
+    const [matches, recentFinished, archiveSummary, providers, qualification, cornerAnalyses, oddsAnalyses, datasetAudit, validation, backfill, odds] = await Promise.all([
       this.pool.query(
         `SELECT m.id,m.kickoff_at,m.status,m.home_score,m.away_score,l.name AS league,
           ht.name AS home_team,at.name AS away_team,
@@ -479,9 +479,35 @@ export class FootballRepository {
             FILTER (WHERE s.stat_key IS NOT NULL),'[]'::jsonb) AS available_statistics
          FROM matches m JOIN leagues l ON l.id=m.league_id JOIN teams ht ON ht.id=m.home_team_id
          JOIN teams at ON at.id=m.away_team_id LEFT JOIN match_statistics s ON s.match_id=m.id
-         WHERE (m.kickoff_at AT TIME ZONE $1)::date=(now() AT TIME ZONE $1)::date
+         WHERE (m.kickoff_at AT TIME ZONE $1)::date BETWEEN (now() AT TIME ZONE $1)::date
+           AND (now() AT TIME ZONE $1)::date + 7
          GROUP BY m.id,l.name,ht.name,at.name ORDER BY m.kickoff_at`,
         [timeZone],
+      ),
+      this.pool.query(
+        `SELECT m.id,m.kickoff_at,m.status,m.home_score,m.away_score,l.name league,
+          ht.name home_team,at.name away_team,
+          count(DISTINCT os.id)::integer odds_snapshots,
+          count(DISTINCT (os.market_type,os.market_name,os.line,os.selection))::integer odds_markets
+         FROM matches m
+         JOIN leagues l ON l.id=m.league_id
+         JOIN teams ht ON ht.id=m.home_team_id
+         JOIN teams at ON at.id=m.away_team_id
+         LEFT JOIN odds_snapshots os ON os.match_id=m.id AND os.captured_at<m.kickoff_at
+         WHERE m.status='finished'
+         GROUP BY m.id,l.name,ht.name,at.name
+         ORDER BY m.kickoff_at DESC
+         LIMIT 15`
+      ),
+      this.pool.query(
+        `SELECT
+          count(DISTINCT m.id) FILTER(WHERE m.status='finished')::integer finished_matches,
+          count(DISTINCT m.id) FILTER(WHERE m.status='finished' AND os.captured_at<m.kickoff_at)::integer finished_matches_with_odds,
+          count(*) FILTER(WHERE m.status='finished' AND os.captured_at<m.kickoff_at)::bigint pre_kickoff_snapshots,
+          min(m.kickoff_at) FILTER(WHERE m.status='finished' AND os.captured_at<m.kickoff_at) earliest_odds_match,
+          max(m.kickoff_at) FILTER(WHERE m.status='finished' AND os.captured_at<m.kickoff_at) latest_odds_match
+         FROM matches m
+         LEFT JOIN odds_snapshots os ON os.match_id=m.id`
       ),
       this.pool.query('SELECT * FROM provider_status ORDER BY provider'),
       this.pool.query('SELECT * FROM provider_qualification ORDER BY provider,capability'),
@@ -505,8 +531,9 @@ export class FootballRepository {
       this.pool.query('SELECT * FROM backfill_runs ORDER BY updated_at DESC LIMIT 20'),
       this.upcomingOdds(300),
     ]);
-    return { matches: matches.rows, providers: providers.rows, qualification: qualification.rows,
-      cornerAnalyses: cornerAnalyses.rows, oddsAnalyses: oddsAnalyses.rows, datasetAudit: datasetAudit.rows[0] ?? null,
+    return { matches: matches.rows, recentFinishedMatches: recentFinished.rows, archiveSummary: archiveSummary.rows[0] ?? null,
+      providers: providers.rows, qualification: qualification.rows, cornerAnalyses: cornerAnalyses.rows,
+      oddsAnalyses: oddsAnalyses.rows, datasetAudit: datasetAudit.rows[0] ?? null,
       validation: validation.rows[0] ?? null, backfill: backfill.rows, odds };
   }
 

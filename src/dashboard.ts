@@ -9,6 +9,7 @@ type DashboardData = { matches: Array<Record<string, unknown>>; providers: Array
   predictionSelfAuditRootCauses?: Array<Record<string, unknown>>;
   predictionAdaptiveRuleProposals?: Array<Record<string, unknown>>;
   oddsSimilarity?: Array<Record<string, unknown>>;
+  predictionReviewCandidates?: Array<Record<string, unknown>>;
   predictionDiagnostics?: Record<string, unknown> | null };
 type ValidationMetric = { count?: unknown; sample?: unknown; averagePredictedProbability?: unknown; actualHitRate?: unknown;
   absoluteCalibrationError?: unknown; mae?: unknown; brier?: unknown };
@@ -35,6 +36,79 @@ function finiteNumber(value: unknown, fallback = 0): number {
 function formatDate(value: unknown, options: Intl.DateTimeFormatOptions): string {
   const date = new Date(String(value));
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul', ...options });
+}
+
+
+const reasonTranslations: Record<string, string> = {
+  NO_ODDS_ANALYSIS: 'Bu maç için henüz oran analizi oluşmadı',
+  ODDS_NOT_ELIGIBLE: 'Oran verisi henüz yeterli değil',
+  LOW_DATA_QUALITY: 'Maç verisinin kalitesi yeterli değil',
+  LOW_MODEL_CONFIDENCE: 'Sistem bu maç için yeterince emin değil',
+  INSUFFICIENT_BOOKMAKERS: 'Yeterli sayıda bahis şirketinden veri yok',
+  INSUFFICIENT_COMPLETE_STATES: 'Oran değişimini ölçmek için daha fazla veri gerekiyor',
+  MOVEMENT_NOT_SUPPORTED: 'Oran hareketi yeterince güçlü değil',
+  INSUFFICIENT_HISTORICAL_SAMPLE: 'Benzer geçmiş maç sayısı yetersiz',
+  LOW_PREDICTION_SCORE: 'Tahmin skoru resmi tahmin seviyesinin altında',
+  CONFLICTING_CORNER_MODEL: 'Korner modeli piyasa hareketiyle çelişiyor',
+  LOCK_WINDOW_MISSED: 'Tahmin oluşturma zamanı geçti',
+  UNSUPPORTED_MARKET: 'Bu bahis türü henüz desteklenmiyor',
+  NO_SETTLEMENT_DATA: 'Maç sonucu verisi henüz tamamlanmadı',
+  SELF_AUDIT_PAUSED: 'Sistem güvenlik nedeniyle yeni tahminleri geçici olarak durdurdu',
+  SELF_AUDIT_SEGMENT_PAUSED: 'Bu lig veya bahis türünde tahminler geçici olarak durduruldu',
+};
+
+function translateReason(value: unknown): string {
+  const code = String(value ?? '');
+  const base = code.split(':')[0] ?? code;
+  return reasonTranslations[base] ?? 'Bu maç resmi tahmin için gerekli koşulları henüz karşılamıyor';
+}
+
+function translateGrade(value: unknown): string {
+  const labels: Record<string, string> = { GOOD: 'İyi', LIMITED: 'Sınırlı', POOR: 'Zayıf' };
+  return labels[String(value ?? '').toUpperCase()] ?? String(value ?? '—');
+}
+
+function translateSystemStatus(value: unknown): string {
+  const labels: Record<string, string> = {
+    HEALTHY: 'Sağlıklı', WATCH: 'İzleniyor', PAUSED: 'Durduruldu', RECOVERY: 'Yeniden kontrol ediliyor',
+    INSUFFICIENT_DATA: 'Veri yetersiz', HIGH_RISK: 'Yüksek risk', NOT_AVAILABLE: 'Henüz veri yok',
+    PROPOSED: 'Öneri var', APPROVED: 'Onaylandı', REJECTED: 'Reddedildi',
+  };
+  return labels[String(value ?? '').toUpperCase()] ?? String(value ?? '—');
+}
+
+function translateMarket(value: unknown): string {
+  const labels: Record<string, string> = {
+    MATCH_RESULT: 'Maç Sonucu', '1X2': 'Maç Sonucu', TOTAL_GOALS: 'Toplam Gol',
+    TOTAL_CORNERS: 'Toplam Korner', ASIAN_HANDICAP: 'Asya Handikapı',
+  };
+  return labels[String(value ?? '').toUpperCase()] ?? String(value ?? '—');
+}
+
+function translateSelection(value: unknown): string {
+  const labels: Record<string, string> = {
+    HOME: 'Ev Sahibi', AWAY: 'Deplasman', DRAW: 'Beraberlik', OVER: 'ÜST', UNDER: 'ALT',
+  };
+  return labels[String(value ?? '').toUpperCase()] ?? String(value ?? '—');
+}
+
+function movementText(delta: unknown): string {
+  const value = finiteNumber(delta);
+  if (value >= 4) return 'Güçlü şekilde bu seçeneğe yöneliyor';
+  if (value >= 2) return 'Bu seçeneğe doğru belirgin hareket var';
+  if (value > 0) return 'Bu seçeneğe doğru hafif hareket var';
+  if (value <= -4) return 'Bu seçeneğin tersine güçlü hareket var';
+  if (value <= -2) return 'Bu seçeneğin tersine belirgin hareket var';
+  if (value < 0) return 'Bu seçeneğin tersine hafif hareket var';
+  return 'Belirgin oran hareketi yok';
+}
+
+function outcomeText(value: unknown): string {
+  const labels: Record<string, string> = {
+    WIN: 'Kazandı', HALF_WIN: 'Yarı kazandı', LOSS: 'Kaybetti', HALF_LOSS: 'Yarı kaybetti',
+    PUSH: 'İade', VOID: 'Geçersiz', PENDING: 'Bekliyor',
+  };
+  return labels[String(value ?? '').toUpperCase()] ?? String(value ?? '—');
 }
 
 function renderEmpty(icon: string, title: string, description: string): string {

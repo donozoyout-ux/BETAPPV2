@@ -254,6 +254,19 @@ describe('FootballRepository integration', () => {
     expect(await predictionRepository.lock(evaluation, runId, new Date('2099-09-20T18:00:00Z'), 0, config)).toBe(false);
     expect(await predictionRepository.lock(evaluation, runId, new Date('2099-09-20T17:30:00Z'), 30, config)).toBe(true);
     expect(await predictionRepository.lock(evaluation, runId, new Date('2099-09-20T17:31:00Z'), 29, config)).toBe(false);
+    const similarityShowcase = await predictionRepository.oddsSimilarityShowcase(
+      4, 5, new Date('2099-09-20T17:00:00Z'));
+    expect(similarityShowcase).toHaveLength(1);
+    expect(similarityShowcase[0]!.current).toMatchObject({
+      matchId: targetId, homeTeam: 'prediction-target Home', awayTeam: 'prediction-target Away',
+      marketType: 'MATCH_RESULT', marketName: '1X2', selection: 'HOME',
+      state: 'LOCKED_PREDICTION', historicalSettledSampleSize: 1,
+    });
+    expect(similarityShowcase[0]!.matches).toHaveLength(1);
+    expect(similarityShowcase[0]!.matches[0]).toMatchObject({
+      matchId: historicalId, homeTeam: 'prediction-historical Home', awayTeam: 'prediction-historical Away',
+      outcome: 'WIN', homeScore: 2, awayScore: 0, featureLeadMinutes: config.officialWindowStartMinutes,
+    });
     await expect(pool.query('UPDATE prediction_journal SET locked_at=now() WHERE match_id=$1', [targetId])).rejects.toThrow(/immutable/);
     await repository.upsertMatch('prediction-source', fixture('prediction-target', targetKickoff, 'finished', 2, 0));
     expect((await predictionRepository.settlePending()).settled).toBe(1);

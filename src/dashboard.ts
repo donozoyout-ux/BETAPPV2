@@ -338,13 +338,17 @@ export function renderDashboard(data: DashboardData): string {
     : renderEmpty('—', 'Tahmin oluşturulmayan maç yok', 'Bugünkü maçların değerlendirmesi burada özetlenir.');
   const predictionHistoryRows = predictionHistory.length ? predictionHistory.map((prediction) => {
     const skip = String(prediction.decision) === 'SKIP';
-    const outcome = prediction.outcome == null ? '⏳ PENDING' : escapeHtml(prediction.outcome);
+    const outcome = prediction.outcome == null ? 'Bekliyor' : outcomeText(prediction.outcome);
     return `<tr><td>${escapeHtml(formatDate(prediction.kickoff_at, { day: '2-digit', month: 'short' }))}</td>
       <td>${escapeHtml(prediction.home_team)} — ${escapeHtml(prediction.away_team)}</td>
-      <td>${skip ? '⏭ GEÇ' : `${escapeHtml(prediction.market_type)} ${escapeHtml(prediction.line ?? '')} ${escapeHtml(prediction.selection)}`}</td>
-      <td>${skip ? '—' : escapeHtml(prediction.prediction_score)}</td><td>${outcome}</td></tr>`;
-  }).join('') : '<tr><td colspan="5">Henüz kilitli tahmin geçmişi yok.</td></tr>';
-  const performanceSummary = predictionPerformance ? `<div class="grid"><article class="card"><strong>Resmi karar</strong><p>${escapeHtml(predictionPerformance.totalOfficialDecisions)} · PREDICT ${escapeHtml(predictionPerformance.predictCount)} · GEÇ ${escapeHtml(predictionPerformance.skipCount)}</p></article><article class="card"><strong>Settlement</strong><p>N=${escapeHtml(predictionPerformance.settled)} · WIN ${escapeHtml(predictionPerformance.win)} · LOSS ${escapeHtml(predictionPerformance.loss)}</p></article><article class="card"><strong>Reference Paper Units</strong><p>${escapeHtml(predictionPerformance.referencePaperUnits ?? 0)}</p><p style="color:var(--muted)">Gerçek/executable getiri değildir.</p></article></div>` : renderEmpty('◇', 'Performans verisi yok', 'Yalnız kilitli resmi kararlar performansa dahil edilir.');
+      <td>${skip ? 'Tahmin oluşturulmadı' : `${escapeHtml(translateMarket(prediction.market_type))} ${escapeHtml(prediction.line ?? '')} ${escapeHtml(translateSelection(prediction.selection))}`}</td>
+      <td>${skip ? '—' : escapeHtml(prediction.prediction_score)}</td><td>${escapeHtml(outcome)}</td></tr>`;
+  }).join('') : '<tr><td colspan="5">Henüz resmi tahmin geçmişi yok.</td></tr>';
+  const performanceSummary = predictionPerformance ? `<div class="grid"><article class="card"><strong>Resmi kararlar</strong>
+    <p>Toplam ${escapeHtml(predictionPerformance.totalOfficialDecisions)} · Tahmin ${escapeHtml(predictionPerformance.predictCount)} · Tahmin yok ${escapeHtml(predictionPerformance.skipCount)}</p></article>
+    <article class="card"><strong>Sonuçlanan tahminler</strong><p>${escapeHtml(predictionPerformance.settled)} maç · Kazanan ${escapeHtml(predictionPerformance.win)} · Kaybeden ${escapeHtml(predictionPerformance.loss)}</p></article>
+    <article class="card"><strong>Deneme performansı</strong><p>${escapeHtml(predictionPerformance.referencePaperUnits ?? 0)} birim</p><p style="color:var(--muted)">Gerçek para getirisi değildir.</p></article></div>`
+    : renderEmpty('◇', 'Performans verisi yok', 'Resmi tahminler sonuçlandıkça performans özeti burada oluşacak.');
   const selfAuditSummary = predictionSelfAudit ? (() => {
     const status = String(predictionSelfAudit.status ?? 'NOT_AVAILABLE');
     const guardActive = Boolean(predictionSelfAudit.guardActive);

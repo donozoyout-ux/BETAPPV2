@@ -595,7 +595,7 @@ export class PredictionRepository {
     const safeMatchLimit = Math.max(1, Math.min(8, Math.trunc(matchLimit)));
     const safeExampleLimit = Math.max(1, Math.min(8, Math.trunc(exampleLimit)));
     const result = await this.pool.query(`SELECT DISTINCT ON(r.match_id)
-      r.match_id,r.generated_at,r.decision,r.selected_candidate,r.candidates,r.skip_reasons,m.kickoff_at,
+      r.match_id,r.model_version,r.config_hash,r.generated_at,r.decision,r.selected_candidate,r.candidates,r.skip_reasons,m.kickoff_at,
       m.league_id competition_id,l.name league,ht.name home_team,at.name away_team,
       CASE WHEN j.id IS NULL THEN 'PREVIEW' ELSE
         CASE WHEN j.decision='PREDICT' THEN 'LOCKED_PREDICTION' ELSE 'LOCKED_SKIP' END END state
@@ -673,17 +673,17 @@ export class PredictionRepository {
     const byId = new Map(examples.rows.map((row) => [String(row.id), row]));
     const allNeighborMatchIds = [...new Set(examples.rows.map((row) => String(row.match_id)))];
 
-    const neighborMarkets = allNeighborMatchIds.length ? await this.pool.query(`SELECT match_id,market_type,market_name,line,selection,
-      settlement_result FROM prediction_historical_examples
-      WHERE match_id=ANY($1::uuid[]) AND analysis_eligible=true AND model_version=$2 AND config_hash=$3`,
-    [allNeighborMatchIds,predictionConfig.modelVersion,predictionConfigHash(predictionConfig)]) : { rows: [] as Array<Record<string, unknown>> };
+    const neighborMarkets = allNeighborMatchIds.length ? await this.pool.query(`SELECT match_id,model_version,config_hash,
+      market_type,market_name,line,selection,settlement_result FROM prediction_historical_examples
+      WHERE match_id=ANY($1::uuid[]) AND analysis_eligible=true`,
+    [allNeighborMatchIds]) : { rows: [] as Array<Record<string, unknown>> };
 
     const isBinary = (outcome: string) => !['PUSH','VOID'].includes(outcome);
     const isPositive = (outcome: string) => ['WIN','HALF_WIN'].includes(outcome);
     const baselineFor = async (row: Record<string, unknown>, candidate: Record<string, unknown>) => {
       const params = [String(row.competition_id),String(candidate.marketType ?? ''),String(candidate.marketName ?? ''),
         candidate.line == null ? null : Number(candidate.line),String(candidate.selection ?? ''),new Date(String(row.kickoff_at)),
-        predictionConfig.modelVersion,predictionConfigHash(predictionConfig)];
+        String(row.model_version),String(row.config_hash)];
       const query = (local: boolean) => this.pool.query<{ binary_count: number; positive_count: number }>(`SELECT
         count(*) FILTER(WHERE settlement_result NOT IN('PUSH','VOID'))::integer binary_count,
         count(*) FILTER(WHERE settlement_result IN('WIN','HALF_WIN'))::integer positive_count
@@ -713,7 +713,9 @@ export class PredictionRepository {
       const groups = new Map<string, { marketType: string; marketName: string; line: number | null; selection: string;
         sampleSize: number; positiveCount: number }>();
       for (const item of neighborMarkets.rows) {
-        if (!neighborSet.has(String(item.match_id))) continue;
+        if (!neighborSet.has(String(item.match_id))
+          || String(item.model_version) !== String(row.model_version)
+          || String(item.config_hash) !== String(row.config_hash)) continue;
         const outcome = String(item.settlement_result);
         if (!isBinary(outcome)) continue;
         const marketType = String(item.market_type);

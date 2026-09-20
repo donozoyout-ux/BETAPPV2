@@ -592,22 +592,22 @@ export function renderCornerDetail(data: Record<string, unknown>): string {
   const probabilities = (data.probabilities ?? {}) as Record<string, { over: number; under: number }>;
   const probabilityRows = Object.entries(probabilities).map(([line, value]) =>
     `<tr><td>${escapeHtml(line)}</td><td>${(value.over * 100).toFixed(1)}%</td><td>${(value.under * 100).toFixed(1)}%</td></tr>`).join('');
-  return shell(`<div class="app-shell"><aside class="sidebar"><a class="brand" href="/"><span class="brand-mark">B</span><span>BETAPP<small>Match Detail</small></span></a>
+  return shell(`<div class="app-shell"><aside class="sidebar"><a class="brand" href="/"><span class="brand-mark">B</span><span>BETAPP<small>Maç Detayı</small></span></a>
     <div class="side-group"><div class="side-label">Navigasyon</div><nav class="side-nav"><a href="/"><span class="nav-icon">←</span>Ana Panele Dön</a><a class="active" href="#corner-detail"><span class="nav-icon">⌁</span>Korner Analizi</a></nav></div>
-    <div class="sidebar-foot"><a class="system-pill" href="/health"><span class="live-dot"></span><span><strong style="display:block;color:var(--text)">BETAPP Online</strong>System Health</span></a></div></aside>
-    <div class="app-main"><header class="topbar"><div class="top-title"><strong>Korner Analizi</strong><span>${escapeHtml(data.competition)}</span></div><div class="top-actions"><a class="top-chip" href="/">Ana Panel</a><a class="top-chip" href="/health">Health</a></div></header>
-    <main class="content" id="corner-detail"><section class="command-hero"><article class="hero-main"><p class="eyebrow">Corner Engine V1</p><h1>${escapeHtml(data.home_team)}<br>— ${escapeHtml(data.away_team)}</h1>
-      <p class="hero-copy">${escapeHtml(formatDate(data.kickoff_at, { day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' }))} · ${escapeHtml(data.competition)} · deterministik model çıktısı</p></article>
+    <div class="sidebar-foot"><a class="system-pill" href="/health"><span class="live-dot"></span><span><strong style="display:block;color:var(--text)">BETAPP Online</strong>Sistem Durumu</span></a></div></aside>
+    <div class="app-main"><header class="topbar"><div class="top-title"><strong>Korner Analizi</strong><span>${escapeHtml(data.competition)}</span></div><div class="top-actions"><a class="top-chip" href="/">Ana Panel</a><a class="top-chip" href="/health">Sistem Durumu</a></div></header>
+    <main class="content" id="corner-detail"><section class="command-hero"><article class="hero-main"><p class="eyebrow">Korner Analizi</p><h1>${escapeHtml(data.home_team)}<br>— ${escapeHtml(data.away_team)}</h1>
+      <p class="hero-copy">${escapeHtml(formatDate(data.kickoff_at, { day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' }))} · ${escapeHtml(data.competition)} · hesaplanan korner beklentisi</p></article>
       <article class="hero-status"><div class="hero-status-head"><strong>Model Durumu</strong><span class="badge ok">${escapeHtml(data.distribution)}</span></div>
-      <div class="hero-status-list"><div class="health-row"><span>Data Quality</span><b>${escapeHtml(data.data_quality_score ?? '—')}/100</b></div>
-      <div class="health-row"><span>Model Confidence</span><b>${escapeHtml(data.model_confidence ?? '—')}/100</b></div></div></article></section>
+      <div class="hero-status-list"><div class="health-row"><span>Veri kalitesi</span><b>${escapeHtml(data.data_quality_score ?? '—')}/100</b></div>
+      <div class="health-row"><span>Model güveni</span><b>${escapeHtml(data.model_confidence ?? '—')}/100</b></div></div></article></section>
       <section class="metrics"><article class="metric"><span class="metric-label">Ev korner beklentisi</span><strong class="metric-value">${finiteNumber(data.expected_home_corners).toFixed(2)}</strong></article>
       <article class="metric"><span class="metric-label">Deplasman</span><strong class="metric-value">${finiteNumber(data.expected_away_corners).toFixed(2)}</strong></article>
       <article class="metric"><span class="metric-label">Toplam</span><strong class="metric-value">${finiteNumber(data.expected_total_corners).toFixed(2)}</strong></article>
       <article class="metric"><span class="metric-label">Model güveni</span><strong class="metric-value">${escapeHtml(data.model_confidence ?? '—')}</strong><span class="metric-note">100 üzerinden</span></article></section>
-      <section class="section"><div class="section-title"><div><span class="section-kicker">Probability table</span><h2>Üst / Alt Olasılıkları</h2><p>Model dağılımından hesaplanan korner çizgileri.</p></div></div>
+      <section class="section"><div class="section-title"><div><span class="section-kicker">Olasılık tablosu</span><h2>Üst / Alt Olasılıkları</h2><p>Model dağılımından hesaplanan korner çizgileri.</p></div></div>
       <article class="panel"><div class="panel-body"><div class="scroll"><table><thead><tr><th>Çizgi</th><th>Üst</th><th>Alt</th></tr></thead><tbody>${probabilityRows || '<tr><td colspan="3">Olasılık verisi yok.</td></tr>'}</tbody></table></div></div></article></section>
       <section class="section"><details><summary>Hesaplama ayrıntıları</summary><div class="details-body"><pre style="white-space:pre-wrap;overflow:auto;color:var(--muted);font-size:.75rem">${escapeHtml(JSON.stringify(data.calculation_details, null, 2))}</pre></div></details></section>
-      <footer class="footer"><span>BETAPP UI V3 · Corner Engine V1</span><span><a href="/">Ana Panel</a> · <a href="/health">System Health</a></span></footer>
+      <footer class="footer"><span>BETAPP · Korner Analizi</span><span><a href="/">Ana Panel</a> · <a href="/health">Sistem Durumu</a></span></footer>
     </main></div></div>`, `${escapeHtml(data.home_team)} — ${escapeHtml(data.away_team)} | Korner Analizi`);
 }

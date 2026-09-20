@@ -216,12 +216,7 @@ export function renderDashboard(data: DashboardData): string {
   const capabilities = [...new Set((data.qualification ?? []).map((item) => String(item.capability)))];
   const qualificationProviders = [...new Set((data.qualification ?? []).map((item) => String(item.provider)))];
   const matrix = qualificationProviders.length ? `<div class="scroll"><table><thead><tr><th>Provider</th>${capabilities.map((capability) => `<th>${escapeHtml(capability)}</th>`).join('')}</tr></thead><tbody>${qualificationProviders.map((provider) => `<tr><td><strong>${escapeHtml(provider)}</strong></td>${capabilities.map((capability) => { const item = (data.qualification ?? []).find((entry) => entry.provider === provider && entry.capability === capability); const result = item?.result ?? 'NOT_TESTED'; return `<td><span class="badge ${result === 'SUPPORTED' ? 'ok' : result === 'PARTIAL' ? 'partial' : 'bad'}">${escapeHtml(result)}</span></td>`; }).join('')}</tr>`).join('')}</tbody></table></div>` : renderEmpty('✓', 'Qualification henüz çalışmadı', 'Kaynak yetenek testleri tamamlandığında destek matrisi burada oluşacak.');
-  const cornerRows = analyses.length ? analyses.map((analysis) => {
-    const probabilities = analysis.probabilities as Record<string, { over?: number }> | undefined;
-    const probability = (line: string) => probabilities?.[line]?.over == null ? '—' : `${(probabilities[line]!.over! * 100).toFixed(1)}%`;
-    return `<tr><td><a href="/matches/${escapeHtml(analysis.match_id)}/corners"><strong>${escapeHtml(analysis.home_team)} — ${escapeHtml(analysis.away_team)}</strong></a></td>
-      <td>${finiteNumber(analysis.expected_total_corners).toFixed(2)}</td><td>${probability('8.5')}</td><td>${probability('9.5')}</td><td>${probability('10.5')}</td><td>${escapeHtml(analysis.data_quality_score)}/100</td><td>${escapeHtml(analysis.model_confidence)}/100</td></tr>`;
-  }).join('') : '<tr><td colspan="7">Henüz corner analizi yok.</td></tr>';
+
   const oddsSimilarityCards = oddsSimilarity.length ? oddsSimilarity.map((entry) => {
     const current = (entry.current ?? {}) as Record<string, unknown>;
     const history = Array.isArray(entry.matches) ? entry.matches as Array<Record<string, unknown>> : [];
@@ -369,7 +364,7 @@ export function renderDashboard(data: DashboardData): string {
       : status === 'PAUSED'
         ? 'Koruma süresi doldu · recovery modunda yeni sonuç toplanmasına izin verilir.'
         : 'Geçmiş kayıtlar değiştirilmez; audit yalnız yeni resmi tahmin kapısını kontrol eder.';
-    return `<div class="grid"><article class="card"><div class="row"><strong>SELF-AUDIT V1</strong>
+    return `<div class="grid"><article class="card"><div class="row"><strong>Genel güvenlik kontrolü</strong>
       <span class="badge ${badgeClass}">${escapeHtml(effectiveStatus)}</span></div>
       <p>Son örnek N=${escapeHtml(predictionSelfAudit.recentSampleSize ?? 0)} · Binary N=${escapeHtml(predictionSelfAudit.recentBinarySampleSize ?? 0)}</p>
       <p>Positive rate: <strong>${escapeHtml(positiveRate)}</strong> · Reference Paper ROI: <strong>${escapeHtml(roi)}</strong></p>
@@ -400,11 +395,11 @@ export function renderDashboard(data: DashboardData): string {
         <td>${escapeHtml(item.recentSampleSize ?? 0)}</td><td>${escapeHtml(rate)}</td><td>${escapeHtml(roi)}</td>
         <td>${escapeHtml(item.lossStreak ?? 0)}</td></tr>`;
     }).join('');
-    return `<details><summary>SELF-AUDIT V2 · Segment kontrolü · PAUSED ${activePaused} · WATCH ${watch}</summary>
+    return `<details><summary>Lig ve bahis türü kontrolü · Lig ve bahis türü ayrıntıları · PAUSED ${activePaused} · WATCH ${watch}</summary>
       <div class="details-body"><p style="color:var(--muted)">Sadece sorunlu market/lig kapatılır. Genel V1 freni ayrıca çalışmaya devam eder.</p>
       <div class="scroll"><table><thead><tr><th>Kapsam</th><th>Segment</th><th>Durum</th><th>Son N</th>
       <th>Positive rate</th><th>Ref. ROI</th><th>Kayıp serisi</th></tr></thead><tbody>${rows}</tbody></table></div></div></details>`;
-  })() : `<details><summary>SELF-AUDIT V2 · Segment kontrolü</summary><div class="details-body">${renderEmpty('◇',
+  })() : `<details><summary>Lig ve bahis türü kontrolü · Lig ve bahis türü ayrıntıları</summary><div class="details-body">${renderEmpty('◇',
     'Segment verisi henüz yok', 'İlk resmi tahmin sonuçları oluştukça market ve lig bazlı audit burada başlayacak.')}</div></details>`;
 
   const rootCauseSummary = predictionSelfAuditRootCauses.length ? (() => {
@@ -429,13 +424,13 @@ export function renderDashboard(data: DashboardData): string {
         <td>${escapeHtml(rateGap)}</td><td>${escapeHtml(roiGap)}</td>
         <td>${escapeHtml(evidence)}</td><td>${escapeHtml(item.rootCauseScore ?? 0)}</td></tr>`;
     }).join('');
-    return `<details><summary>SELF-AUDIT V3 · Kök neden analizi · HIGH RISK ${highRisk} · WATCH ${watch}</summary>
+    return `<details><summary>Performans nedenleri · Performans nedenleri · HIGH RISK ${highRisk} · WATCH ${watch}</summary>
       <div class="details-body"><p style="color:var(--muted)">Teşhis katmanıdır; tek başına resmi tahmini durdurmaz.
       Faktör performansı aynı dönem genel baseline ile karşılaştırılır.</p>
       <div class="scroll"><table><thead><tr><th>Faktör</th><th>Bucket</th><th>Durum</th><th>Binary N</th>
       <th>Positive rate</th><th>Ref. ROI</th><th>Rate farkı</th><th>ROI farkı</th><th>Kanıt</th><th>Cause score</th>
       </tr></thead><tbody>${rows}</tbody></table></div></div></details>`;
-  })() : `<details><summary>SELF-AUDIT V3 · Kök neden analizi</summary><div class="details-body">${renderEmpty('◇',
+  })() : `<details><summary>Performans nedenleri · Performans nedenleri</summary><div class="details-body">${renderEmpty('◇',
     'Kök neden verisi henüz yok', 'Yeterli resmi settlement oluşunca hangi koşulların performansı aşağı çektiği burada görünecek.')}</div></details>`;
 
   const predictionDiagnosticSummary = predictionDiagnostics ? (() => {
@@ -484,16 +479,16 @@ export function renderDashboard(data: DashboardData): string {
         <td>${escapeHtml(interaction)}</td><td>${escapeHtml(evidence)}</td><td>${escapeHtml(item.proposalScore ?? 0)}</td>
         <td><span class="badge ${decisionClass}">${escapeHtml(decision)}</span></td></tr>`;
     }).join('');
-    return `<details><summary>SELF-AUDIT V4 · Adaptive Rule Proposals · PROPOSED ${proposed} · APPROVED ${approved} · REJECTED ${rejected}</summary>
+    return `<details><summary>Sistem önerileri · Kural önerileri · PROPOSED ${proposed} · APPROVED ${approved} · REJECTED ${rejected}</summary>
       <div class="details-body"><p style="color:var(--muted)">V4 yalnız öneri üretir. autoApply=false ve executionAuthority=false.
       APPROVED durumu bile PredictionConfig'i veya tahmin motorunu otomatik değiştirmez.</p>
       <div class="scroll"><table><thead><tr><th>Risk</th><th>Önerilen koşul</th><th>N</th><th>Rate farkı</th>
       <th>ROI farkı</th><th>Interaction</th><th>Kanıt</th><th>Proposal score</th><th>Karar</th></tr></thead>
       <tbody>${rows}</tbody></table></div></div></details>`;
-  })() : `<details><summary>SELF-AUDIT V4 · Adaptive Rule Proposals</summary><div class="details-body">${renderEmpty('◇',
+  })() : `<details><summary>Sistem önerileri · Kural önerileri</summary><div class="details-body">${renderEmpty('◇',
     'Güncel kural önerisi yok', 'V4 yeterli ve tekrarlanabilir zayıflık görürse burada insan onayına sunulan öneriler oluşacak.')}</div></details>`;
 
-  const backfillRows = (data.backfill ?? []).length ? (data.backfill ?? []).map((run) => `<tr><td>${escapeHtml(run.competition_name)}</td><td>${escapeHtml(run.season)}</td><td>${escapeHtml(run.status)}</td><td>${escapeHtml(run.fixtures_discovered)}</td><td>${escapeHtml(run.matches_stored)}</td><td>${escapeHtml(run.corner_complete)}</td><td>${escapeHtml(run.partial)}</td><td>${escapeHtml(run.failed)}</td><td>${escapeHtml(run.retries)}</td></tr>`).join('') : '<tr><td colspan="9">Henüz backfill çalıştırılmadı.</td></tr>';
+
   const datasetHealth = audit ? `<div class="grid"><article class="card"><strong>Geçmiş maç</strong><p>${escapeHtml(audit.totalMatches)}</p></article><article class="card"><strong>Korner kapsaması</strong><p>${percent(audit.cornerCoverage?.complete?.rate)}</p></article><article class="card"><strong>Lig</strong><p>${escapeHtml(audit.perCompetition?.length ?? 0)}</p></article><article class="card"><strong>Sezon</strong><p>${escapeHtml(audit.perSeason?.length ?? 0)}</p></article></div>` : renderEmpty('◫', 'Dataset henüz hazır değil', 'Historical backfill ve audit tamamlandığında kalite özeti burada görünecek.');
   const calibrationRows = validation ? Object.entries(validation.calibration ?? {}).map(([bucket, item]) => `<tr><td>${escapeHtml(bucket)}</td><td>${escapeHtml(item.count)}</td><td>${percent(item.averagePredictedProbability)}</td><td>${percent(item.actualHitRate)}</td><td>${percent(item.absoluteCalibrationError)}</td></tr>`).join('') : '';
   const modelValidation = validation ? `<div class="grid"><article class="card"><strong>MAE</strong><p>${finiteNumber(validation.mae).toFixed(3)}</p></article><article class="card"><strong>RMSE</strong><p>${finiteNumber(validation.rmse).toFixed(3)}</p></article><article class="card"><strong>Brier</strong><p>${finiteNumber(validation.brier).toFixed(4)}</p></article><article class="card"><strong>Log loss</strong><p>${finiteNumber(validation.logLoss).toFixed(4)}</p></article></div><div class="scroll" style="margin-top:10px"><table><thead><tr><th>Bucket</th><th>Count</th><th>Predicted</th><th>Actual</th><th>Abs. error</th></tr></thead><tbody>${calibrationRows}</tbody></table></div>` : renderEmpty('∿', 'Backtest sonucu yok', 'Model doğrulaması çalıştırıldığında hata ve kalibrasyon metrikleri burada gösterilecek.');
@@ -502,10 +497,6 @@ export function renderDashboard(data: DashboardData): string {
   const officialPredictionCount = officialPredictions.length;
   const reviewCandidateCount = predictionReviewCandidates.length;
   const rejectedPredictionCount = rejectedPredictions.length;
-  const skipPredictionCount = predictions.filter((item) => String(item.decision) === 'SKIP').length;
-  const pendingSettlementCount = predictionPerformance?.pending == null
-    ? predictionHistory.filter((item) => item.outcome == null && String(item.decision) === 'PREDICT').length
-    : finiteNumber(predictionPerformance.pending);
   const globalAuditRaw = String(predictionSelfAudit?.status ?? 'NOT_AVAILABLE');
   const globalAuditGuard = Boolean(predictionSelfAudit?.guardActive);
   const globalAuditStatus = globalAuditRaw === 'PAUSED' && !globalAuditGuard ? 'RECOVERY' : globalAuditRaw;
@@ -514,13 +505,7 @@ export function renderDashboard(data: DashboardData): string {
   const highRiskFactors = predictionSelfAuditRootCauses.filter((item) => item.status === 'HIGH_RISK').length;
   const watchFactors = predictionSelfAuditRootCauses.filter((item) => item.status === 'WATCH').length;
   const proposedRules = predictionAdaptiveRuleProposals.filter((item) => item.decision === 'PROPOSED').length;
-  const providerQuickRows = sources.slice(0, 5).map((provider) => {
-    const status = String(provider.status ?? 'unknown').toLowerCase();
-    const cls = status === 'healthy' ? 'ok' : ['degraded','waiting'].includes(status) ? 'partial' : 'neutral';
-    const label = status === 'healthy' ? 'Çalışıyor' : status === 'waiting' ? 'Veri bekleniyor'
-      : status === 'degraded' ? 'Kısmi çalışıyor' : status === 'blocked' ? 'Kullanılmıyor' : 'Kontrol ediliyor';
-    return `<div class="health-row"><span>${escapeHtml(provider.provider)}</span><span class="badge ${cls}">${escapeHtml(label)}</span></div>`;
-  }).join('');
+
   const auditOverview = `<div class="audit-overview">
     <article class="audit-mini"><small>Genel tahmin sistemi</small><strong>${escapeHtml(translateSystemStatus(globalAuditStatus))}</strong>
       <span>${globalAuditGuard ? 'Güvenlik freni yeni resmi tahminleri bekletiyor' : 'Genel kontrol normal çalışıyor'}</span></article>

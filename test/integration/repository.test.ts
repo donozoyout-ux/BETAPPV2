@@ -299,6 +299,11 @@ describe('FootballRepository integration', () => {
       matchId: historicalId, homeTeam: 'prediction-historical Home', awayTeam: 'prediction-historical Away',
       outcome: 'WIN', homeScore: 2, awayScore: 0, featureLeadMinutes: config.officialWindowStartMinutes,
     });
+    expect(similarityShowcase[0]!.evidenceGap).toMatchObject({
+      similarRate: 1, baselineRate: 1, gapPp: 0, baselineSampleSize: 1,
+      baselineScope: 'GLOBAL_SUPPORTED_COMPETITIONS',
+    });
+    expect(similarityShowcase[0]!.resultMap).toEqual([]);
 
     // Similarity must not depend on passing the official prediction gate.
     // This second target has historical evidence, but the production N>=30 gate forces SKIP.

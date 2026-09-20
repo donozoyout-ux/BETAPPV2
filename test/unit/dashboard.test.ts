@@ -4,11 +4,11 @@ import { renderDashboard } from '../../src/dashboard.js';
 describe('renderDashboard', () => {
   it('escapes provider and match values', () => {
     const html = renderDashboard({
-      providers: [{ provider: '<script>', status: 'healthy', last_checked_at: 'now' }],
+      providers: [{ provider: '<script>alert(1)</script>', status: 'healthy', last_checked_at: 'now' }],
       matches: [{ kickoff_at: '2026-09-16T10:00:00Z', league: 'League', home_team: '<b>A</b>', away_team: 'B', status: 'scheduled', available_statistics: [] }],
     });
-    expect(html).not.toContain('<script>');
-    expect(html).toContain('&lt;script&gt;');
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
     expect(html).toContain('&lt;b&gt;A&lt;/b&gt;');
   });
 
@@ -21,7 +21,7 @@ describe('renderDashboard', () => {
         confidence_score: 80, confidence_grade: 'GOOD', analysis_eligible: true,
         reasons: ['4/5 bookmakers agree'], warnings: [] }] }],
     });
-    expect(html).toContain('ORAN ANALİZİ V1');
+    expect(html).toContain('Oran Analizi V1');
     expect(html).toContain('Piyasa Olasılığı');
     expect(html).toContain('Bookmaker Teyidi');
     expect(html).not.toMatch(/KESİN|GARANTİ|BANKO|%100/);

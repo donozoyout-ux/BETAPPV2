@@ -44,6 +44,18 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
     engineVersion: 'ODDS_NEIGHBOR_V2', executionAuthority: false, aiPredictionAuthority: false,
     analyses: oddsIntelligence ? await oddsIntelligence.upcoming(20, new Date(), request.query.mode === 'ODDS_BAND' ? 'ODDS_BAND' : 'CLOSEST_NEIGHBORS') : [],
   }));
+  app.get<{ Querystring: { limit?: string } }>('/api/odds-intelligence/audit/history', async (request) => {
+    const requested = Number(request.query.limit ?? 5000);
+    const limit = Number.isFinite(requested) && requested > 0 ? Math.trunc(requested) : 5000;
+    return oddsIntelligence ? oddsIntelligence.historyAudit(limit) : {
+      generatedAt: new Date(), scanLimit: limit, scannedMatches: 0, truncated: false,
+      archive: { totalFinishedMatches: 0, matchesWithPreKickoffOdds: 0, finishedMatchOddsCoverage: 0,
+        preKickoffSnapshots: 0, excludedPostKickoffSnapshots: 0, providers: [], earliestKickoff: null, latestKickoff: null },
+      routeReadiness: { matchesWithRoute: 0, matchesWithMovementReadyRoute: 0, routes: 0, movementReadyRoutes: 0,
+        scannedMatchRouteCoverage: 0, scannedMatchMovementCoverage: 0 },
+      markets: [], competitionSeasons: [],
+    };
+  });
   app.get<{ Params: { matchId: string } }>('/api/odds-intelligence/:matchId', async (request) => {
     const analysis = oddsIntelligence ? await oddsIntelligence.byMatch(request.params.matchId) : null;
     return analysis ?? { matchId: request.params.matchId, status: 'NOT_GENERATED', analysis: null, executionAuthority: false, aiPredictionAuthority: false };

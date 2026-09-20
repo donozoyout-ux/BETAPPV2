@@ -446,8 +446,20 @@ describe('FootballRepository integration', () => {
     };
     await appendMarket(historyId, 'neighbor-history', new Date('2098-01-01T10:00:00Z'));
     await appendMarket(targetId, 'neighbor-target', new Date('2099-01-01T10:00:00Z'));
+    await odds.append(historyId, {
+      provider: 'nowgoal:neighbor-a', providerMatchId: 'neighbor-history', marketType: 'TOTAL_GOALS',
+      marketName: 'Total Goals', line: 2.5, selection: 'OVER', oddsDecimal: 1.70,
+      capturedAt: new Date('2098-01-03T10:00:00Z'),
+    });
+    const oddsIntelligenceRepository = new OddsIntelligenceRepository(pool);
+    const audit = await oddsIntelligenceRepository.historyAudit(1000);
+    expect(audit.archive.matchesWithPreKickoffOdds).toBeGreaterThanOrEqual(1);
+    expect(audit.archive.excludedPostKickoffSnapshots).toBeGreaterThanOrEqual(1);
+    expect(audit.routeReadiness.matchesWithMovementReadyRoute).toBeGreaterThanOrEqual(1);
+    expect(audit.markets.find((item) => item.marketType === 'TOTAL_GOALS' && item.line === 2.5 && item.selection === 'OVER'))
+      .toMatchObject({ movementReadyRoutes: expect.any(Number) });
     const beforeJournal = Number((await pool.query('SELECT count(*) FROM prediction_journal')).rows[0]!.count);
-    const intelligence = await new OddsIntelligenceRepository(pool).byMatch(targetId, new Date('2099-01-01T14:00:00Z'));
+    const intelligence = await oddsIntelligenceRepository.byMatch(targetId, new Date('2099-01-01T14:00:00Z'));
     expect(intelligence?.primaryMarket).toMatchObject({ marketType: 'TOTAL_GOALS', line: 2.5 });
     expect(intelligence?.oddsRoute.snapshots).toHaveLength(2);
     expect(intelligence?.pastTwins.map((item) => item.matchId)).toContain(historyId);

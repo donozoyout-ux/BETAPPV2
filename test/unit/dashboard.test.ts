@@ -121,7 +121,8 @@ describe('renderDashboard', () => {
     });
     expect(html).toContain('Futbol Analiz Sistemi');
     expect(html).toContain('Ana Sayfa');
-    expect(html).toContain('Bugünün Maçları');
+    expect(html).toContain('Maçlar');
+    expect(html).toContain('Veri Arşivi');
     expect(html).toContain('Tahminler');
     expect(html).toContain('Oran Eşleşmeleri');
     expect(html).toContain('Geçmiş Tahminler');
@@ -131,4 +132,31 @@ describe('renderDashboard', () => {
     expect(html).not.toContain('BETAPP Command Center');
     expect(html).not.toContain('SELF-AUDIT V1');
   });
+  it('shows archive and recent results when there are no current matches', () => {
+    const html = renderDashboard({
+      providers: [{ provider: 'fotmob', status: 'healthy' }, { provider: 'nowgoal', status: 'healthy' }],
+      matches: [],
+      recentFinishedMatches: [{
+        kickoff_at: '2026-09-20T18:00:00Z', league: 'Premier League',
+        home_team: 'Arsenal', away_team: 'Chelsea', home_score: 2, away_score: 1,
+        odds_snapshots: 42, odds_markets: 9,
+      }],
+      archiveSummary: {
+        finished_matches: 83,
+        finished_matches_with_odds: 33,
+        pre_kickoff_snapshots: 14348,
+      },
+      predictionHistory: Array.from({ length: 15 }, (_, index) => ({ decision: 'SKIP', kickoff_at: '2026-09-20T18:00:00Z',
+        home_team: `Home ${index}`, away_team: `Away ${index}`, outcome: null })),
+      predictionDiagnostics: { historical: { total: 217, eligible: 217 }, current: { targets: 0 } },
+    });
+    expect(html).toContain('Geçmiş analiz arşivi hazır');
+    expect(html).toContain('Historical analiz örnekleri');
+    expect(html).toContain('217');
+    expect(html).toContain('14.348');
+    expect(html).toContain('Arsenal — Chelsea');
+    expect(html).toContain('42 geçmiş oran kaydı');
+    expect(html).not.toContain('İlk veri senkronizasyonu bekleniyor');
+  });
+
 });

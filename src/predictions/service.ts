@@ -595,8 +595,8 @@ export class PredictionRepository {
     const safeMatchLimit = Math.max(1, Math.min(8, Math.trunc(matchLimit)));
     const safeExampleLimit = Math.max(1, Math.min(8, Math.trunc(exampleLimit)));
     const result = await this.pool.query(`SELECT DISTINCT ON(r.match_id)
-      r.match_id,r.generated_at,r.decision,r.selected_candidate,r.candidates,r.skip_reasons,m.kickoff_at,l.name league,
-      ht.name home_team,at.name away_team,
+      r.match_id,r.generated_at,r.decision,r.selected_candidate,r.candidates,r.skip_reasons,m.kickoff_at,
+      m.league_id competition_id,l.name league,ht.name home_team,at.name away_team,
       CASE WHEN j.id IS NULL THEN 'PREVIEW' ELSE
         CASE WHEN j.decision='PREDICT' THEN 'LOCKED_PREDICTION' ELSE 'LOCKED_SKIP' END END state
       FROM prediction_runs r
@@ -671,40 +671,114 @@ export class PredictionRepository {
       JOIN teams at ON at.id=m.away_team_id
       WHERE e.id=ANY($1::uuid[])`, [allIds]);
     const byId = new Map(examples.rows.map((row) => [String(row.id), row]));
+    const allNeighborMatchIds = [...new Set(examples.rows.map((row) => String(row.match_id)))];
 
-    return selected.map(({ row, candidate, historical, ids, skipReasons, officialCandidate }) => ({
-      current: {
-        matchId: String(row.match_id), kickoffAt: row.kickoff_at, league: String(row.league),
-        homeTeam: String(row.home_team), awayTeam: String(row.away_team),
-        state: officialCandidate ? String(row.state) : 'MATCH_ONLY',
-        predictionDecision: String(row.decision ?? 'SKIP'), skipReasons,
-        marketType: String(candidate!.marketType ?? ''), marketName: String(candidate!.marketName ?? ''),
-        line: candidate!.line == null ? null : Number(candidate!.line), selection: String(candidate!.selection ?? ''),
-        openingOdds: Number(candidate!.openingOdds), currentOdds: Number(candidate!.currentOdds),
-        probabilityDeltaPp: Number(candidate!.probabilityDeltaPp), predictionScore: Number(candidate!.predictionScore),
-        bookmakerCount: Number(candidate!.bookmakerCount), agreementRatio: Number(candidate!.agreementRatio),
-        historicalSampleSize: Number(historical?.sampleSize ?? 0),
-        historicalSettledSampleSize: Number(historical?.settledSampleSize ?? 0),
-        historicalHitRate: historical?.historicalHitRate == null ? null : Number(historical.historicalHitRate),
-        averageSimilarity: Number(historical?.averageSimilarity ?? 0), scope: String(historical?.scope ?? ''),
-      },
-      matches: ids.map((id, index) => {
-        const example = byId.get(id);
-        if (!example) return null;
-        return {
-          rank: index + 1, exampleId: id, matchId: String(example.match_id), kickoffAt: example.kickoff_at,
-          league: String(example.league), homeTeam: String(example.home_team), awayTeam: String(example.away_team),
-          marketType: String(example.market_type), marketName: String(example.market_name),
-          line: example.line == null ? null : Number(example.line), selection: String(example.selection),
-          openingOdds: Number(example.opening_odds), currentOdds: Number(example.current_odds),
-          probabilityDeltaPp: Number(example.probability_delta_pp), outcome: String(example.settlement_result),
-          featureLeadMinutes: Number(example.feature_lead_minutes),
-          homeScore: example.home_score == null ? null : Number(example.home_score),
-          awayScore: example.away_score == null ? null : Number(example.away_score),
-          homeCorners: example.home_corners == null ? null : Number(example.home_corners),
-          awayCorners: example.away_corners == null ? null : Number(example.away_corners),
-        };
-      }).filter((item): item is NonNullable<typeof item> => item != null),
+    const neighborMarkets = allNeighborMatchIds.length ? await this.pool.query(`SELECT match_id,market_type,market_name,line,selection,
+      settlement_result FROM prediction_historical_examples
+      WHERE match_id=ANY($1::uuid[]) AND analysis_eligible=true AND model_version=$2 AND config_hash=$3`,
+    [allNeighborMatchIds,predictionConfig.modelVersion,predictionConfigHash(predictionConfig)]) : { rows: [] as Array<Record<string, unknown>> };
+
+    const isBinary = (outcome: string) => !['PUSH','VOID'].includes(outcome);
+    const isPositive = (outcome: string) => ['WIN','HALF_WIN'].includes(outcome);
+    const baselineFor = async (row: Record<string, unknown>, candidate: Record<string, unknown>) => {
+      const params = [String(row.competition_id),String(candidate.marketType ?? ''),String(candidate.marketName ?? ''),
+        candidate.line == null ? null : Number(candidate.line),String(candidate.selection ?? ''),new Date(String(row.kickoff_at)),
+        predictionConfig.modelVersion,predictionConfigHash(predictionConfig)];
+      const query = (local: boolean) => this.pool.query<{ binary_count: number; positive_count: number }>(`SELECT
+        count(*) FILTER(WHERE settlement_result NOT IN('PUSH','VOID'))::integer binary_count,
+        count(*) FILTER(WHERE settlement_result IN('WIN','HALF_WIN'))::integer positive_count
+        FROM prediction_historical_examples
+        WHERE analysis_eligible=true ${local ? 'AND competition_id=$1' : ''}
+          AND market_type=$${local ? 2 : 1} AND market_name=$${local ? 3 : 2}
+          AND line IS NOT DISTINCT FROM $${local ? 4 : 3}
+          AND selection=$${local ? 5 : 4} AND kickoff_at<$${local ? 6 : 5}
+          AND model_version=$${local ? 7 : 6} AND config_hash=$${local ? 8 : 7}`,
+      local ? params : params.slice(1));
+      const local = await query(true);
+      let rowResult = local.rows[0] ?? { binary_count: 0, positive_count: 0 };
+      let scope = 'SAME_COMPETITION';
+      if (Number(rowResult.binary_count) < 10) {
+        const global = await query(false);
+        rowResult = global.rows[0] ?? rowResult;
+        scope = 'GLOBAL_SUPPORTED_COMPETITIONS';
+      }
+      const sampleSize = Number(rowResult.binary_count ?? 0);
+      const positiveCount = Number(rowResult.positive_count ?? 0);
+      return { scope, sampleSize, positiveCount, positiveRate: sampleSize ? positiveCount / sampleSize : null };
+    };
+
+    return Promise.all(selected.map(async ({ row, candidate, historical, ids, skipReasons, officialCandidate }) => {
+      const neighborMatchIds = ids.map((id) => byId.get(id)).filter(Boolean).map((item) => String(item!.match_id));
+      const neighborSet = new Set(neighborMatchIds);
+      const groups = new Map<string, { marketType: string; marketName: string; line: number | null; selection: string;
+        sampleSize: number; positiveCount: number }>();
+      for (const item of neighborMarkets.rows) {
+        if (!neighborSet.has(String(item.match_id))) continue;
+        const outcome = String(item.settlement_result);
+        if (!isBinary(outcome)) continue;
+        const marketType = String(item.market_type);
+        const marketName = String(item.market_name);
+        const line = item.line == null ? null : Number(item.line);
+        const selection = String(item.selection);
+        const key = `${marketType}|${marketName}|${line ?? 'null'}|${selection}`;
+        const group = groups.get(key) ?? { marketType, marketName, line, selection, sampleSize: 0, positiveCount: 0 };
+        group.sampleSize += 1;
+        if (isPositive(outcome)) group.positiveCount += 1;
+        groups.set(key, group);
+      }
+      const resultMap = [...groups.values()].map((group) => ({
+        ...group, positiveRate: group.sampleSize ? group.positiveCount / group.sampleSize : null,
+      })).filter((group) => group.sampleSize >= 2)
+        .sort((a, b) => b.sampleSize - a.sampleSize || Number(b.positiveRate ?? 0) - Number(a.positiveRate ?? 0)
+          || a.marketType.localeCompare(b.marketType) || a.selection.localeCompare(b.selection))
+        .slice(0, 10);
+
+      const baseline = await baselineFor(row, candidate!);
+      const historicalHitRate = historical?.historicalHitRate == null ? null : Number(historical.historicalHitRate);
+      const evidenceGapPp = historicalHitRate == null || baseline.positiveRate == null
+        ? null : (historicalHitRate - baseline.positiveRate) * 100;
+
+      return {
+        current: {
+          matchId: String(row.match_id), kickoffAt: row.kickoff_at, league: String(row.league),
+          homeTeam: String(row.home_team), awayTeam: String(row.away_team),
+          state: officialCandidate ? String(row.state) : 'MATCH_ONLY',
+          predictionDecision: String(row.decision ?? 'SKIP'), skipReasons,
+          marketType: String(candidate!.marketType ?? ''), marketName: String(candidate!.marketName ?? ''),
+          line: candidate!.line == null ? null : Number(candidate!.line), selection: String(candidate!.selection ?? ''),
+          openingOdds: Number(candidate!.openingOdds), currentOdds: Number(candidate!.currentOdds),
+          probabilityDeltaPp: Number(candidate!.probabilityDeltaPp), predictionScore: Number(candidate!.predictionScore),
+          bookmakerCount: Number(candidate!.bookmakerCount), agreementRatio: Number(candidate!.agreementRatio),
+          historicalSampleSize: Number(historical?.sampleSize ?? 0),
+          historicalSettledSampleSize: Number(historical?.settledSampleSize ?? 0),
+          historicalHitRate, averageSimilarity: Number(historical?.averageSimilarity ?? 0),
+          scope: String(historical?.scope ?? ''),
+          historicalWins: Number(historical?.wins ?? 0), historicalLosses: Number(historical?.losses ?? 0),
+          historicalHalfWins: Number(historical?.halfWins ?? 0), historicalHalfLosses: Number(historical?.halfLosses ?? 0),
+        },
+        evidenceGap: {
+          similarRate: historicalHitRate, baselineRate: baseline.positiveRate, gapPp: evidenceGapPp,
+          baselineSampleSize: baseline.sampleSize, baselineScope: baseline.scope,
+        },
+        resultMap,
+        matches: ids.map((id, index) => {
+          const example = byId.get(id);
+          if (!example) return null;
+          return {
+            rank: index + 1, exampleId: id, matchId: String(example.match_id), kickoffAt: example.kickoff_at,
+            league: String(example.league), homeTeam: String(example.home_team), awayTeam: String(example.away_team),
+            marketType: String(example.market_type), marketName: String(example.market_name),
+            line: example.line == null ? null : Number(example.line), selection: String(example.selection),
+            openingOdds: Number(example.opening_odds), currentOdds: Number(example.current_odds),
+            probabilityDeltaPp: Number(example.probability_delta_pp), outcome: String(example.settlement_result),
+            featureLeadMinutes: Number(example.feature_lead_minutes),
+            homeScore: example.home_score == null ? null : Number(example.home_score),
+            awayScore: example.away_score == null ? null : Number(example.away_score),
+            homeCorners: example.home_corners == null ? null : Number(example.home_corners),
+            awayCorners: example.away_corners == null ? null : Number(example.away_corners),
+          };
+        }).filter((item): item is NonNullable<typeof item> => item != null),
+      };
     }));
   }
 

@@ -177,21 +177,22 @@ export function renderDashboard(data: DashboardData): string {
     const hasCorner = analyses.some((analysis) => String(analysis.match_id ?? '') === matchId);
     const officialPrediction = predictions.find((prediction) => String(prediction.match_id ?? '') === matchId);
     const previewPrediction = predictionPreviews.find((prediction) => String(prediction.match_id ?? '') === matchId);
+    const reviewCandidate = predictionReviewCandidates.find((item) => String(item.matchId ?? '') === matchId);
     const prediction = officialPrediction ?? previewPrediction;
-    const decision = prediction
-      ? String(prediction.decision) === 'SKIP' ? 'GEÇ' : officialPrediction ? 'RESMİ' : 'ADAY'
-      : '—';
+    const decision = officialPrediction && String(officialPrediction.decision) === 'PREDICT' ? 'Resmi tahmin'
+      : reviewCandidate ? 'İnceleme adayı'
+      : prediction && String(prediction.decision) === 'SKIP' ? 'Tahmin yok' : 'Henüz değerlendirilmedi';
     const actionHref = hasCorner && matchId ? `/matches/${encodeURIComponent(matchId)}/corners` : '#odds-analysis';
     return `<article class="match" data-search-row><div class="match-time">${escapeHtml(formatDate(match.kickoff_at, { hour: '2-digit', minute: '2-digit' }))}<small>${escapeHtml(formatDate(match.kickoff_at, { day: '2-digit', month: 'short' }))}</small></div>
-      <div class="teams"><span>${escapeHtml(match.home_team)} — ${escapeHtml(match.away_team)}</span><small>${escapeHtml(match.league)} · Odds ${matchOdds} · Tahmin ${escapeHtml(decision)}</small></div>
-      <div style="display:flex;align-items:center;gap:6px"><span class="status ${status === 'live' ? 'live' : ''}">${escapeHtml(status)}</span><a class="status" href="${escapeHtml(actionHref)}">${hasCorner ? 'DETAY' : 'ANALİZ'}</a></div></article>`;
+      <div class="teams"><span>${escapeHtml(match.home_team)} — ${escapeHtml(match.away_team)}</span><small>${escapeHtml(match.league)} · ${matchOdds} oran kaydı · ${escapeHtml(decision)}</small></div>
+      <div style="display:flex;align-items:center;gap:6px"><span class="status ${status === 'live' ? 'live' : ''}">${escapeHtml(status === 'live' ? 'Canlı' : status === 'scheduled' ? 'Planlandı' : status)}</span><a class="status" href="${escapeHtml(actionHref)}">${hasCorner ? 'DETAY' : 'ANALİZ'}</a></div></article>`;
   }).join('') : renderEmpty('⌁', 'Henüz maç verisi yok', 'Collector ilk senkronizasyonunu tamamladığında bugünün desteklenen lig maçları burada görünecek.');
   const oddsRows = odds.length ? odds.slice(0, 100).map((odd) => {
     const movement = finiteNumber(odd.movement_percent);
     const movementClass = movement > 0 ? 'up' : movement < 0 ? 'down' : 'flat';
     const movementLabel = `${movement > 0 ? '+' : ''}${movement.toFixed(2)}%`;
     return `<article class="odd" data-search-row><div class="odd-match"><span>${escapeHtml(odd.home_team)} — ${escapeHtml(odd.away_team)}</span><small>${escapeHtml(formatDate(odd.kickoff_at, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }))} · ${escapeHtml(String(odd.provider).replace('nowgoal:', ''))}</small></div>
-      <div class="odd-market"><span>${escapeHtml(odd.selection)}</span><small>${escapeHtml(odd.market_name)}${odd.line == null ? '' : ` · ${escapeHtml(odd.line)}`}</small></div>
+      <div class="odd-market"><span>${escapeHtml(translateSelection(odd.selection))}</span><small>${escapeHtml(translateMarket(odd.market_type ?? odd.market_name))}${odd.line == null ? '' : ` · ${escapeHtml(odd.line)}`}</small></div>
       <span class="price">${finiteNumber(odd.current_odds).toFixed(2)}</span><span class="movement ${movementClass}">${escapeHtml(movementLabel)}</span></article>`;
   }).join('') : renderEmpty('↗', 'Nowgoal oranları bekleniyor', 'Maçlar FotMob ile eşleştikten sonra 1X2, Asya handikapı, gol ve korner oranları burada listelenecek.');
   const providerCards = sources.map((provider) => {

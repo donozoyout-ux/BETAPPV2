@@ -12,18 +12,35 @@ describe('renderDashboard', () => {
     expect(html).toContain('&lt;b&gt;A&lt;/b&gt;');
   });
 
-  it('renders explainable ODDS_V1 cards without outcome claims', () => {
-    const html = renderDashboard({ providers: [], matches: [], oddsAnalyses: [{ home_team: 'A', away_team: 'B',
-      league: 'Lig', kickoff_at: '2026-09-20T18:00:00Z', items: [{ market_type: '1X2', line: null,
-        selection: 'HOME', opening_odds: 2.1, current_odds: 1.85, opening_fair_probability: 0.42,
-        current_fair_probability: 0.49, probability_delta_pp: 7, movement_class: 'STRONG_SUPPORT', score: 81,
-        agreeing_bookmaker_count: 4, bookmaker_count: 5, data_quality_score: 85, data_quality_grade: 'GOOD',
-        confidence_score: 80, confidence_grade: 'GOOD', analysis_eligible: true,
-        reasons: ['4/5 bookmakers agree'], warnings: [] }] }],
+  it('renders a compact historical odds-match view instead of the raw ODDS_V1 card flood', () => {
+    const html = renderDashboard({ providers: [], matches: [],
+      oddsAnalyses: Array.from({ length: 20 }, (_, index) => ({ id: index })),
+      oddsSimilarity: [{
+        current: { matchId: 'current-1', kickoffAt: '2026-09-20T18:00:00Z', league: 'Premier League',
+          homeTeam: 'Arsenal', awayTeam: 'Chelsea', state: 'PREVIEW', marketType: 'MATCH_RESULT',
+          marketName: '1X2', line: null, selection: 'HOME', openingOdds: 2.10, currentOdds: 1.85,
+          probabilityDeltaPp: 6.2, predictionScore: 82, historicalSettledSampleSize: 44,
+          historicalHitRate: 0.61, averageSimilarity: 0.91, scope: 'SAME_COMPETITION' },
+        matches: [
+          { rank: 1, kickoffAt: '2026-04-11T15:00:00Z', league: 'Premier League',
+            homeTeam: 'Old Home', awayTeam: 'Old Away', selection: 'HOME',
+            openingOdds: 2.08, currentOdds: 1.86, probabilityDeltaPp: 5.9, featureLeadMinutes: 90,
+            outcome: 'WIN', homeScore: 2, awayScore: 0, homeCorners: 6, awayCorners: 4 },
+          { rank: 2, kickoffAt: '2026-03-02T20:00:00Z', league: 'Premier League',
+            homeTeam: 'Past A', awayTeam: 'Past B', selection: 'HOME',
+            openingOdds: 2.12, currentOdds: 1.88, probabilityDeltaPp: 5.5, featureLeadMinutes: 90,
+            outcome: 'LOSS', homeScore: 0, awayScore: 1, homeCorners: 3, awayCorners: 5 },
+        ],
+      }],
     });
-    expect(html).toContain('Oran Analizi V1');
-    expect(html).toContain('Piyasa Olasılığı');
-    expect(html).toContain('Bookmaker Teyidi');
+    expect(html).toContain('Tarihsel Oran Eşleşmeleri');
+    expect(html).toContain('En yakın geçmiş oran eşleşmeleri · en fazla 5 maç');
+    expect(html).toContain('Arsenal — Chelsea');
+    expect(html).toContain('Old Home — Old Away');
+    expect(html).toContain('2.08 → 1.86');
+    expect(html).toContain('WIN');
+    expect(html).not.toContain('Piyasa Olasılığı');
+    expect(html).not.toContain('Bookmaker Teyidi');
     expect(html).not.toMatch(/KESİN|GARANTİ|BANKO|%100/);
   });
   it('renders the UI V3 command center and self-audit navigation', () => {

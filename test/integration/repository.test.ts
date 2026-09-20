@@ -215,6 +215,13 @@ describe('FootballRepository integration', () => {
       }
     }
     const predictionRepository = new PredictionRepository(pool);
+    const targetAnalysis = await new OddsAnalysisRepository(pool).analyzeAndSave(targetId);
+    expect(targetAnalysis?.inserted).toBe(true);
+    const loadedTargets = await predictionRepository.loadTargets('m.id=$1', [targetId]);
+    expect(loadedTargets).toHaveLength(1);
+    expect(loadedTargets[0]).toMatchObject({ matchId: targetId });
+    expect(loadedTargets[0]!.oddsInputHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(loadedTargets[0]!.oddsItems.length).toBeGreaterThan(0);
     const config = { ...predictionConfig, minimumHistoricalSample: 1, targetHistoricalSample: 1,
       minimumPredictionScore: 0, minimumDataQualityScore: 0, minimumConfidenceScore: 0,
       minimumBookmakerCount: 1, minimumCompleteStateCount: 1 };

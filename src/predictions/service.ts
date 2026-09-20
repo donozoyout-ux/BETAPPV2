@@ -532,6 +532,94 @@ export class PredictionRepository {
       WHERE m.kickoff_at>now() AND j.id IS NULL ORDER BY r.match_id,r.created_at DESC,r.id DESC`)).rows;
   }
 
+  async oddsSimilarityShowcase(matchLimit = 4, exampleLimit = 5) {
+    const safeMatchLimit = Math.max(1, Math.min(8, Math.trunc(matchLimit)));
+    const safeExampleLimit = Math.max(1, Math.min(8, Math.trunc(exampleLimit)));
+    const result = await this.pool.query(`SELECT DISTINCT ON(r.match_id)
+      r.match_id,r.generated_at,r.decision,r.selected_candidate,m.kickoff_at,l.name league,
+      ht.name home_team,at.name away_team,
+      CASE WHEN j.id IS NULL THEN 'PREVIEW' ELSE
+        CASE WHEN j.decision='PREDICT' THEN 'LOCKED_PREDICTION' ELSE 'LOCKED_SKIP' END END state
+      FROM prediction_runs r
+      JOIN matches m ON m.id=r.match_id
+      JOIN leagues l ON l.id=m.league_id
+      JOIN teams ht ON ht.id=m.home_team_id
+      JOIN teams at ON at.id=m.away_team_id
+      LEFT JOIN prediction_journal j ON j.prediction_run_id=r.id
+      WHERE m.kickoff_at>=now()-interval '3 hours'
+        AND m.kickoff_at<now()+interval '48 hours'
+        AND r.selected_candidate IS NOT NULL
+      ORDER BY r.match_id,
+        CASE WHEN j.id IS NULL THEN 1 ELSE 0 END,
+        r.created_at DESC,r.id DESC`);
+
+    const parseCandidate = (value: unknown): Record<string, unknown> | null => {
+      if (!value) return null;
+      if (typeof value === 'string') {
+        try { return JSON.parse(value) as Record<string, unknown>; } catch { return null; }
+      }
+      return typeof value === 'object' ? value as Record<string, unknown> : null;
+    };
+
+    const selected = result.rows.map((row) => {
+      const candidate = parseCandidate(row.selected_candidate);
+      const historical = candidate?.historical && typeof candidate.historical === 'object'
+        ? candidate.historical as Record<string, unknown> : null;
+      const ids = Array.isArray(historical?.exampleIds) ? historical!.exampleIds.map(String).slice(0, safeExampleLimit) : [];
+      return { row, candidate, historical, ids };
+    }).filter((item) => item.candidate && item.ids.length)
+      .sort((a, b) => Number(b.candidate!.predictionScore ?? 0) - Number(a.candidate!.predictionScore ?? 0)
+        || Number(b.historical?.settledSampleSize ?? 0) - Number(a.historical?.settledSampleSize ?? 0)
+        || new Date(String(a.row.kickoff_at)).getTime() - new Date(String(b.row.kickoff_at)).getTime())
+      .slice(0, safeMatchLimit);
+
+    const allIds = [...new Set(selected.flatMap((item) => item.ids))];
+    if (!allIds.length) return [];
+
+    const examples = await this.pool.query(`SELECT e.id,e.match_id,e.kickoff_at,e.market_type,e.market_name,e.line,e.selection,
+      e.opening_odds,e.current_odds,e.probability_delta_pp,e.settlement_result,e.home_score,e.away_score,
+      e.home_corners,e.away_corners,l.name league,ht.name home_team,at.name away_team
+      FROM prediction_historical_examples e
+      JOIN matches m ON m.id=e.match_id
+      JOIN leagues l ON l.id=m.league_id
+      JOIN teams ht ON ht.id=m.home_team_id
+      JOIN teams at ON at.id=m.away_team_id
+      WHERE e.id=ANY($1::uuid[])`, [allIds]);
+    const byId = new Map(examples.rows.map((row) => [String(row.id), row]));
+
+    return selected.map(({ row, candidate, historical, ids }) => ({
+      current: {
+        matchId: String(row.match_id), kickoffAt: row.kickoff_at, league: String(row.league),
+        homeTeam: String(row.home_team), awayTeam: String(row.away_team), state: String(row.state),
+        marketType: String(candidate!.marketType ?? ''), marketName: String(candidate!.marketName ?? ''),
+        line: candidate!.line == null ? null : Number(candidate!.line), selection: String(candidate!.selection ?? ''),
+        openingOdds: Number(candidate!.openingOdds), currentOdds: Number(candidate!.currentOdds),
+        probabilityDeltaPp: Number(candidate!.probabilityDeltaPp), predictionScore: Number(candidate!.predictionScore),
+        bookmakerCount: Number(candidate!.bookmakerCount), agreementRatio: Number(candidate!.agreementRatio),
+        historicalSampleSize: Number(historical?.sampleSize ?? 0),
+        historicalSettledSampleSize: Number(historical?.settledSampleSize ?? 0),
+        historicalHitRate: historical?.historicalHitRate == null ? null : Number(historical.historicalHitRate),
+        averageSimilarity: Number(historical?.averageSimilarity ?? 0), scope: String(historical?.scope ?? ''),
+      },
+      matches: ids.map((id, index) => {
+        const example = byId.get(id);
+        if (!example) return null;
+        return {
+          rank: index + 1, exampleId: id, matchId: String(example.match_id), kickoffAt: example.kickoff_at,
+          league: String(example.league), homeTeam: String(example.home_team), awayTeam: String(example.away_team),
+          marketType: String(example.market_type), marketName: String(example.market_name),
+          line: example.line == null ? null : Number(example.line), selection: String(example.selection),
+          openingOdds: Number(example.opening_odds), currentOdds: Number(example.current_odds),
+          probabilityDeltaPp: Number(example.probability_delta_pp), outcome: String(example.settlement_result),
+          homeScore: example.home_score == null ? null : Number(example.home_score),
+          awayScore: example.away_score == null ? null : Number(example.away_score),
+          homeCorners: example.home_corners == null ? null : Number(example.home_corners),
+          awayCorners: example.away_corners == null ? null : Number(example.away_corners),
+        };
+      }).filter((item): item is NonNullable<typeof item> => item != null),
+    }));
+  }
+
   async today(timeZone = 'Europe/Istanbul') {
     return (await this.pool.query(`SELECT j.*,m.kickoff_at,l.name league,ht.name home_team,at.name away_team,s.outcome,
       CASE WHEN j.decision='PREDICT' THEN 'LOCKED_PREDICTION' ELSE 'LOCKED_SKIP' END state,

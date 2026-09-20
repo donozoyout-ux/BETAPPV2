@@ -35,6 +35,7 @@
     "odds:analyze": "tsx src/odds-analysis/analyze-cli.ts",
     "odds:backtest": "tsx src/odds-analysis/backtest-cli.ts",
     "odds-neighbors:backtest": "tsx src/odds-neighbors/backtest-cli.ts",
+    "odds-history:audit": "tsx src/odds-neighbors/history-audit-cli.ts",
     "predictions:analyze": "tsx src/predictions/analyze-cli.ts",
     "predictions:history:backfill": "tsx src/predictions/history-backfill-cli.ts",
     "predictions:settle": "tsx src/predictions/settle-cli.ts",

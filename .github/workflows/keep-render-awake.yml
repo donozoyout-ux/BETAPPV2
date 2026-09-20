@@ -133,7 +133,9 @@ jobs:
               reviewCandidates: ((.predictionReviewCandidates // []) | length),
               predictionHistory: ((.predictionHistory // []) | length),
               oddsSimilarity: ((.oddsSimilarity // []) | length),
-              oddsIntelligence: ((.oddsIntelligence // []) | length)
+              oddsIntelligence: ((.oddsIntelligence // []) | length),
+              recentFinishedMatches: ((.recentFinishedMatches // []) | length),
+              archiveSummary: (.archiveSummary // {})
             }' "$dashboard_file"
           fi
           rm -f "$dashboard_file"

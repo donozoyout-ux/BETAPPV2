@@ -577,7 +577,7 @@ export class PredictionRepository {
     if (!allIds.length) return [];
 
     const examples = await this.pool.query(`SELECT e.id,e.match_id,e.kickoff_at,e.market_type,e.market_name,e.line,e.selection,
-      e.opening_odds,e.current_odds,e.probability_delta_pp,e.settlement_result,e.home_score,e.away_score,
+      e.opening_odds,e.current_odds,e.probability_delta_pp,e.settlement_result,e.feature_lead_minutes,e.home_score,e.away_score,
       e.home_corners,e.away_corners,l.name league,ht.name home_team,at.name away_team
       FROM prediction_historical_examples e
       JOIN matches m ON m.id=e.match_id
@@ -611,6 +611,7 @@ export class PredictionRepository {
           line: example.line == null ? null : Number(example.line), selection: String(example.selection),
           openingOdds: Number(example.opening_odds), currentOdds: Number(example.current_odds),
           probabilityDeltaPp: Number(example.probability_delta_pp), outcome: String(example.settlement_result),
+          featureLeadMinutes: Number(example.feature_lead_minutes),
           homeScore: example.home_score == null ? null : Number(example.home_score),
           awayScore: example.away_score == null ? null : Number(example.away_score),
           homeCorners: example.home_corners == null ? null : Number(example.home_corners),

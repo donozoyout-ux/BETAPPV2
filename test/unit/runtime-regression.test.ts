@@ -23,6 +23,6 @@ describe('current-main runtime regression', () => {
     expect(dockerfile).toContain('node dist/db/migrate.js && exec node dist/runtime.js');
     expect(render).toContain('NOWGOAL_ENABLED');
     expect(render).toContain('preDeployCommand: node dist/db/migrate.js');
-    expect(keepAwake).toContain('*/10 * * * *');
+    expect(keepAwake).toContain('2-59/5 * * * *');
   });
 });

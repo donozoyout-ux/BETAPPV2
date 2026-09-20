@@ -8,7 +8,8 @@ type DashboardData = { matches: Array<Record<string, unknown>>; providers: Array
   predictionSelfAuditSegments?: Array<Record<string, unknown>>;
   predictionSelfAuditRootCauses?: Array<Record<string, unknown>>;
   predictionAdaptiveRuleProposals?: Array<Record<string, unknown>>;
-  oddsSimilarity?: Array<Record<string, unknown>> };
+  oddsSimilarity?: Array<Record<string, unknown>>;
+  predictionDiagnostics?: Record<string, unknown> | null };
 type ValidationMetric = { count?: unknown; sample?: unknown; averagePredictedProbability?: unknown; actualHitRate?: unknown;
   absoluteCalibrationError?: unknown; mae?: unknown; brier?: unknown };
 type DatasetAuditView = { totalMatches?: unknown; cornerCoverage?: { complete?: { rate?: unknown } };
@@ -83,6 +84,7 @@ export function renderDashboard(data: DashboardData): string {
   const predictionSelfAuditRootCauses = data.predictionSelfAuditRootCauses ?? [];
   const predictionAdaptiveRuleProposals = data.predictionAdaptiveRuleProposals ?? [];
   const oddsSimilarity = data.oddsSimilarity ?? [];
+  const predictionDiagnostics = data.predictionDiagnostics;
   const healthyProviders = data.providers.filter((provider) => provider.status === 'healthy').length;
   const percent = (value: unknown) => `${(finiteNumber(value) * 100).toFixed(1)}%`;
   const sources = data.providers.length ? data.providers : [
@@ -289,6 +291,31 @@ export function renderDashboard(data: DashboardData): string {
   })() : `<details><summary>SELF-AUDIT V3 · Kök neden analizi</summary><div class="details-body">${renderEmpty('◇',
     'Kök neden verisi henüz yok', 'Yeterli resmi settlement oluşunca hangi koşulların performansı aşağı çektiği burada görünecek.')}</div></details>`;
 
+  const predictionDiagnosticSummary = predictionDiagnostics ? (() => {
+    const current = (predictionDiagnostics.current ?? {}) as Record<string, unknown>;
+    const historical = (predictionDiagnostics.historical ?? {}) as Record<string, unknown>;
+    const thresholds = (predictionDiagnostics.thresholds ?? {}) as Record<string, unknown>;
+    const topReasons = Array.isArray(current.topSkipReasons)
+      ? current.topSkipReasons as Array<Record<string, unknown>> : [];
+    const reasonText = topReasons.slice(0, 4).map((item) =>
+      `${String(item.reason ?? 'UNKNOWN')} (${finiteNumber(item.count)})`).join(' · ') || 'Henüz skip nedeni yok';
+    const histMax = finiteNumber(current.maximumHistoricalSettledSample);
+    const histMin = finiteNumber(thresholds.minimumHistoricalSample);
+    const histClass = histMax >= histMin ? 'ok' : 'partial';
+    const analyzed = finiteNumber(current.withOddsAnalysis);
+    const targets = finiteNumber(current.targets);
+    return `<article class="card" style="margin-bottom:10px"><div class="row"><div><strong>Tahmin Tanı Merkezi</strong>
+      <p>Canlı gate durumunu gösterir; neden PREDICT çıkmadığını doğrudan DB'den özetler.</p></div>
+      <a class="top-chip" href="/api/predictions/diagnostics">Diagnostics API</a></div>
+      <div class="grid" style="margin-top:12px">
+        <article class="audit-mini"><small>Güncel hedef</small><strong>${targets}</strong><span>Odds analysis olan: ${analyzed}</span></article>
+        <article class="audit-mini"><small>Prediction run</small><strong>${finiteNumber(current.predictionRuns)}</strong><span>PREDICT ${finiteNumber(current.predictRuns)} · GEÇ ${finiteNumber(current.skipRuns)}</span></article>
+        <article class="audit-mini"><small>Historical evidence</small><strong><span class="badge ${histClass}">MAX N=${histMax}</span></strong><span>Resmi eşik N≥${histMin}</span></article>
+        <article class="audit-mini"><small>Eligible history</small><strong>${finiteNumber(historical.eligible)}</strong><span>Toplam örnek ${finiteNumber(historical.total)}</span></article>
+      </div>
+      <p style="margin-top:12px"><strong>En sık GEÇ nedenleri:</strong> ${escapeHtml(reasonText)}</p></article>`;
+  })() : '';
+
   const adaptiveRuleSummary = predictionAdaptiveRuleProposals.length ? (() => {
     const proposed = predictionAdaptiveRuleProposals.filter((item) => item.decision === 'PROPOSED').length;
     const approved = predictionAdaptiveRuleProposals.filter((item) => item.decision === 'APPROVED').length;
@@ -395,7 +422,7 @@ export function renderDashboard(data: DashboardData): string {
           <div class="workspace"><article class="panel"><div class="panel-head"><h3>Bugünün maçları</h3><span class="count">${matches.length}</span></div><div class="panel-body match-list">${matchCards}</div></article>
             <article class="panel" id="odds"><div class="panel-head"><h3>Nowgoal oran panosu</h3><span class="count">${odds.length}</span></div><div class="panel-body odds-list">${oddsRows}</div></article></div></section>
 
-        <section class="section" id="predictions"><div class="section-title"><div><span class="section-kicker">Prediction V1</span><h2>Tahmin Merkezi</h2><p>Resmi tahmin, aday tahmin ve GEÇ kararları.</p></div><span class="badge neutral">${predictions.length + predictionPreviews.length} kayıt</span></div><div class="grid">${predictionCards}</div></section>
+        <section class="section" id="predictions"><div class="section-title"><div><span class="section-kicker">Prediction V1</span><h2>Tahmin Merkezi</h2><p>Resmi tahmin, aday tahmin ve GEÇ kararları.</p></div><span class="badge neutral">${predictions.length + predictionPreviews.length} kayıt</span></div>${predictionDiagnosticSummary}<div class="grid">${predictionCards}</div></section>
 
         <section class="section" id="odds-analysis"><div class="section-title"><div><span class="section-kicker">Historical similarity</span><h2>Tarihsel Oran Eşleşmeleri</h2><p>Kalabalık güncel maç listesi yerine, en fazla 4 güncel analiz ve her biri için en yakın 5 geçmiş oran profili.</p></div><a class="top-chip" href="/api/odds-analysis/similarity">Similarity API</a></div><div class="similarity-grid">${oddsSimilarityCards}</div></section>
 

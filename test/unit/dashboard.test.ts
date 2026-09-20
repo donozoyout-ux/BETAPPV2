@@ -26,4 +26,23 @@ describe('renderDashboard', () => {
     expect(html).toContain('Bookmaker Teyidi');
     expect(html).not.toMatch(/KESİN|GARANTİ|BANKO|%100/);
   });
+  it('renders the UI V3 command center and self-audit navigation', () => {
+    const html = renderDashboard({
+      providers: [{ provider: 'fotmob', status: 'healthy' }, { provider: 'nowgoal', status: 'healthy' }],
+      matches: [],
+      predictionSelfAudit: { status: 'HEALTHY', guardActive: false },
+      predictionSelfAuditSegments: [],
+      predictionSelfAuditRootCauses: [],
+      predictionAdaptiveRuleProposals: [],
+    });
+    expect(html).toContain('BETAPP Command Center');
+    expect(html).toContain('BETAPP UI V3');
+    expect(html).toContain('Maç Merkezi');
+    expect(html).toContain('Tahmin Merkezi');
+    expect(html).toContain('Self‑Audit Merkezi');
+    expect(html).toContain('V4 · Öneriler');
+    expect(html).toContain('data-global-search');
+    expect(html).toContain('autoApply=false');
+  });
+
 });

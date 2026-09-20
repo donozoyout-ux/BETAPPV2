@@ -532,7 +532,7 @@ export class PredictionRepository {
       WHERE m.kickoff_at>now() AND j.id IS NULL ORDER BY r.match_id,r.created_at DESC,r.id DESC`)).rows;
   }
 
-  async oddsSimilarityShowcase(matchLimit = 4, exampleLimit = 5) {
+  async oddsSimilarityShowcase(matchLimit = 4, exampleLimit = 5, now = new Date()) {
     const safeMatchLimit = Math.max(1, Math.min(8, Math.trunc(matchLimit)));
     const safeExampleLimit = Math.max(1, Math.min(8, Math.trunc(exampleLimit)));
     const result = await this.pool.query(`SELECT DISTINCT ON(r.match_id)
@@ -546,12 +546,13 @@ export class PredictionRepository {
       JOIN teams ht ON ht.id=m.home_team_id
       JOIN teams at ON at.id=m.away_team_id
       LEFT JOIN prediction_journal j ON j.prediction_run_id=r.id
-      WHERE m.kickoff_at>=now()-interval '3 hours'
-        AND m.kickoff_at<now()+interval '48 hours'
+      WHERE m.status IN('scheduled','live')
+        AND m.kickoff_at>=$1::timestamptz-interval '3 hours'
+        AND m.kickoff_at<$1::timestamptz+interval '48 hours'
         AND r.selected_candidate IS NOT NULL
       ORDER BY r.match_id,
         CASE WHEN j.id IS NULL THEN 1 ELSE 0 END,
-        r.created_at DESC,r.id DESC`);
+        r.created_at DESC,r.id DESC`, [now]);
 
     const parseCandidate = (value: unknown): Record<string, unknown> | null => {
       if (!value) return null;

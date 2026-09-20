@@ -267,6 +267,29 @@ describe('FootballRepository integration', () => {
       matchId: historicalId, homeTeam: 'prediction-historical Home', awayTeam: 'prediction-historical Away',
       outcome: 'WIN', homeScore: 2, awayScore: 0, featureLeadMinutes: config.officialWindowStartMinutes,
     });
+
+    // Similarity must not depend on passing the official prediction gate.
+    // This second target has historical evidence, but the production N>=30 gate forces SKIP.
+    const skipTargetKickoff = new Date('2099-09-20T19:00:00Z');
+    const skipTargetId = await repository.upsertMatch('prediction-source',
+      fixture('prediction-skip-target', skipTargetKickoff, 'scheduled', null, null));
+    const skipLeague = await pool.query<{ league_id: string }>('SELECT league_id FROM matches WHERE id=$1', [skipTargetId]);
+    const skipEvaluation = evaluatePrediction({
+      matchId: skipTargetId, competitionId: skipLeague.rows[0]!.league_id, kickoffAt: skipTargetKickoff,
+      oddsInputHash: 'prediction-skip-input', oddsItems: [targetItem],
+    }, historical, new Date('2099-09-20T17:00:00Z'), predictionConfig);
+    expect(skipEvaluation.decision).toBe('SKIP');
+    expect(skipEvaluation.skipReasons).toContain('INSUFFICIENT_HISTORICAL_SAMPLE');
+    await predictionRepository.saveRun(skipEvaluation, predictionConfig);
+    const showcaseWithSkip = await predictionRepository.oddsSimilarityShowcase(
+      4, 5, new Date('2099-09-20T17:00:00Z'));
+    const skipSimilarity = showcaseWithSkip.find((item) => item.current.matchId === skipTargetId);
+    expect(skipSimilarity?.current).toMatchObject({
+      state: 'MATCH_ONLY', predictionDecision: 'SKIP', marketType: 'MATCH_RESULT',
+      selection: 'HOME', historicalSettledSampleSize: 1,
+    });
+    expect(skipSimilarity?.current.skipReasons).toContain('INSUFFICIENT_HISTORICAL_SAMPLE');
+    expect(skipSimilarity?.matches[0]).toMatchObject({ matchId: historicalId, outcome: 'WIN' });
     await expect(pool.query('UPDATE prediction_journal SET locked_at=now() WHERE match_id=$1', [targetId])).rejects.toThrow(/immutable/);
     await repository.upsertMatch('prediction-source', fixture('prediction-target', targetKickoff, 'finished', 2, 0));
     expect((await predictionRepository.settlePending()).settled).toBe(1);

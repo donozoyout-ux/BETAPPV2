@@ -1,14 +1,21 @@
 import { z } from 'zod';
 
 const booleanFromString = z.enum(['true', 'false']).transform((value) => value === 'true');
-const supportedCompetitionKeys = ['PremierLeague','LaLiga','Bundesliga','SerieA','Ligue1','SuperLig',
-  'ChampionsLeague','EuropaLeague','ConferenceLeague','MLS','BrasileiraoSerieA'] as const;
+const legacyDefaultCompetitionKeys = ['PremierLeague','LaLiga','Bundesliga','SerieA','Ligue1','SuperLig',
+  'ChampionsLeague','EuropaLeague','ConferenceLeague'] as const;
+const supportedCompetitionKeys = [...legacyDefaultCompetitionKeys,'MLS','BrasileiraoSerieA'] as const;
 const competitionList = z.string().default(supportedCompetitionKeys.join(',')).transform((value, context) => {
-  const items = value.split(',').map((item) => item.trim()).filter(Boolean);
-  if (!items.length) context.addIssue({ code: 'custom', message: 'At least one supported competition is required' });
-  const invalid = items.filter((item) => !supportedCompetitionKeys.includes(item as typeof supportedCompetitionKeys[number]));
+  const parsed = value.split(',').map((item) => item.trim()).filter(Boolean);
+  if (!parsed.length) context.addIssue({ code: 'custom', message: 'At least one supported competition is required' });
+  const invalid = parsed.filter((item) => !supportedCompetitionKeys.includes(item as typeof supportedCompetitionKeys[number]));
   if (invalid.length) context.addIssue({ code: 'custom', message: `Unsupported competitions: ${invalid.join(', ')}` });
-  return items;
+
+  // Backward-compatible deployment migration: Render may still carry the previous
+  // nine-competition default as an explicit environment value. Upgrade only that
+  // exact legacy default; intentional custom subsets remain untouched.
+  const legacyDefault = parsed.length === legacyDefaultCompetitionKeys.length
+    && legacyDefaultCompetitionKeys.every((item) => parsed.includes(item));
+  return legacyDefault ? [...parsed, 'MLS', 'BrasileiraoSerieA'] : parsed;
 });
 
 const positiveIntegerList = z.string().default('2,3,4,14,15,22,136').transform((value, context) => {

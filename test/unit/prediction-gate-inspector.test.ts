@@ -118,6 +118,20 @@ describe('Prediction Gate Inspector V1', () => {
     expect((byKey(result, 'COMPLETE_STATES').required as { states: number }).states).toBe(3);
   });
 
+  it('does not throw on legacy or malformed stored candidate JSON', () => {
+    const legacy = {
+      marketType: 'TOTAL_GOALS', marketName: 'Total Goals', line: 2.5, selection: 'OVER',
+      referenceOdds: 1.88, openingOdds: 2.05, currentOdds: 1.88,
+      predictionScore: 76, bookmakerCount: 4, analysisEligible: true,
+    } as unknown as PredictionCandidate;
+    const result = inspectPredictionGates({ decision: 'PREDICT', state: 'PREVIEW', kickoffAt, now: insideWindow,
+      candidates: [legacy, { predictionScore: 99 }], skipReasons: [], metadata: {},
+      oddsAnalysisExists: true, predictionRunExists: true });
+    expect(result.overallStatus).not.toBe('OFFICIAL');
+    expect(byKey(result, 'HISTORICAL_SAMPLE')).toMatchObject({ current: 0, passed: false });
+    expect(result.blockers).toContain('INSUFFICIENT_HISTORICAL_SAMPLE');
+  });
+
   it('returns WAITING while the official window has not opened', () => {
     const result = inspectPredictionGates({ decision: 'PREDICT', kickoffAt,
       now: new Date('2026-09-21T14:00:00Z'), selectedCandidate: candidate(), candidates: [candidate()],

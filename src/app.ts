@@ -28,7 +28,7 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
       predictions?.today() ?? [], predictions?.previews() ?? [], predictions?.reviewCandidates() ?? [], predictions?.history(20) ?? [], predictions?.performance() ?? null,
       predictions?.latestSelfAudit() ?? null, predictions?.latestSegmentSelfAudits() ?? [], predictions?.latestRootCauseAudits() ?? [],
       predictions?.latestAdaptiveRuleProposals() ?? [], predictions?.oddsSimilarityShowcase(4, 5) ?? [], predictions?.diagnostics() ?? null, oddsIntelligence?.upcoming(4) ?? []]);
-    return { ...data, predictions: today, predictionPreviews: previews, predictionReviewCandidates: reviewCandidates, predictionHistory: history,
+    return { ...data, supportedCompetitions: config.SUPPORTED_COMPETITIONS, predictions: today, predictionPreviews: previews, predictionReviewCandidates: reviewCandidates, predictionHistory: history,
       predictionPerformance: performance, predictionSelfAudit: selfAudit, predictionSelfAuditSegments: segmentAudits,
       predictionSelfAuditRootCauses: rootCauses, predictionAdaptiveRuleProposals: adaptiveProposals, oddsSimilarity, predictionDiagnostics, oddsIntelligence: oddsIntelligenceData };
   });
@@ -98,7 +98,7 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
       predictions?.today() ?? [], predictions?.previews() ?? [], predictions?.reviewCandidates() ?? [], predictions?.history(20) ?? [], predictions?.performance() ?? null,
       predictions?.latestSelfAudit() ?? null, predictions?.latestSegmentSelfAudits() ?? [], predictions?.latestRootCauseAudits() ?? [],
       predictions?.latestAdaptiveRuleProposals() ?? [], predictions?.oddsSimilarityShowcase(4, 5) ?? [], predictions?.diagnostics() ?? null, oddsIntelligence?.upcoming(4) ?? []]);
-    return reply.type('text/html; charset=utf-8').send(renderDashboard({ ...data, predictions: today,
+    return reply.type('text/html; charset=utf-8').send(renderDashboard({ ...data, supportedCompetitions: config.SUPPORTED_COMPETITIONS, predictions: today,
       predictionPreviews: previews, predictionReviewCandidates: reviewCandidates, predictionHistory: history, predictionPerformance: performance,
       predictionSelfAudit: selfAudit, predictionSelfAuditSegments: segmentAudits,
       predictionSelfAuditRootCauses: rootCauses, predictionAdaptiveRuleProposals: adaptiveProposals, oddsSimilarity, predictionDiagnostics, oddsIntelligence: oddsIntelligenceData }));

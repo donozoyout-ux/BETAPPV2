@@ -17,6 +17,21 @@ describe('MLS and Brasileirao competition support', () => {
     ]));
   });
 
+  it('upgrades only the old nine-league Render default to include MLS and Brazil', () => {
+    const legacy = 'PremierLeague,LaLiga,Bundesliga,SerieA,Ligue1,SuperLig,ChampionsLeague,EuropaLeague,ConferenceLeague';
+    const upgraded = loadConfig({ DATABASE_URL: 'postgresql://localhost/betapp', SUPPORTED_COMPETITIONS: legacy });
+    expect(upgraded.SUPPORTED_COMPETITIONS).toEqual([
+      'PremierLeague','LaLiga','Bundesliga','SerieA','Ligue1','SuperLig',
+      'ChampionsLeague','EuropaLeague','ConferenceLeague','MLS','BrasileiraoSerieA',
+    ]);
+
+    const custom = loadConfig({
+      DATABASE_URL: 'postgresql://localhost/betapp',
+      SUPPORTED_COMPETITIONS: 'PremierLeague,MLS',
+    });
+    expect(custom.SUPPORTED_COMPETITIONS).toEqual(['PremierLeague','MLS']);
+  });
+
   it('keeps Brazilian Serie A distinct from Italian Serie A', () => {
     expect(competitionKey('Serie A')).toBe('serie_a');
     expect(competitionKey('Brasileirão Série A')).toBe('brasileirao_serie_a');

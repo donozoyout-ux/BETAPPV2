@@ -7,6 +7,25 @@ import { renderCornerDetail, renderDashboard } from './dashboard.js';
 import type { Logger } from './logger.js';
 import type { PredictionRepository } from './predictions/service.js';
 import type { OddsIntelligenceRepository } from './odds-neighbors/repository.js';
+import type { OddsIntelligence } from './odds-neighbors/types.js';
+
+function oddsEvidence(analysis: OddsIntelligence | undefined): Record<string, unknown> | null {
+  if (!analysis) return null;
+  return { pastTwinsCount: analysis.pastTwins.length, evidenceStrength: analysis.evidenceStrength,
+    oddsRouteStrength: analysis.oddsRoute.strength, oddsRouteDirection: analysis.oddsRoute.direction,
+    resultMap: analysis.resultMap.slice(0, 4), explanatoryOnly: true };
+}
+
+function attachOddsEvidence(rows: Array<Record<string, unknown>>, analyses: OddsIntelligence[]) {
+  const byMatch = new Map(analyses.map((analysis) => [analysis.match.id, analysis]));
+  return rows.map((row) => {
+    const matchId = String(row.match_id ?? row.matchId ?? '');
+    const predictionGate = row.predictionGate;
+    if (!predictionGate || typeof predictionGate !== 'object') return row;
+    return { ...row, predictionGate: { ...(predictionGate as Record<string, unknown>),
+      evidence: oddsEvidence(byMatch.get(matchId)) } };
+  });
+}
 
 export function buildApp(config: AppConfig, repository: FootballRepository, logger: Logger,
   oddsAnalysis?: OddsAnalysisRepository, predictions?: PredictionRepository, oddsIntelligence?: OddsIntelligenceRepository) {
@@ -28,7 +47,10 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
       predictions?.today() ?? [], predictions?.previews() ?? [], predictions?.reviewCandidates() ?? [], predictions?.history(20) ?? [], predictions?.performance() ?? null,
       predictions?.latestSelfAudit() ?? null, predictions?.latestSegmentSelfAudits() ?? [], predictions?.latestRootCauseAudits() ?? [],
       predictions?.latestAdaptiveRuleProposals() ?? [], predictions?.oddsSimilarityShowcase(4, 5) ?? [], predictions?.diagnostics() ?? null, oddsIntelligence?.upcoming(4) ?? []]);
-    return { ...data, supportedCompetitions: config.SUPPORTED_COMPETITIONS, predictions: today, predictionPreviews: previews, predictionReviewCandidates: reviewCandidates, predictionHistory: history,
+    return { ...data, supportedCompetitions: config.SUPPORTED_COMPETITIONS,
+      predictions: attachOddsEvidence(today, oddsIntelligenceData),
+      predictionPreviews: attachOddsEvidence(previews, oddsIntelligenceData),
+      predictionReviewCandidates: attachOddsEvidence(reviewCandidates, oddsIntelligenceData), predictionHistory: history,
       predictionPerformance: performance, predictionSelfAudit: selfAudit, predictionSelfAuditSegments: segmentAudits,
       predictionSelfAuditRootCauses: rootCauses, predictionAdaptiveRuleProposals: adaptiveProposals, oddsSimilarity, predictionDiagnostics, oddsIntelligence: oddsIntelligenceData };
   });
@@ -91,6 +113,12 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
     version: 'SELF_AUDIT_V4', autoApply: false, executionAuthority: false,
     proposals: predictions ? await predictions.latestAdaptiveRuleProposals() : [],
   }));
+  app.get<{ Params: { matchId: string } }>('/api/predictions/:matchId/gates', async (request, reply) => {
+    const [result, intelligence] = await Promise.all([predictions ? predictions.gates(request.params.matchId) : null,
+      oddsIntelligence ? oddsIntelligence.byMatch(request.params.matchId) : null]);
+    if (!result) return reply.code(404).send({ error: 'match_not_found' });
+    return { ...result, evidence: oddsEvidence(intelligence ?? undefined) };
+  });
   app.get<{ Params: { matchId: string } }>('/api/predictions/:matchId', async (request) => predictions
     ? predictions.detail(request.params.matchId) : { matchId: request.params.matchId, state: 'NOT_GENERATED', journal: null, runs: [] });
   app.get('/', async (_request, reply) => {
@@ -98,8 +126,10 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
       predictions?.today() ?? [], predictions?.previews() ?? [], predictions?.reviewCandidates() ?? [], predictions?.history(20) ?? [], predictions?.performance() ?? null,
       predictions?.latestSelfAudit() ?? null, predictions?.latestSegmentSelfAudits() ?? [], predictions?.latestRootCauseAudits() ?? [],
       predictions?.latestAdaptiveRuleProposals() ?? [], predictions?.oddsSimilarityShowcase(4, 5) ?? [], predictions?.diagnostics() ?? null, oddsIntelligence?.upcoming(4) ?? []]);
-    return reply.type('text/html; charset=utf-8').send(renderDashboard({ ...data, supportedCompetitions: config.SUPPORTED_COMPETITIONS, predictions: today,
-      predictionPreviews: previews, predictionReviewCandidates: reviewCandidates, predictionHistory: history, predictionPerformance: performance,
+    return reply.type('text/html; charset=utf-8').send(renderDashboard({ ...data, supportedCompetitions: config.SUPPORTED_COMPETITIONS,
+      predictions: attachOddsEvidence(today, oddsIntelligenceData),
+      predictionPreviews: attachOddsEvidence(previews, oddsIntelligenceData),
+      predictionReviewCandidates: attachOddsEvidence(reviewCandidates, oddsIntelligenceData), predictionHistory: history, predictionPerformance: performance,
       predictionSelfAudit: selfAudit, predictionSelfAuditSegments: segmentAudits,
       predictionSelfAuditRootCauses: rootCauses, predictionAdaptiveRuleProposals: adaptiveProposals, oddsSimilarity, predictionDiagnostics, oddsIntelligence: oddsIntelligenceData }));
   });

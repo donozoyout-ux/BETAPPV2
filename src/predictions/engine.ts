@@ -3,25 +3,15 @@ import type { AnalysisItem } from '../odds-analysis/types.js';
 import { predictionConfig, predictionConfigHash, type PredictionConfig } from './config.js';
 import { scorePrediction } from './scoring.js';
 import { findHistoricalEvidence } from './similarity.js';
+import { officialCandidateBlockers, predictionWindowState } from './prediction-gates.js';
 import type { HistoricalExample, PredictionCandidate, PredictionEvaluation, PredictionTarget, SkipReason } from './types.js';
 
-const supported = new Set(['MATCH_RESULT', '1X2', 'TOTAL_GOALS', 'TOTAL_CORNERS', 'ASIAN_HANDICAP']);
 const stable = (value: unknown): unknown => Array.isArray(value) ? value.map(stable) : value && typeof value === 'object'
   ? Object.fromEntries(Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b))
     .map(([key, item]) => [key, stable(item)])) : value;
 
-function reason(item: AnalysisItem, candidate: PredictionCandidate, config: PredictionConfig): SkipReason | null {
-  if (![...supported].some((name) => item.marketType.toUpperCase().includes(name))) return 'UNSUPPORTED_MARKET';
-  if (!item.analysisEligible) return 'ODDS_NOT_ELIGIBLE';
-  if (item.dataQuality.score < config.minimumDataQualityScore) return 'LOW_DATA_QUALITY';
-  if (item.modelConfidence.score < config.minimumConfidenceScore) return 'LOW_MODEL_CONFIDENCE';
-  if (item.bookmakerCount < config.minimumBookmakerCount) return 'INSUFFICIENT_BOOKMAKERS';
-  if (item.minimumCompleteStateCount < config.minimumCompleteStateCount) return 'INSUFFICIENT_COMPLETE_STATES';
-  if (!['SUPPORT', 'STRONG_SUPPORT'].includes(item.movementClass)) return 'MOVEMENT_NOT_SUPPORTED';
-  if (candidate.historical.status === 'INSUFFICIENT_SAMPLE') return 'INSUFFICIENT_HISTORICAL_SAMPLE';
-  if (candidate.cornerConfirmation === 'CONFLICT') return 'CONFLICTING_CORNER_MODEL';
-  if (candidate.predictionScore < config.minimumPredictionScore) return 'LOW_PREDICTION_SCORE';
-  return null;
+function reason(candidate: PredictionCandidate, config: PredictionConfig): SkipReason | null {
+  return officialCandidateBlockers(candidate, config)[0] ?? null;
 }
 
 function candidate(item: AnalysisItem, competitionId: string, kickoffAt: Date, examples: HistoricalExample[], config: PredictionConfig) {
@@ -38,7 +28,9 @@ function candidate(item: AnalysisItem, competitionId: string, kickoffAt: Date, e
     predictionScore: scored.score, scoreComponents: scored.components, bookmakerCount: item.bookmakerCount,
     agreementRatio: item.movementAgreementRatio, dataQualityScore: item.dataQuality.score,
     dataQualityGrade: item.dataQuality.grade, confidenceScore: item.modelConfidence.score,
-    confidenceGrade: item.modelConfidence.grade, movementClass: item.movementClass, analysisEligible: item.analysisEligible, historical,
+    confidenceGrade: item.modelConfidence.grade, movementClass: item.movementClass, analysisEligible: item.analysisEligible,
+    snapshotCount: item.snapshotCount, completeStateBookmakerCount: item.completeStateBookmakerCount,
+    minimumCompleteStateCount: item.minimumCompleteStateCount, historical,
     cornerModelProbability: gap == null ? null : item.currentFairProbability + gap / 100,
     marketFairProbability: item.currentFairProbability, modelMarketGapPp: gap,
     // ODDS data quality is not Corner Engine quality. The latter is unavailable
@@ -54,7 +46,7 @@ function candidate(item: AnalysisItem, competitionId: string, kickoffAt: Date, e
 export function evaluatePrediction(target: PredictionTarget, examples: HistoricalExample[], generatedAt = new Date(),
   config: PredictionConfig = predictionConfig): PredictionEvaluation {
   const candidates = target.oddsItems.map((item) => candidate(item, target.competitionId, target.kickoffAt, examples, config));
-  const reasonPairs = target.oddsItems.map((item, index) => reason(item, candidates[index]!, config));
+  const reasonPairs = candidates.map((item) => reason(item, config));
   const qualifying = candidates.filter((_item, index) => reasonPairs[index] == null)
     .sort((a, b) => b.predictionScore - a.predictionScore || b.historical.settledSampleSize - a.historical.settledSampleSize
       || `${a.marketType}:${a.marketName}:${a.line}:${a.selection}`.localeCompare(`${b.marketType}:${b.marketName}:${b.line}:${b.selection}`));
@@ -74,7 +66,5 @@ export function evaluatePrediction(target: PredictionTarget, examples: Historica
 }
 
 export function lockWindowState(kickoffAt: Date, now: Date, config: PredictionConfig = predictionConfig) {
-  const minutes = (kickoffAt.getTime() - now.getTime()) / 60_000;
-  if (minutes < config.minimumLockLeadMinutes) return { eligible: false, missed: true, minutesToKickoff: minutes };
-  return { eligible: minutes <= config.officialWindowStartMinutes, missed: false, minutesToKickoff: minutes };
+  return predictionWindowState(kickoffAt, now, config);
 }

@@ -243,6 +243,18 @@ describe('FootballRepository integration', () => {
     const predictionRepository = new PredictionRepository(pool);
     const targetAnalysis = await new OddsAnalysisRepository(pool).analyzeAndSave(targetId, targetCurrent);
     expect(targetAnalysis?.inserted).toBe(true);
+    const analysisOnlyGate = await predictionRepository.gates(targetId, new Date('2099-09-20T17:00:00Z'));
+    expect(analysisOnlyGate).toMatchObject({ overallStatus: 'WAITING' });
+    expect(analysisOnlyGate!.gates.find((gate) => gate.key === 'ODDS_ANALYSIS')).toMatchObject({ passed: true });
+    expect(analysisOnlyGate!.blockers).toContain('PREDICTION_NOT_GENERATED');
+    expect(analysisOnlyGate!.blockers).not.toContain('NO_ODDS_ANALYSIS');
+    const noOddsId = await repository.upsertMatch('prediction-source',
+      fixture('prediction-no-odds', new Date('2099-09-20T20:00:00Z'), 'scheduled', null, null));
+    const noOddsGate = await predictionRepository.gates(noOddsId, new Date('2099-09-20T18:30:00Z'));
+    expect(noOddsGate).toMatchObject({ overallStatus: 'WAITING' });
+    expect(noOddsGate!.gates.find((gate) => gate.key === 'ODDS_ANALYSIS'))
+      .toMatchObject({ passed: false, reasonCode: 'NO_ODDS_ANALYSIS' });
+    expect(noOddsGate!.blockers).toContain('NO_ODDS_ANALYSIS');
     const loadedTargets = await predictionRepository.loadTargets('m.id=$1', [targetId]);
     expect(loadedTargets).toHaveLength(1);
     expect(loadedTargets[0]).toMatchObject({ matchId: targetId });
@@ -287,6 +299,15 @@ describe('FootballRepository integration', () => {
     expect(await predictionRepository.lock(evaluation, runId, new Date('2099-09-20T18:00:00Z'), 0, config)).toBe(false);
     expect(await predictionRepository.lock(evaluation, runId, new Date('2099-09-20T17:30:00Z'), 30, config)).toBe(true);
     expect(await predictionRepository.lock(evaluation, runId, new Date('2099-09-20T17:31:00Z'), 29, config)).toBe(false);
+    const gateInspector = await predictionRepository.gates(targetId, new Date('2099-09-20T17:30:00Z'));
+    expect(gateInspector).not.toBeNull();
+    expect(gateInspector!.state).toBe('LOCKED_PREDICTION');
+    expect(gateInspector!.thresholds).toMatchObject({ minimumHistoricalSample: 30, minimumPredictionScore: 70,
+      minimumBookmakerCount: 3, minimumCompleteStateCount: 2, officialWindowStartMinutes: 90 });
+    expect(gateInspector!.gates.map((gate) => gate.key)).toEqual(expect.arrayContaining([
+      'ODDS_ANALYSIS','BOOKMAKERS','COMPLETE_STATES','MOVEMENT','HISTORICAL_SAMPLE','PREDICTION_SCORE',
+      'OFFICIAL_WINDOW','SELF_AUDIT_GLOBAL','SELF_AUDIT_SEGMENT',
+    ]));
     const similarityShowcase = await predictionRepository.oddsSimilarityShowcase(
       4, 5, new Date('2099-09-20T17:00:00Z'));
     expect(similarityShowcase).toHaveLength(1);

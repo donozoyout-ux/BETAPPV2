@@ -28,3 +28,12 @@ jobs:
         run: npm run historical:dry-run -- --competition=MLS --season=2026 --sample=6
       - name: Brasileirao 2026 live dry run
         run: npm run historical:dry-run -- --competition=BrasileiraoSerieA --season=2026 --sample=6
+      - name: Production dashboard league check
+        run: |
+          body="$(curl --location --silent --show-error --fail --max-time 60 https://betappv2.onrender.com/api/dashboard)"
+          echo "$body" | jq -c '{
+            supportedCompetitions,
+            matchCount: ((.matches // []) | length),
+            leagueCounts: ((.matches // []) | group_by(.league) | map({league: .[0].league, matches: length})),
+            upcomingSample: ((.matches // []) | map({league, home: .home_team, away: .away_team, kickoff: .kickoff_at}) | .[0:25])
+          }'

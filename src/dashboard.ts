@@ -12,7 +12,8 @@ type DashboardData = { matches: Array<Record<string, unknown>>; providers: Array
   oddsSimilarity?: Array<Record<string, unknown>>;
   oddsIntelligence?: Array<Record<string, unknown>>;
   predictionReviewCandidates?: Array<Record<string, unknown>>;
-  predictionDiagnostics?: Record<string, unknown> | null };
+  predictionDiagnostics?: Record<string, unknown> | null;
+  supportedCompetitions?: string[] };
 type ValidationMetric = { count?: unknown; sample?: unknown; averagePredictedProbability?: unknown; actualHitRate?: unknown;
   absoluteCalibrationError?: unknown; mae?: unknown; brier?: unknown };
 type DatasetAuditView = { totalMatches?: unknown; cornerCoverage?: { complete?: { rate?: unknown } };
@@ -97,6 +98,17 @@ function translateMarket(value: unknown): string {
   return labels[String(value ?? '').toUpperCase()] ?? String(value ?? '—');
 }
 
+function translateCompetitionKey(value: unknown): string {
+  const labels: Record<string, string> = {
+    PremierLeague: 'Premier League', LaLiga: 'La Liga', Bundesliga: 'Bundesliga',
+    SerieA: 'Serie A', Ligue1: 'Ligue 1', SuperLig: 'Süper Lig',
+    ChampionsLeague: 'Şampiyonlar Ligi', EuropaLeague: 'Avrupa Ligi',
+    ConferenceLeague: 'Konferans Ligi', MLS: 'MLS',
+    BrasileiraoSerieA: 'Brasileirão Série A',
+  };
+  return labels[String(value ?? '')] ?? String(value ?? '—');
+}
+
 function translateSelection(value: unknown): string {
   const labels: Record<string, string> = {
     HOME: 'Ev Sahibi', AWAY: 'Deplasman', DRAW: 'Beraberlik', OVER: 'ÜST', UNDER: 'ALT',
@@ -178,6 +190,7 @@ export function renderDashboard(data: DashboardData): string {
   const oddsSimilarity = data.oddsSimilarity ?? [];
   const oddsIntelligence = data.oddsIntelligence ?? [];
   const predictionDiagnostics = data.predictionDiagnostics;
+  const supportedCompetitions = data.supportedCompetitions ?? [];
   const predictionThresholds = (predictionDiagnostics?.thresholds ?? {}) as Record<string, unknown>;
   const predictionHistorical = (predictionDiagnostics?.historical ?? {}) as Record<string, unknown>;
   const requiredHistoricalSample = finiteNumber(predictionThresholds.minimumHistoricalSample, 30);
@@ -688,6 +701,10 @@ export function renderDashboard(data: DashboardData): string {
         <section class="section" id="prediction-self-audit"><div class="section-title"><div><span class="section-kicker">Güvenlik</span><h2>Sistem Kontrolü</h2><p>Tahmin sistemi ve veri kaynaklarının genel sağlık durumu.</p></div></div>
           ${auditOverview}
           <div class="section-title"><div><h2>Veri Kaynakları</h2><p>Hangi veri bağlantılarının çalıştığını burada görebilirsin.</p></div></div><div class="source-grid">${providerCards}</div>
+          <div class="section-title"><div><h2>Aktif Ligler</h2><p>Collector'ın şu anda gerçekten takip etmeye ayarlı olduğu ligler.</p></div><span class="count">${supportedCompetitions.length}</span></div>
+          <div class="grid">${supportedCompetitions.length
+            ? supportedCompetitions.map((competition) => `<article class="card"><div class="row"><strong>${escapeHtml(translateCompetitionKey(competition))}</strong><span class="badge ok">Aktif</span></div></article>`).join('')
+            : renderEmpty('◇', 'Aktif lig bilgisi yok', 'Runtime competition ayarları okunamadı.')}</div>
           <details><summary>Teknik sistem ayrıntılarını göster</summary><div class="details-body">${selfAuditSummary}${segmentAuditSummary}${rootCauseSummary}${adaptiveRuleSummary}
             <details><summary>Gelişmiş veri ve model bilgileri</summary><div class="details-body">${matrix}${datasetHealth}${modelValidation}</div></details>
           </div></details></section>

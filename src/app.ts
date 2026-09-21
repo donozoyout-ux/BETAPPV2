@@ -4,6 +4,7 @@ import type { AppConfig } from './config.js';
 import type { FootballRepository } from './db/repository.js';
 import type { OddsAnalysisRepository } from './db/odds-analysis-repository.js';
 import { renderCornerDetail, renderDashboard } from './dashboard.js';
+import { renderMatchAnalysis } from './match-detail.js';
 import type { Logger } from './logger.js';
 import type { PredictionRepository } from './predictions/service.js';
 import type { OddsIntelligenceRepository } from './odds-neighbors/repository.js';
@@ -132,6 +133,24 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
       predictionReviewCandidates: attachOddsEvidence(reviewCandidates, oddsIntelligenceData), predictionHistory: history, predictionPerformance: performance,
       predictionSelfAudit: selfAudit, predictionSelfAuditSegments: segmentAudits,
       predictionSelfAuditRootCauses: rootCauses, predictionAdaptiveRuleProposals: adaptiveProposals, oddsSimilarity, predictionDiagnostics, oddsIntelligence: oddsIntelligenceData }));
+  });
+  app.get<{ Params: { matchId: string } }>('/matches/:matchId', async (request, reply) => {
+    const matchId = request.params.matchId;
+    const match = await repository.matchAnalysisDetail(matchId);
+    if (!match) return reply.code(404).send({ error: 'match_not_found' });
+    const [predictionGate, predictionDetail, oddsAnalysisDetail, oddsIntelligenceDetail, cornerAnalysis] = await Promise.all([
+      predictions ? predictions.gates(matchId).catch(() => null) : null,
+      predictions ? predictions.detail(matchId).catch(() => null) : null,
+      oddsAnalysis ? oddsAnalysis.byMatch(matchId).catch(() => null) : null,
+      oddsIntelligence ? oddsIntelligence.byMatch(matchId).catch(() => null) : null,
+      repository.cornerAnalysisDetail(matchId).catch(() => null),
+    ]);
+    return reply.type('text/html; charset=utf-8').send(renderMatchAnalysis({ match,
+      predictionGate: predictionGate as Record<string, unknown> | null,
+      predictionDetail: predictionDetail as Record<string, unknown> | null,
+      oddsAnalysis: oddsAnalysisDetail as Record<string, unknown> | null,
+      oddsIntelligence: oddsIntelligenceDetail as unknown as Record<string, unknown> | null,
+      cornerAnalysis: cornerAnalysis as Record<string, unknown> | null }));
   });
   app.get<{ Params: { matchId: string } }>('/matches/:matchId/corners', async (request, reply) => {
     const detail = await repository.cornerAnalysisDetail(request.params.matchId);

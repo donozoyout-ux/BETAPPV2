@@ -135,7 +135,8 @@ jobs:
               oddsSimilarity: ((.oddsSimilarity // []) | length),
               oddsIntelligence: ((.oddsIntelligence // []) | length),
               recentFinishedMatches: ((.recentFinishedMatches // []) | length),
-              archiveSummary: (.archiveSummary // {})
+              archiveSummary: (.archiveSummary // {}),
+              supportedCompetitions: (.supportedCompetitions // [])
             }' "$dashboard_file"
           fi
           rm -f "$dashboard_file"

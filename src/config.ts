@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 const booleanFromString = z.enum(['true', 'false']).transform((value) => value === 'true');
 const supportedCompetitionKeys = ['PremierLeague','LaLiga','Bundesliga','SerieA','Ligue1','SuperLig',
-  'ChampionsLeague','EuropaLeague','ConferenceLeague'] as const;
+  'ChampionsLeague','EuropaLeague','ConferenceLeague','MLS','BrasileiraoSerieA'] as const;
 const competitionList = z.string().default(supportedCompetitionKeys.join(',')).transform((value, context) => {
   const items = value.split(',').map((item) => item.trim()).filter(Boolean);
   if (!items.length) context.addIssue({ code: 'custom', message: 'At least one supported competition is required' });

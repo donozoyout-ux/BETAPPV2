@@ -1,3 +1,5 @@
+import { translatePredictionGateReason } from './predictions/gate-inspector.js';
+
 type DashboardData = { matches: Array<Record<string, unknown>>; providers: Array<Record<string, unknown>>;
   recentFinishedMatches?: Array<Record<string, unknown>>; archiveSummary?: Record<string, unknown> | null;
   qualification?: Array<Record<string, unknown>>; cornerAnalyses?: Array<Record<string, unknown>>;
@@ -52,28 +54,39 @@ function istanbulDateKey(value: unknown): string {
 }
 
 
-const reasonTranslations: Record<string, string> = {
-  NO_ODDS_ANALYSIS: 'Bu maç için henüz oran analizi oluşmadı',
-  ODDS_NOT_ELIGIBLE: 'Oran verisi henüz yeterli değil',
-  LOW_DATA_QUALITY: 'Maç verisinin kalitesi yeterli değil',
-  LOW_MODEL_CONFIDENCE: 'Sistem bu maç için yeterince emin değil',
-  INSUFFICIENT_BOOKMAKERS: 'Yeterli sayıda bahis şirketinden veri yok',
-  INSUFFICIENT_COMPLETE_STATES: 'Oran değişimini ölçmek için daha fazla veri gerekiyor',
-  MOVEMENT_NOT_SUPPORTED: 'Oran hareketi yeterince güçlü değil',
-  INSUFFICIENT_HISTORICAL_SAMPLE: 'Benzer geçmiş maç sayısı yetersiz',
-  LOW_PREDICTION_SCORE: 'Tahmin skoru resmi tahmin seviyesinin altında',
-  CONFLICTING_CORNER_MODEL: 'Korner modeli piyasa hareketiyle çelişiyor',
-  LOCK_WINDOW_MISSED: 'Tahmin oluşturma zamanı geçti',
-  UNSUPPORTED_MARKET: 'Bu bahis türü henüz desteklenmiyor',
-  NO_SETTLEMENT_DATA: 'Maç sonucu verisi henüz tamamlanmadı',
-  SELF_AUDIT_PAUSED: 'Sistem güvenlik nedeniyle yeni tahminleri geçici olarak durdurdu',
-  SELF_AUDIT_SEGMENT_PAUSED: 'Bu lig veya bahis türünde tahminler geçici olarak durduruldu',
-};
-
 function translateReason(value: unknown): string {
-  const code = String(value ?? '');
-  const base = code.split(':')[0] ?? code;
-  return reasonTranslations[base] ?? 'Bu maç resmi tahmin için gerekli koşulları henüz karşılamıyor';
+  return translatePredictionGateReason(value);
+}
+
+function gateValue(value: unknown): string {
+  if (Array.isArray(value)) return value.join(' / ');
+  if (value && typeof value === 'object') {
+    const item = value as Record<string, unknown>;
+    if ('bookmakers' in item && 'states' in item) return `${item.bookmakers} şirket · ${item.states} ölçüm`;
+    return Object.values(item).join(' / ');
+  }
+  return String(value ?? '—');
+}
+
+function renderGateInspector(value: unknown): string {
+  if (!value || typeof value !== 'object') return '';
+  const inspector = value as Record<string, unknown>;
+  const gates = Array.isArray(inspector.gates) ? inspector.gates as Array<Record<string, unknown>> : [];
+  const status = String(inspector.overallStatus ?? 'REJECTED');
+  const labels: Record<string, string> = { OFFICIAL: 'RESMİ TAHMİN', REVIEW: 'İNCELEME',
+    REJECTED: 'REDDEDİLDİ', WAITING: 'VERİ BEKLENİYOR' };
+  const rows = gates.map((item) => `<tr><td>${escapeHtml(item.label)}</td><td>${escapeHtml(gateValue(item.current))}</td>
+    <td>${escapeHtml(gateValue(item.required))}</td><td>${item.passed ? '✅' : '❌'}</td></tr>`).join('');
+  const prompt = status === 'OFFICIAL' ? 'Neden resmi tahmin oluştu?' : 'Neden resmi tahmin yok?';
+  const evidence = inspector.evidence && typeof inspector.evidence === 'object'
+    ? inspector.evidence as Record<string, unknown> : null;
+  const evidenceText = evidence ? `<p class="evidence-note">Yardımcı kanıt · Geçmiş oran benzerleri: ${escapeHtml(evidence.pastTwinsCount ?? 0)}
+    · Kanıt gücü: ${escapeHtml(evidence.evidenceStrength ?? 'VERY_LOW')} · Odds route: ${escapeHtml(evidence.oddsRouteStrength ?? 'WEAK')}
+    · Prediction V1 kararını değiştirmez.</p>` : '';
+  return `<div class="gate-inspector"><div class="row"><strong>Prediction Gate Inspector</strong>
+    <span class="badge ${status === 'OFFICIAL' ? 'ok' : status === 'REVIEW' ? 'partial' : 'neutral'}">${escapeHtml(labels[status] ?? status)}</span></div>
+    <div class="scroll"><table><thead><tr><th>Kontrol</th><th>Mevcut</th><th>Gerekli</th><th>Sonuç</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p><strong>${prompt}</strong> ${escapeHtml(inspector.summary)}</p>${evidenceText}</div>`;
 }
 
 function translateGrade(value: unknown): string {
@@ -193,7 +206,7 @@ export function renderDashboard(data: DashboardData): string {
   const supportedCompetitions = data.supportedCompetitions ?? [];
   const predictionThresholds = (predictionDiagnostics?.thresholds ?? {}) as Record<string, unknown>;
   const predictionHistorical = (predictionDiagnostics?.historical ?? {}) as Record<string, unknown>;
-  const requiredHistoricalSample = finiteNumber(predictionThresholds.minimumHistoricalSample, 30);
+  const requiredHistoricalSample = finiteNumber(predictionThresholds.minimumHistoricalSample);
   const historicalExampleCount = finiteNumber(predictionHistorical.eligible ?? predictionHistorical.total);
   const archivedOddsMatchCount = finiteNumber(archiveSummary.finished_matches_with_odds);
   const preKickoffSnapshotCount = finiteNumber(archiveSummary.pre_kickoff_snapshots);
@@ -214,7 +227,11 @@ export function renderDashboard(data: DashboardData): string {
     const previewPrediction = predictionPreviews.find((prediction) => String(prediction.match_id ?? '') === matchId);
     const reviewCandidate = predictionReviewCandidates.find((item) => String(item.matchId ?? '') === matchId);
     const prediction = officialPrediction ?? previewPrediction;
-    const decision = officialPrediction && String(officialPrediction.decision) === 'PREDICT' ? 'Resmi tahmin'
+    const inspectorStatus = String((prediction?.predictionGate as Record<string, unknown> | undefined)?.overallStatus ?? '');
+    const decision = inspectorStatus === 'OFFICIAL' ? 'Resmi tahmin'
+      : inspectorStatus === 'WAITING' ? 'Veri bekleniyor'
+      : inspectorStatus === 'REJECTED' ? 'Reddedildi'
+      : officialPrediction && String(officialPrediction.decision) === 'PREDICT' ? 'Resmi tahmin'
       : reviewCandidate ? 'İnceleme adayı'
       : prediction && String(prediction.decision) === 'SKIP' ? 'Tahmin yok' : 'Henüz değerlendirilmedi';
     const actionHref = hasCorner && matchId ? `/matches/${encodeURIComponent(matchId)}/corners` : '#odds-analysis';
@@ -376,11 +393,14 @@ export function renderDashboard(data: DashboardData): string {
     const conflicts = Array.isArray(entry.conflictCheck) ? entry.conflictCheck as Array<Record<string, unknown>> : [];
     return `<article class="card" data-search-row><div class="row"><div><span class="section-kicker">Oran Rotası</span><h3>${escapeHtml(match.homeTeam)} — ${escapeHtml(match.awayTeam)}</h3><p>${escapeHtml(match.league)} · ${escapeHtml(routeText || 'Yeterli gerçek snapshot yok')}</p></div><span class="badge neutral">${escapeHtml(route.direction ?? 'FLAT')} · ${escapeHtml(route.strength ?? 'WEAK')}</span></div><p class="evidence-note">Geçmiş İkizler: ${escapeHtml(twins.length)} · Kanıt seviyesi: ${escapeHtml(entry.evidenceStrength ?? 'VERY_LOW')} · Mod: ${escapeHtml(entry.searchMode ?? 'CLOSEST_NEIGHBORS')}</p><div class="evidence-strip"><div class="evidence-box"><small>Sonuç Haritası</small><strong>${escapeHtml(map.length)}</strong><span>gözlemlenebilir market</span></div><div class="evidence-box"><small>Çelişki Kontrolü</small><strong>${escapeHtml(conflicts.filter((item) => item.state === 'CONFLICT').length)}</strong><span>ters sinyal</span></div></div><ul class="details-list">${resultRows || '<li>Sonuç haritası için yeterli gerçek sonuç yok.</li>'}</ul><p class="evidence-note">Geçmiş benzerlik ve sonuç dağılımıdır; resmi tahmin veya bahis kararı değildir.</p></article>`;
   }).join('') : renderEmpty('↗', 'Oran rotası için veri birikiyor', 'Yalnız gerçek pre-match odds snapshotları yeterli olduğunda analiz görünür.');
-  const officialPredictions = predictions.filter((item) => String(item.decision) === 'PREDICT');
+  const gateStatus = (item: Record<string, unknown>) => String((item.predictionGate as Record<string, unknown> | undefined)?.overallStatus ?? '');
+  const officialPredictions = predictions.filter((item) => gateStatus(item) === 'OFFICIAL'
+    || (!item.predictionGate && String(item.decision) === 'PREDICT'));
   const reviewMatchIds = new Set(predictionReviewCandidates.map((item) => String(item.matchId ?? '')));
+  const waitingPredictions = [...predictions, ...predictionPreviews].filter((item) => gateStatus(item) === 'WAITING');
   const rejectedByMatch = new Map<string, Record<string, unknown>>();
   for (const item of [...predictions, ...predictionPreviews]) {
-    if (String(item.decision) !== 'SKIP') continue;
+    if (item.predictionGate ? gateStatus(item) !== 'REJECTED' : String(item.decision) !== 'SKIP') continue;
     const matchId = String(item.match_id ?? item.matchId ?? '');
     if (!matchId || reviewMatchIds.has(matchId) || rejectedByMatch.has(matchId)) continue;
     rejectedByMatch.set(matchId, item);
@@ -398,13 +418,17 @@ export function renderDashboard(data: DashboardData): string {
       <div class="similarity-meta"><span class="badge ok">Tahmin skoru ${score}/100</span>
         <span class="badge neutral">Benzer geçmiş maç: ${hist}</span><span class="badge neutral">Geçmiş başarı: ${escapeHtml(hit)}</span>
         <span class="badge neutral">Oran: ${finiteNumber(prediction.reference_odds).toFixed(2)}</span></div>
-      <p>Bu maç mevcut resmi tahmin kurallarının tamamını geçti.</p></article>`;
+      <p>Bu maç mevcut resmi tahmin kurallarının tamamını geçti.</p>
+      ${renderGateInspector(prediction.predictionGate)}</article>`;
   }).join('') : renderEmpty('✓', 'Şu anda resmi tahmin yok', 'Sistem kriterleri karşılayan bir maç bulduğunda resmi tahmin burada görünecek.');
 
   const reviewCandidateCards = predictionReviewCandidates.length ? predictionReviewCandidates.map((entry) => {
     const candidate = (entry.candidate ?? {}) as Record<string, unknown>;
     const historical = (candidate.historical ?? {}) as Record<string, unknown>;
     const reasons = Array.isArray(entry.skipReasons) ? entry.skipReasons : [];
+    const predictionGate = (entry.predictionGate ?? {}) as Record<string, unknown>;
+    const gateThresholds = (predictionGate.thresholds ?? {}) as Record<string, unknown>;
+    const historicalRequired = finiteNumber(gateThresholds.minimumHistoricalSample, requiredHistoricalSample);
     const hist = finiteNumber(historical.settledSampleSize);
     const score = finiteNumber(candidate.predictionScore);
     const bookmakers = finiteNumber(candidate.bookmakerCount);
@@ -419,21 +443,29 @@ export function renderDashboard(data: DashboardData): string {
       <div class="similarity-odds"><span class="similarity-price">${finiteNumber(candidate.openingOdds).toFixed(2)}</span><span class="similarity-arrow">→</span>
         <span class="similarity-price">${finiteNumber(candidate.currentOdds).toFixed(2)}</span><span class="badge neutral">${escapeHtml(movementText(candidate.probabilityDeltaPp))}</span></div>
       <div class="similarity-meta"><span class="badge neutral">Tahmin skoru: ${score}/100</span>
-        <span class="badge ${hist >= requiredHistoricalSample ? 'ok' : 'partial'}">Benzer geçmiş maç: ${hist} / gereken ${requiredHistoricalSample}</span>
+        <span class="badge ${hist >= historicalRequired ? 'ok' : 'partial'}">Benzer geçmiş maç: ${hist} / gereken ${historicalRequired}</span>
         <span class="badge neutral">Geçmiş başarı: ${escapeHtml(hit)}</span>
         <span class="badge neutral">Bahis şirketi: ${bookmakers}</span></div>
       <p><strong>Veri kalitesi:</strong> ${escapeHtml(translateGrade(candidate.dataQualityGrade))} · <strong>Model güveni:</strong> ${escapeHtml(translateGrade(candidate.confidenceGrade))}</p>
       <p><strong>Bahis şirketi uyumu:</strong> ${Math.round(agreement * 100)}% · Çoğunluğun aynı yönde hareket edip etmediği burada ölçülür.</p>
       <p><strong>Neden henüz resmi tahmin değil?</strong></p>
       <ul style="margin:5px 0 0;padding-left:18px;color:var(--muted)">${missing || '<li>Resmi tahmin için gereken kanıt henüz tamamlanmadı.</li>'}</ul>
-      <p style="color:var(--muted-2)">Bu kart inceleme içindir; resmi tahmin ve performans kaydına dahil değildir.</p></article>`;
+      <p style="color:var(--muted-2)">Bu kart inceleme içindir; resmi tahmin ve performans kaydına dahil değildir.</p>
+      ${renderGateInspector(entry.predictionGate)}</article>`;
   }).join('') : renderEmpty('◇', 'Şu anda inceleme adayı yok', 'Resmi tahmin seviyesine yaklaşan maçlar burada gösterilecek.');
+
+  const waitingPredictionCards = waitingPredictions.length ? waitingPredictions.map((prediction) =>
+    `<article class="card prediction-card" data-search-row><div class="row"><div><strong>${escapeHtml(prediction.home_team)} — ${escapeHtml(prediction.away_team)}</strong>
+      <p>${escapeHtml(prediction.league)} · ${escapeHtml(formatDate(prediction.kickoff_at, { day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' }))}</p></div>
+      <span class="badge neutral">Veri bekleniyor</span></div>${renderGateInspector(prediction.predictionGate)}</article>`).join('')
+    : renderEmpty('…', 'Veri bekleyen maç yok', 'İlk oran ölçümü veya resmi tahmin penceresi beklenen maçlar burada görünür.');
 
   const rejectedRows = rejectedPredictions.map((prediction) => {
     const reasons = Array.isArray(prediction.skip_reasons) ? prediction.skip_reasons as unknown[]
       : Array.isArray(prediction.reasons) ? prediction.reasons as unknown[] : [];
     const mainReason = reasons[0] == null ? 'Resmi tahmin koşulları henüz oluşmadı' : translateReason(reasons[0]);
-    return `<tr data-search-row><td><strong>${escapeHtml(prediction.home_team)} — ${escapeHtml(prediction.away_team)}</strong></td>
+    return `<tr data-search-row><td><strong>${escapeHtml(prediction.home_team)} — ${escapeHtml(prediction.away_team)}</strong>
+      ${prediction.predictionGate ? `<details><summary>Gate ayrıntısı</summary><div class="details-body">${renderGateInspector(prediction.predictionGate)}</div></details>` : ''}</td>
       <td>${escapeHtml(formatDate(prediction.kickoff_at, { hour: '2-digit', minute: '2-digit' }))}</td>
       <td>${escapeHtml(mainReason)}</td><td><span class="badge neutral">Tahmin oluşturulmadı</span></td></tr>`;
   });
@@ -612,6 +644,7 @@ export function renderDashboard(data: DashboardData): string {
 
   const officialPredictionCount = officialPredictions.length;
   const reviewCandidateCount = predictionReviewCandidates.length;
+  const waitingPredictionCount = waitingPredictions.length;
   const rejectedPredictionCount = rejectedPredictions.length;
   const globalAuditRaw = String(predictionSelfAudit?.status ?? 'NOT_AVAILABLE');
   const globalAuditGuard = Boolean(predictionSelfAudit?.guardActive);
@@ -697,6 +730,8 @@ export function renderDashboard(data: DashboardData): string {
           <div class="grid">${officialPredictionCards}</div>
           <div class="section-title"><div><h2>İnceleme Adayları</h2><p>Olumlu işaretler var ancak resmi tahmin için kanıt henüz tamamlanmadı.</p></div><span class="badge partial">${reviewCandidateCount}</span></div>
           <div class="grid">${reviewCandidateCards}</div>
+          <div class="section-title"><div><h2>Veri Bekleyenler</h2><p>İlk/tam oran ölçümü veya resmi tahmin penceresi henüz oluşmadı.</p></div><span class="badge neutral">${waitingPredictionCount}</span></div>
+          <div class="grid">${waitingPredictionCards}</div>
           <div class="section-title"><div><h2>Tahmin Oluşturulmayan Maçlar</h2><p>Kalabalık kartlar yerine yalnız ana sebebi gösteriyoruz.</p></div><span class="badge neutral">${rejectedPredictionCount}</span></div>
           ${rejectedCompact}</section>
 

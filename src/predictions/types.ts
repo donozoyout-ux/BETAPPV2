@@ -41,7 +41,8 @@ export type PredictionCandidate = {
   predictionScore: number; scoreComponents: PredictionScoreComponents; bookmakerCount: number;
   agreementRatio: number; dataQualityScore: number; dataQualityGrade: QualityGrade;
   confidenceScore: number; confidenceGrade: QualityGrade; movementClass: MovementClass;
-  analysisEligible: boolean;
+  analysisEligible: boolean; snapshotCount: number; completeStateBookmakerCount: number;
+  minimumCompleteStateCount: number;
   historical: HistoricalEvidence; cornerModelProbability: number | null; marketFairProbability: number;
   modelMarketGapPp: number | null; cornerQuality: QualityGrade | null; cornerConfirmation: 'CONFIRM' | 'CONFLICT' | 'UNAVAILABLE';
   reasons: string[]; warnings: string[];
@@ -53,7 +54,9 @@ export type PredictionEvaluation = {
   selectedCandidate: PredictionCandidate | null; candidates: PredictionCandidate[]; skipReasons: SkipReason[];
   metadata: { executionAuthority: false; aiPredictionAuthority: false; historicalExamplesConsidered: number;
     selfAuditStatus?: 'INSUFFICIENT_DATA' | 'HEALTHY' | 'WATCH' | 'PAUSED'; selfAuditId?: string | null;
-    selfAuditSegmentKeys?: string[]; selfAuditSegmentStatuses?: Record<string,'INSUFFICIENT_DATA' | 'HEALTHY' | 'WATCH' | 'PAUSED'> };
+    selfAuditGuardActive?: boolean; selfAuditSegmentKeys?: string[];
+    selfAuditSegmentStatuses?: Record<string,'INSUFFICIENT_DATA' | 'HEALTHY' | 'WATCH' | 'PAUSED'>;
+    selfAuditSegmentGuards?: Record<string,boolean> };
 };
 
 export type PredictionTarget = {

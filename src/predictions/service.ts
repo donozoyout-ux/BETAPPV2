@@ -14,6 +14,11 @@ import { evaluateRootCauses, selfAuditV3Config,
 import { adaptiveRuleConfigHash, adaptiveRuleEvaluationInputHash, generateAdaptiveRuleProposals, selfAuditV4Config,
   type AdaptiveRuleConfig } from './self-audit-v4.js';
 import type { HistoricalExample, PredictionEvaluation, PredictionTarget, SettlementOutcome } from './types.js';
+import { inspectPredictionRow } from './gate-inspector.js';
+
+function withPredictionGate(row: Record<string, unknown>, now = new Date(), config: PredictionConfig = predictionConfig) {
+  return { ...row, predictionGate: inspectPredictionRow(row, now, config) };
+}
 
 function analysisItem(row: Record<string, unknown>): AnalysisItem {
   return {
@@ -526,7 +531,7 @@ export class PredictionRepository {
   async reviewCandidates(now = new Date(), limit = 8) {
     const safeLimit = Math.max(1, Math.min(20, Math.trunc(limit)));
     const result = await this.pool.query(`SELECT DISTINCT ON(r.match_id)
-      r.match_id,r.decision,r.candidates,r.skip_reasons,r.generated_at,m.kickoff_at,l.name league,
+      r.match_id,r.decision,r.selected_candidate,r.candidates,r.skip_reasons,r.metadata,r.generated_at,m.kickoff_at,l.name league,
       ht.name home_team,at.name away_team,
       CASE WHEN j.id IS NULL THEN 'PREVIEW' ELSE CASE WHEN j.decision='PREDICT' THEN 'LOCKED_PREDICTION' ELSE 'LOCKED_SKIP' END END state
       FROM prediction_runs r
@@ -538,57 +543,27 @@ export class PredictionRepository {
         AND m.kickoff_at<$1::timestamptz+interval '48 hours'
       ORDER BY r.match_id,r.created_at DESC,r.id DESC`, [now]);
 
-    const parseCandidates = (value: unknown): Array<Record<string, unknown>> => {
-      if (Array.isArray(value)) return value.filter((item): item is Record<string, unknown> =>
-        Boolean(item) && typeof item === 'object');
-      if (typeof value === 'string') {
-        try {
-          const parsed = JSON.parse(value);
-          return Array.isArray(parsed) ? parsed.filter((item): item is Record<string, unknown> =>
-            Boolean(item) && typeof item === 'object') : [];
-        } catch { return []; }
-      }
-      return [];
-    };
-    const parseReasons = (value: unknown): string[] => Array.isArray(value) ? value.map(String)
-      : typeof value === 'string' ? (() => { try { const parsed = JSON.parse(value); return Array.isArray(parsed) ? parsed.map(String) : []; } catch { return []; } })()
-      : [];
-
     return result.rows.flatMap((row) => {
-      if (String(row.decision) === 'PREDICT') return [];
-      const skipReasons = parseReasons(row.skip_reasons);
-      if (skipReasons.some((reason) => reason === 'SELF_AUDIT_PAUSED' || reason === 'SELF_AUDIT_SEGMENT_PAUSED')) return [];
-      const best = parseCandidates(row.candidates)
-        .filter((candidate) => {
-          const historical = candidate.historical && typeof candidate.historical === 'object'
-            ? candidate.historical as Record<string, unknown> : {};
-          const odds = Number(candidate.currentOdds);
-          return Number(candidate.predictionScore ?? 0) >= 50
-            && Number(historical.settledSampleSize ?? 0) >= 5
-            && Number(candidate.bookmakerCount ?? 0) >= 2
-            && Number.isFinite(odds) && odds > 1;
-        })
-        .sort((a, b) => Number(b.predictionScore ?? 0) - Number(a.predictionScore ?? 0)
-          || Number((b.historical as Record<string, unknown> | undefined)?.settledSampleSize ?? 0)
-            - Number((a.historical as Record<string, unknown> | undefined)?.settledSampleSize ?? 0))[0];
-      if (!best) return [];
+      const predictionGate = inspectPredictionRow(row, now);
+      if (predictionGate.overallStatus !== 'REVIEW' || !predictionGate.candidate) return [];
       return [{
         matchId: String(row.match_id), kickoffAt: row.kickoff_at, league: String(row.league),
         homeTeam: String(row.home_team), awayTeam: String(row.away_team), state: String(row.state),
-        skipReasons, candidate: best,
+        skipReasons: predictionGate.blockers, candidate: predictionGate.candidate, predictionGate,
       }];
     }).sort((a, b) => Number(b.candidate.predictionScore ?? 0) - Number(a.candidate.predictionScore ?? 0)
       || new Date(String(a.kickoffAt)).getTime() - new Date(String(b.kickoffAt)).getTime())
       .slice(0, safeLimit);
   }
 
-  async previews() {
-    return (await this.pool.query(`SELECT DISTINCT ON(r.match_id) r.*,m.kickoff_at,l.name league,ht.name home_team,at.name away_team,
+  async previews(now = new Date()) {
+    const rows = (await this.pool.query(`SELECT DISTINCT ON(r.match_id) r.*,m.kickoff_at,l.name league,ht.name home_team,at.name away_team,
       CASE WHEN j.id IS NULL THEN 'PREVIEW' ELSE CASE WHEN j.decision='PREDICT' THEN 'LOCKED_PREDICTION' ELSE 'LOCKED_SKIP' END END state
       FROM prediction_runs r JOIN matches m ON m.id=r.match_id JOIN leagues l ON l.id=m.league_id
       JOIN teams ht ON ht.id=m.home_team_id JOIN teams at ON at.id=m.away_team_id
       LEFT JOIN prediction_journal j ON j.match_id=r.match_id AND j.model_version=r.model_version
       WHERE m.kickoff_at>now() AND j.id IS NULL ORDER BY r.match_id,r.created_at DESC,r.id DESC`)).rows;
+    return rows.map((row) => withPredictionGate(row, now));
   }
 
   async oddsSimilarityShowcase(matchLimit = 4, exampleLimit = 5, now = new Date()) {
@@ -926,13 +901,36 @@ export class PredictionRepository {
   }
 
   async today(timeZone = 'Europe/Istanbul') {
-    return (await this.pool.query(`SELECT j.*,m.kickoff_at,l.name league,ht.name home_team,at.name away_team,s.outcome,
+    const now = new Date();
+    const rows = (await this.pool.query(`SELECT j.*,r.selected_candidate,r.candidates,r.skip_reasons,r.metadata,
+      m.kickoff_at,l.name league,ht.name home_team,at.name away_team,s.outcome,
       CASE WHEN j.decision='PREDICT' THEN 'LOCKED_PREDICTION' ELSE 'LOCKED_SKIP' END state,
       CASE WHEN s.id IS NULL AND j.decision='PREDICT' THEN 'PENDING' WHEN s.id IS NULL THEN NULL ELSE 'SETTLED' END settlement_state
-      FROM prediction_journal j JOIN matches m ON m.id=j.match_id JOIN leagues l ON l.id=m.league_id
+      FROM prediction_journal j JOIN prediction_runs r ON r.id=j.prediction_run_id
+      JOIN matches m ON m.id=j.match_id JOIN leagues l ON l.id=m.league_id
       JOIN teams ht ON ht.id=m.home_team_id JOIN teams at ON at.id=m.away_team_id
       LEFT JOIN prediction_settlements s ON s.prediction_journal_id=j.id
       WHERE (m.kickoff_at AT TIME ZONE $1)::date=(now() AT TIME ZONE $1)::date ORDER BY m.kickoff_at`, [timeZone])).rows;
+    return rows.map((row) => withPredictionGate(row, now));
+  }
+
+  async gates(matchId: string, now = new Date()) {
+    const result = await this.pool.query(`SELECT m.id match_id,m.kickoff_at,l.name league,ht.name home_team,at.name away_team,
+      COALESCE(jr.decision,lr.decision,'SKIP') decision,COALESCE(jr.selected_candidate,lr.selected_candidate) selected_candidate,
+      COALESCE(jr.candidates,lr.candidates) candidates,
+      CASE WHEN COALESCE(jr.id,lr.id) IS NULL THEN '["NO_ODDS_ANALYSIS"]'::jsonb
+        ELSE COALESCE(jr.skip_reasons,lr.skip_reasons) END skip_reasons,COALESCE(jr.metadata,lr.metadata) metadata,
+      CASE WHEN j.decision='PREDICT' THEN 'LOCKED_PREDICTION' WHEN j.id IS NOT NULL THEN 'LOCKED_SKIP'
+        WHEN lr.id IS NOT NULL THEN 'PREVIEW' ELSE 'NOT_GENERATED' END state
+      FROM matches m JOIN leagues l ON l.id=m.league_id JOIN teams ht ON ht.id=m.home_team_id
+      JOIN teams at ON at.id=m.away_team_id
+      LEFT JOIN prediction_journal j ON j.match_id=m.id AND j.model_version='PREDICTION_V1'
+      LEFT JOIN prediction_runs jr ON jr.id=j.prediction_run_id
+      LEFT JOIN LATERAL(SELECT * FROM prediction_runs pr WHERE pr.match_id=m.id
+        ORDER BY pr.created_at DESC,pr.id DESC LIMIT 1) lr ON true WHERE m.id=$1`, [matchId]);
+    const row = result.rows[0];
+    if (!row) return null;
+    return { matchId: String(row.match_id), state: String(row.state), ...inspectPredictionRow(row, now) };
   }
 
   async history(limit = 50, offset = 0) {
@@ -1006,7 +1004,8 @@ export class PredictionService {
       ...evaluation,
       inputHash: createHash('sha256').update(`${evaluation.inputHash}|self-audit:${audit.inputHash}:${audit.status}`).digest('hex'),
       selectedCandidate,
-      metadata: { ...evaluation.metadata, selfAuditStatus: audit.status, selfAuditId: audit.id },
+      metadata: { ...evaluation.metadata, selfAuditStatus: audit.status, selfAuditId: audit.id,
+        selfAuditGuardActive: audit.status === 'PAUSED' && audit.guardActive },
     };
   }
 
@@ -1041,7 +1040,9 @@ export class PredictionService {
       selectedCandidate: { ...evaluation.selectedCandidate,
         warnings: [...new Set([...evaluation.selectedCandidate.warnings, ...warnings])] },
       metadata: { ...evaluation.metadata, selfAuditSegmentKeys: relevant.map((audit) => audit.segmentKey),
-        selfAuditSegmentStatuses: statusMap },
+        selfAuditSegmentStatuses: statusMap,
+        selfAuditSegmentGuards: Object.fromEntries(relevant.map((audit) => [audit.segmentKey,
+          audit.status === 'PAUSED' && audit.guardActive])) },
     };
   }
 

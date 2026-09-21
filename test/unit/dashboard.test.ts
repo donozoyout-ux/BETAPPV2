@@ -103,11 +103,29 @@ describe('renderDashboard', () => {
     expect(html).toContain('Tahmin Oluşturulmayan Maçlar');
     expect(html).toContain('Fenerbahçe — Eyüpspor');
     expect(html).toContain('Benzer geçmiş maç: 13 / gereken 30');
-    expect(html).toContain('Oran verisi henüz yeterli değil');
-    expect(html).toContain('Oran hareketi yeterince güçlü değil');
+    expect(html).toContain('Oran verisi resmi tahmin için henüz yeterli değil.');
+    expect(html).toContain('Bookmakerlarda yeterli oran hareketi oluşmadı.');
     expect(html).not.toContain('ODDS_NOT_ELIGIBLE');
     expect(html).not.toContain('MOVEMENT_NOT_SUPPORTED');
     expect(html).not.toContain('INSUFFICIENT_HISTORICAL_SAMPLE');
+  });
+
+  it('renders compact gate details and never leaks raw blocker codes', () => {
+    const predictionGate = { overallStatus: 'WAITING', summary: 'Veri bekleniyor: Açılış ve güncel oranı karşılaştırmak için yeterli ölçüm yok.',
+      gates: [
+        { key: 'BOOKMAKERS', label: 'Bahis şirketi', current: 7, required: 3, passed: true, reason: null, reasonCode: null },
+        { key: 'COMPLETE_STATES', label: 'Açılış / güncel oran ölçümü', current: { bookmakers: 1, states: 1 },
+          required: { bookmakers: 3, states: 2 }, passed: false,
+          reason: 'Açılış ve güncel oranı karşılaştırmak için yeterli ölçüm yok.', reasonCode: 'INSUFFICIENT_COMPLETE_STATES' },
+      ] };
+    const html = renderDashboard({ providers: [], matches: [], predictionPreviews: [{ match_id: 'wait-1', decision: 'SKIP',
+      state: 'PREVIEW', home_team: '<script>Ev</script>', away_team: 'Deplasman', league: 'Lig',
+      kickoff_at: '2026-09-21T18:00:00Z', skip_reasons: ['INSUFFICIENT_COMPLETE_STATES'], predictionGate }] });
+    expect(html).toContain('Prediction Gate Inspector');
+    expect(html).toContain('VERİ BEKLENİYOR');
+    expect(html).toContain('1 şirket · 1 ölçüm');
+    expect(html).not.toContain('INSUFFICIENT_COMPLETE_STATES');
+    expect(html).not.toContain('<script>Ev</script>');
   });
 
   it('renders the main navigation and system status in plain Turkish', () => {

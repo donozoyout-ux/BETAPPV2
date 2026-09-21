@@ -287,6 +287,15 @@ describe('FootballRepository integration', () => {
     expect(await predictionRepository.lock(evaluation, runId, new Date('2099-09-20T18:00:00Z'), 0, config)).toBe(false);
     expect(await predictionRepository.lock(evaluation, runId, new Date('2099-09-20T17:30:00Z'), 30, config)).toBe(true);
     expect(await predictionRepository.lock(evaluation, runId, new Date('2099-09-20T17:31:00Z'), 29, config)).toBe(false);
+    const gateInspector = await predictionRepository.gates(targetId, new Date('2099-09-20T17:30:00Z'));
+    expect(gateInspector).not.toBeNull();
+    expect(gateInspector!.state).toBe('LOCKED_PREDICTION');
+    expect(gateInspector!.thresholds).toMatchObject({ minimumHistoricalSample: 30, minimumPredictionScore: 70,
+      minimumBookmakerCount: 3, minimumCompleteStateCount: 2, officialWindowStartMinutes: 90 });
+    expect(gateInspector!.gates.map((gate) => gate.key)).toEqual(expect.arrayContaining([
+      'ODDS_ANALYSIS','BOOKMAKERS','COMPLETE_STATES','MOVEMENT','HISTORICAL_SAMPLE','PREDICTION_SCORE',
+      'OFFICIAL_WINDOW','SELF_AUDIT_GLOBAL','SELF_AUDIT_SEGMENT',
+    ]));
     const similarityShowcase = await predictionRepository.oddsSimilarityShowcase(
       4, 5, new Date('2099-09-20T17:00:00Z'));
     expect(similarityShowcase).toHaveLength(1);

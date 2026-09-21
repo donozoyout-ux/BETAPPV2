@@ -76,6 +76,11 @@ describe('FootballRepository integration', () => {
       statistics: [{ key: 'corners', label: 'Corners', period: 'ALL', homeValue: 6, awayValue: 4 }] };
     await repository.upsertStatistics('sofascore', statistics);
     await new CornerRepository(pool).saveHistorical('sofascore', finished, statistics);
+    const detail = await repository.matchAnalysisDetail(firstId);
+    expect(detail).toMatchObject({ id: firstId, league: 'Premier League', home_team: 'Home', away_team: 'Away',
+      status: 'finished', home_score: 2, away_score: 1 });
+    expect(detail?.statistics).toEqual([expect.objectContaining({ stat_key: 'corners', label: 'Corners', provider: 'sofascore' })]);
+    expect(detail?.odds).toEqual([]);
     const counts = await pool.query('SELECT (SELECT count(*) FROM matches) matches, (SELECT count(*) FROM teams) teams');
     expect(Number(counts.rows[0].matches)).toBe(1);
     expect(Number(counts.rows[0].teams)).toBe(2);

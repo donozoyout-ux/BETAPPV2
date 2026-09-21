@@ -12,6 +12,14 @@ describe('renderDashboard', () => {
     expect(html).toContain('&lt;b&gt;A&lt;/b&gt;');
   });
 
+  it('links dashboard match actions to the unified match analysis page', () => {
+    const html = renderDashboard({ providers: [], matches: [], predictionPreviews: [{ match_id: 'match/detail',
+      decision: 'SKIP', state: 'PREVIEW', home_team: 'Ev', away_team: 'Dep', league: 'Lig',
+      kickoff_at: '2026-09-21T18:00:00Z', predictionGate: { overallStatus: 'WAITING', summary: 'Bekleniyor.', gates: [] } }] });
+    expect(html).toContain('href="/matches/match%2Fdetail"');
+    expect(html).not.toContain('href="/api/predictions/match%2Fdetail/gates"');
+  });
+
   it('renders historical odds matches in plain Turkish', () => {
     const html = renderDashboard({ providers: [], matches: [],
       oddsAnalyses: Array.from({ length: 20 }, (_, index) => ({ id: index })),

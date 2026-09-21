@@ -551,6 +551,24 @@ export class FootballRepository {
        LIMIT $1`, [safeLimit])).rows;
   }
 
+  /** Read-only composition source for the server-rendered match analysis page. */
+  async matchAnalysisDetail(matchId: string) {
+    const [matchResult, statisticsResult, oddsResult] = await Promise.all([
+      this.pool.query(`SELECT m.id,m.kickoff_at,m.status,m.home_score,m.away_score,l.name league,
+        ht.name home_team,at.name away_team
+        FROM matches m JOIN leagues l ON l.id=m.league_id
+        JOIN teams ht ON ht.id=m.home_team_id JOIN teams at ON at.id=m.away_team_id
+        WHERE m.id=$1`, [matchId]),
+      this.pool.query(`SELECT period,stat_key,label,home_value,away_value,provider,source_updated_at
+        FROM match_statistics WHERE match_id=$1 ORDER BY period,stat_key,provider`, [matchId]),
+      this.pool.query(`SELECT provider,market_type,market_name,line,selection,opening_odds,current_odds,
+        highest_odds,lowest_odds,movement_percent,snapshot_count
+        FROM odds_summary WHERE match_id=$1 ORDER BY provider,market_type,market_name,line NULLS FIRST,selection`, [matchId]),
+    ]);
+    const match = matchResult.rows[0];
+    return match ? { ...match, statistics: statisticsResult.rows, odds: oddsResult.rows } : null;
+  }
+
   async cornerAnalysisDetail(matchId: string) {
     const result = await this.pool.query(
       `SELECT ca.*,ht.name home_team,at.name away_team,l.name competition,m.kickoff_at

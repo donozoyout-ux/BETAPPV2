@@ -164,4 +164,18 @@ describe('renderDashboard', () => {
     expect(html).not.toContain('İlk veri senkronizasyonu bekleniyor');
   });
 
+  it('shows a 14-day upcoming league summary', () => {
+    const html = renderDashboard({
+      providers: [{ provider: 'fotmob', status: 'healthy' }],
+      matches: [
+        { id: 'm1', kickoff_at: '2026-09-23T01:30:00Z', league: 'MLS', home_team: 'Seattle', away_team: 'Salt Lake', status: 'scheduled' },
+        { id: 'm2', kickoff_at: '2026-09-26T23:30:00Z', league: 'MLS', home_team: 'Atlanta', away_team: 'NYCFC', status: 'scheduled' },
+        { id: 'm3', kickoff_at: '2026-10-02T22:00:00Z', league: 'Brasileirão Série A', home_team: 'São Paulo', away_team: 'Santos', status: 'scheduled' },
+      ],
+    });
+    expect(html).toContain('Önümüzdeki 14 Gün');
+    expect(html).toContain('MLS · 2 maç');
+    expect(html).toContain('Brasileirão Série A · 1 maç');
+  });
+
 });

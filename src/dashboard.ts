@@ -222,6 +222,17 @@ export function renderDashboard(data: DashboardData): string {
       <div class="teams"><span>${escapeHtml(match.home_team)} — ${escapeHtml(match.away_team)}</span><small>${escapeHtml(match.league)} · ${matchOdds} oran kaydı · ${escapeHtml(decision)}</small></div>
       <div style="display:flex;align-items:center;gap:6px"><span class="status ${status === 'live' ? 'live' : ''}">${escapeHtml(status === 'live' ? 'Canlı' : status === 'scheduled' ? 'Planlandı' : status)}</span><a class="status" href="${escapeHtml(actionHref)}">${hasCorner ? 'DETAY' : 'ANALİZ'}</a></div></article>`;
   }).join('') : renderEmpty('⌁', 'Yaklaşan maç görünmüyor', 'Önümüzdeki 7 gün içinde desteklenen liglerde maç yoksa arşiv ve geçmiş analizler aşağıda gösterilmeye devam eder.');
+  const upcomingLeagueCounts = [...matches.reduce((map, match) => {
+    const league = String(match.league ?? 'Diğer');
+    map.set(league, (map.get(league) ?? 0) + 1);
+    return map;
+  }, new Map<string, number>()).entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'tr'));
+  const upcomingLeagueSummary = upcomingLeagueCounts.length
+    ? `<div class="similarity-meta" style="margin:0 0 12px">${upcomingLeagueCounts.map(([league, count]) =>
+        `<span class="badge neutral">${escapeHtml(league)} · ${count} maç</span>`).join('')}</div>`
+    : '';
+
   const recentFinishedCards = recentFinishedMatches.length ? recentFinishedMatches.map((match) => {
     const score = match.home_score == null || match.away_score == null ? 'Sonuç yok'
       : `${escapeHtml(match.home_score)} - ${escapeHtml(match.away_score)}`;
@@ -596,7 +607,7 @@ export function renderDashboard(data: DashboardData): string {
     : matches.length
       ? `<div class="notice"><span class="notice-mark">i</span><div><strong>Bugün desteklenen liglerde maç yok</strong><p>Sistem boş değil. Önümüzdeki 7 günlük fikstür, geçmiş sonuçlar ve oran arşivi aşağıda gösteriliyor.</p></div></div>`
       : (historicalExampleCount > 0 || archivedOddsMatchCount > 0)
-        ? `<div class="notice"><span class="notice-mark">i</span><div><strong>Bugün ve önümüzdeki 7 günde maç görünmüyor</strong><p>Geçmiş analiz arşivi aktif: ${historicalExampleCount} historical örnek ve ${archivedOddsMatchCount} gerçek oran geçmişi bulunan bitmiş maç mevcut.</p></div></div>`
+        ? `<div class="notice"><span class="notice-mark">i</span><div><strong>Bugün ve önümüzdeki 14 günde maç görünmüyor</strong><p>Geçmiş analiz arşivi aktif: ${historicalExampleCount} historical örnek ve ${archivedOddsMatchCount} gerçek oran geçmişi bulunan bitmiş maç mevcut.</p></div></div>`
         : `<div class="notice"><span class="notice-mark">i</span><div><strong>Veri senkronizasyonu bekleniyor</strong><p>Collector devreye girdiğinde fikstür ve oranlar otomatik olarak burada görünür.</p></div></div>`;
 
   const officialPredictionCount = officialPredictions.length;
@@ -657,7 +668,7 @@ export function renderDashboard(data: DashboardData): string {
         </section>
         <section class="metrics" aria-label="Sistem özeti">
           <article class="metric"><span class="metric-label">Bugün</span><strong class="metric-value">${todayMatches.length}</strong><span class="metric-note">Bugünkü desteklenen maç</span></article>
-          <article class="metric"><span class="metric-label">Yaklaşan 7 gün</span><strong class="metric-value">${matches.length}</strong><span class="metric-note">Fikstürdeki maç</span></article>
+          <article class="metric"><span class="metric-label">Yaklaşan 14 gün</span><strong class="metric-value">${matches.length}</strong><span class="metric-note">Fikstürdeki maç</span></article>
           <article class="metric"><span class="metric-label">Historical örnek</span><strong class="metric-value">${historicalExampleCount}</strong><span class="metric-note">Benzerlik motoru verisi</span></article>
           <article class="metric"><span class="metric-label">Oran geçmişi olan maç</span><strong class="metric-value">${archivedOddsMatchCount}</strong><span class="metric-note">Gerçek pre-match arşivi</span></article>
           <article class="metric"><span class="metric-label">Geçmiş snapshot</span><strong class="metric-value">${preKickoffSnapshotCount.toLocaleString('tr-TR')}</strong><span class="metric-note">Gerçek pre-match kayıt</span></article>
@@ -665,7 +676,8 @@ export function renderDashboard(data: DashboardData): string {
         </section>
         ${waitingNotice}
 
-        <section class="section" id="matches"><div class="section-title"><div><span class="section-kicker">Fikstür</span><h2>Önümüzdeki 7 Gün</h2><p>Bugün maç yoksa bile sıradaki desteklenen lig maçları burada görünür.</p></div></div>
+        <section class="section" id="matches"><div class="section-title"><div><span class="section-kicker">Fikstür</span><h2>Önümüzdeki 14 Gün</h2><p>Bugün maç yoksa bile sıradaki desteklenen lig maçları burada görünür.</p></div></div>
+          ${upcomingLeagueSummary}
           <div class="workspace"><article class="panel"><div class="panel-head"><h3>Yaklaşan maçlar</h3><span class="count">${matches.length}</span></div><div class="panel-body match-list">${matchCards}</div></article>
             <article class="panel" id="odds"><div class="panel-head"><h3>Güncel oranlar</h3><span class="count">${odds.length}</span></div><div class="panel-body odds-list">${oddsRows}</div></article></div></section>
 

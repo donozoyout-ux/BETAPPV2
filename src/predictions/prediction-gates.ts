@@ -4,7 +4,7 @@ import type { PredictionCandidate, SkipReason } from './types.js';
 const supportedMarkets = ['MATCH_RESULT', '1X2', 'TOTAL_GOALS', 'TOTAL_CORNERS', 'ASIAN_HANDICAP'] as const;
 
 export function isSupportedPredictionMarket(marketType: string): boolean {
-  const normalized = marketType.toUpperCase();
+  const normalized = String(marketType ?? '').toUpperCase();
   return supportedMarkets.some((name) => normalized.includes(name));
 }
 
@@ -23,14 +23,15 @@ export function officialCandidateBlockers(candidate: PredictionCandidate,
   const blockers: SkipReason[] = [];
   if (!isSupportedPredictionMarket(candidate.marketType)) blockers.push('UNSUPPORTED_MARKET');
   if (!candidate.analysisEligible) blockers.push('ODDS_NOT_ELIGIBLE');
-  if (candidate.dataQualityScore < config.minimumDataQualityScore) blockers.push('LOW_DATA_QUALITY');
-  if (candidate.confidenceScore < config.minimumConfidenceScore) blockers.push('LOW_MODEL_CONFIDENCE');
-  if (candidate.bookmakerCount < config.minimumBookmakerCount) blockers.push('INSUFFICIENT_BOOKMAKERS');
+  if (!Number.isFinite(candidate.dataQualityScore) || candidate.dataQualityScore < config.minimumDataQualityScore) blockers.push('LOW_DATA_QUALITY');
+  if (!Number.isFinite(candidate.confidenceScore) || candidate.confidenceScore < config.minimumConfidenceScore) blockers.push('LOW_MODEL_CONFIDENCE');
+  if (!Number.isFinite(candidate.bookmakerCount) || candidate.bookmakerCount < config.minimumBookmakerCount) blockers.push('INSUFFICIENT_BOOKMAKERS');
   if (!hasRequiredCompleteStates(candidate, config)) blockers.push('INSUFFICIENT_COMPLETE_STATES');
-  if (!['SUPPORT', 'STRONG_SUPPORT'].includes(candidate.movementClass)) blockers.push('MOVEMENT_NOT_SUPPORTED');
-  if (candidate.historical.settledSampleSize < config.minimumHistoricalSample) blockers.push('INSUFFICIENT_HISTORICAL_SAMPLE');
+  if (!['SUPPORT', 'STRONG_SUPPORT'].includes(String(candidate.movementClass ?? ''))) blockers.push('MOVEMENT_NOT_SUPPORTED');
+  if (!Number.isFinite(candidate.historical?.settledSampleSize)
+    || candidate.historical.settledSampleSize < config.minimumHistoricalSample) blockers.push('INSUFFICIENT_HISTORICAL_SAMPLE');
   if (candidate.cornerConfirmation === 'CONFLICT') blockers.push('CONFLICTING_CORNER_MODEL');
-  if (candidate.predictionScore < config.minimumPredictionScore) blockers.push('LOW_PREDICTION_SCORE');
+  if (!Number.isFinite(candidate.predictionScore) || candidate.predictionScore < config.minimumPredictionScore) blockers.push('LOW_PREDICTION_SCORE');
   return blockers;
 }
 

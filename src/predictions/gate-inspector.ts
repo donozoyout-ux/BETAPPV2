@@ -65,20 +65,30 @@ export function parsePredictionReasons(value: unknown): string[] {
   return Array.isArray(parsed) ? parsed.map(String) : [];
 }
 
+function candidateScore(value: PredictionCandidate): number {
+  return Number.isFinite(value.predictionScore) ? value.predictionScore : Number.NEGATIVE_INFINITY;
+}
+
+function historicalSettledSample(value: PredictionCandidate): number {
+  return Number.isFinite(value.historical?.settledSampleSize)
+    ? value.historical.settledSampleSize : Number.NEGATIVE_INFINITY;
+}
+
 export function bestPredictionCandidate(selected: unknown, candidates: unknown): PredictionCandidate | null {
   const official = parsePredictionCandidate(selected);
   if (official) return official;
-  return parsePredictionCandidates(candidates).sort((left, right) => right.predictionScore - left.predictionScore
-    || right.historical.settledSampleSize - left.historical.settledSampleSize)[0] ?? null;
+  return parsePredictionCandidates(candidates).sort((left, right) => candidateScore(right) - candidateScore(left)
+    || historicalSettledSample(right) - historicalSettledSample(left))[0] ?? null;
 }
 
 export function isMeaningfulReviewCandidate(candidate: PredictionCandidate | null): boolean {
   // Presentation-only discovery thresholds. They MUST NOT affect Prediction V1 qualification,
   // official locking, execution authority, or historical backtest qualification.
-  if (!candidate || !isSupportedPredictionMarket(candidate.marketType)) return false;
+  if (!candidate || typeof candidate.marketType !== 'string' || !isSupportedPredictionMarket(candidate.marketType)) return false;
   const validOdds = [candidate.openingOdds, candidate.currentOdds, candidate.referenceOdds]
     .every((value) => Number.isFinite(value) && value > 1);
-  return candidate.historical.settledSampleSize >= 5 && candidate.predictionScore >= 50
+  const settledSampleSize = candidate.historical?.settledSampleSize;
+  return Number.isFinite(settledSampleSize) && settledSampleSize >= 5 && candidate.predictionScore >= 50
     && candidate.bookmakerCount >= 2 && validOdds;
 }
 
@@ -113,7 +123,7 @@ export function inspectPredictionGates(input: InspectorInput,
   const hasCompleteMetrics = Boolean(candidate && Number.isFinite(candidate.completeStateBookmakerCount)
     && Number.isFinite(candidate.minimumCompleteStateCount));
   const completePassed = Boolean(candidate && hasRequiredCompleteStates(candidate, config));
-  const corner = Boolean(candidate?.marketType.toUpperCase().includes('TOTAL_CORNERS'));
+  const corner = Boolean(String(candidate?.marketType ?? '').toUpperCase().includes('TOTAL_CORNERS'));
   const gates: PredictionGateResult[] = [
     gate('ODDS_ANALYSIS', 'Oran analizi', oddsAnalysisExists ? 'VAR' : 'YOK', 'VAR', oddsAnalysisExists, 'NO_ODDS_ANALYSIS'),
     gate('PREDICTION_RUN', 'Prediction V1 değerlendirmesi', predictionRunExists ? 'VAR' : 'HENÜZ YOK', 'VAR',
@@ -133,8 +143,10 @@ export function inspectPredictionGates(input: InspectorInput,
       Boolean(candidate && candidate.confidenceScore >= config.minimumConfidenceScore), 'LOW_MODEL_CONFIDENCE'),
     gate('MOVEMENT', 'Oran hareketi', candidate?.movementClass ?? 'UNAVAILABLE', ['SUPPORT','STRONG_SUPPORT'],
       Boolean(candidate && ['SUPPORT','STRONG_SUPPORT'].includes(candidate.movementClass)), 'MOVEMENT_NOT_SUPPORTED'),
-    gate('HISTORICAL_SAMPLE', 'Geçmiş benzer maç', candidate?.historical.settledSampleSize ?? 0,
-      config.minimumHistoricalSample, Boolean(candidate && candidate.historical.settledSampleSize >= config.minimumHistoricalSample),
+    gate('HISTORICAL_SAMPLE', 'Geçmiş benzer maç', Number.isFinite(candidate?.historical?.settledSampleSize)
+      ? candidate!.historical.settledSampleSize : 0,
+      config.minimumHistoricalSample, Boolean(candidate && Number.isFinite(candidate.historical?.settledSampleSize)
+        && candidate.historical.settledSampleSize >= config.minimumHistoricalSample),
       'INSUFFICIENT_HISTORICAL_SAMPLE'),
     gate('PREDICTION_SCORE', 'Tahmin skoru', candidate?.predictionScore ?? 0, config.minimumPredictionScore,
       Boolean(candidate && candidate.predictionScore >= config.minimumPredictionScore), 'LOW_PREDICTION_SCORE'),

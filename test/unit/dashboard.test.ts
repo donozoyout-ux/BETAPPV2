@@ -82,6 +82,7 @@ describe('renderDashboard', () => {
       predictionReviewCandidates: [{
         matchId: 'review-1', homeTeam: 'Fenerbahçe', awayTeam: 'Eyüpspor', league: 'Süper Lig',
         kickoffAt: '2026-09-20T17:00:00Z', skipReasons: ['INSUFFICIENT_HISTORICAL_SAMPLE','MOVEMENT_NOT_SUPPORTED'],
+        predictionGate: { overallStatus: 'REVIEW', summary: 'Resmi tahmin oluşmadı.', gates: [] },
         candidate: { marketType: 'TOTAL_GOALS', line: 2.5, selection: 'OVER', openingOdds: 2.05, currentOdds: 1.88,
           probabilityDeltaPp: 0.8, predictionScore: 68, bookmakerCount: 4, agreementRatio: 0.75,
           dataQualityGrade: 'GOOD', confidenceGrade: 'LIMITED',
@@ -151,22 +152,61 @@ describe('renderDashboard', () => {
       predictionAdaptiveRuleProposals: [],
       supportedCompetitions: ['PremierLeague','MLS','BrasileiraoSerieA'],
     });
-    expect(html).toContain('Futbol Analiz Sistemi');
-    expect(html).toContain('Ana Sayfa');
-    expect(html).toContain('Maçlar');
+    expect(html).toContain('BETAPP Futbol Analiz Terminali');
+    expect(html).toContain('Genel Bakış');
+    expect(html).toContain('Bugünün Maçları');
     expect(html).toContain('Veri Arşivi');
-    expect(html).toContain('Tahminler');
-    expect(html).toContain('Oran Eşleşmeleri');
-    expect(html).toContain('Geçmiş Tahminler');
-    expect(html).toContain('Sistem Kontrolü');
-    expect(html).toContain('Çalışıyor');
-    expect(html).toContain('Sağlıklı');
+    expect(html).toContain('Resmi Tahminler');
+    expect(html).toContain('Oran Analizi');
+    expect(html).toContain('Tahmin Geçmişi');
+    expect(html).toContain('Sistem Durumu');
+    expect(html).toContain('HEALTHY');
     expect(html).toContain('Aktif Ligler');
     expect(html).toContain('Premier League');
     expect(html).toContain('MLS');
     expect(html).toContain('Brasileirão Série A');
     expect(html).not.toContain('BETAPP Command Center');
     expect(html).not.toContain('SELF-AUDIT V1');
+  });
+
+  it('renders four gate-backed states without invented metrics or raw reason codes', () => {
+    const candidate = { marketType: 'TOTAL_GOALS', line: 2.5, selection: 'OVER', currentOdds: 1.88,
+      predictionScore: 76, movementClass: 'SUPPORT', bookmakerCount: 4,
+      historical: { settledSampleSize: 31, historicalHitRate: 0.61 } };
+    const gate = (overallStatus: string, summary: string, value: Record<string, unknown> | null = candidate) => ({
+      overallStatus, summary, candidate: value, blockers: overallStatus === 'REJECTED' ? ['UNSUPPORTED_MARKET'] : [], gates: [],
+    });
+    const html = renderDashboard({ providers: [
+      { provider: 'fotmob', status: 'healthy' }, { provider: 'nowgoal', status: 'degraded', message: 'Rate limit' },
+    ], matches: [], predictions: [
+      { match_id: 'o', home_team: 'Official Ev', away_team: 'Official Dep', league: 'Lig', kickoff_at: '2026-09-21T18:00:00Z',
+        decision: 'PREDICT', state: 'LOCKED_PREDICTION', predictionGate: gate('OFFICIAL', 'Bütün güvenlik kapıları geçti.') },
+      { match_id: 'x', home_team: 'Rejected Ev', away_team: 'Rejected Dep', league: 'Lig', kickoff_at: '2026-09-21T20:00:00Z',
+        decision: 'SKIP', state: 'LOCKED_SKIP', skip_reasons: ['UNSUPPORTED_MARKET'],
+        predictionGate: gate('REJECTED', 'Bu market Prediction V1 tarafından desteklenmiyor.') },
+    ], predictionPreviews: [
+      { match_id: 'w', home_team: 'Waiting Ev', away_team: 'Waiting Dep', league: 'Lig', kickoff_at: '2026-09-21T19:00:00Z',
+        decision: 'PREDICT', state: 'PREVIEW', predictionGate: gate('WAITING',
+          'Resmi tahmin koşulları geçti ancak tahmin henüz kilitlenmedi.', null) },
+    ], predictionReviewCandidates: [
+      { matchId: 'r', homeTeam: 'Review Ev', awayTeam: 'Review Dep', league: 'Lig', kickoffAt: '2026-09-21T19:30:00Z',
+        candidate, skipReasons: ['INSUFFICIENT_HISTORICAL_SAMPLE'],
+        predictionGate: gate('REVIEW', 'Resmi tahmin oluşmadı.') },
+    ] });
+    expect(html).toContain('RESMİ TAHMİN');
+    expect(html).toContain('class="state-card official"');
+    expect(html).toContain('Resmi tahmin değildir.');
+    expect(html).toContain('Resmi tahmin koşulları geçti ancak tahmin henüz kilitlenmedi.');
+    expect(html).toContain('Bu market Prediction V1 tarafından desteklenmiyor.');
+    expect(html).toContain('Henüz hesaplanmadı');
+    expect(html).toContain('DEGRADED');
+    expect(html).not.toContain('UNSUPPORTED_MARKET');
+    expect(html).not.toContain('INSUFFICIENT_HISTORICAL_SAMPLE');
+    expect(html).not.toContain('0/100');
+    expect(html).not.toContain('Engine V1.4');
+    expect(html).not.toContain('Opta Sync');
+    expect(html).not.toContain('Arsenal');
+    expect(html).not.toContain('Liverpool');
   });
   it('shows archive and recent results when there are no current matches', () => {
     const html = renderDashboard({

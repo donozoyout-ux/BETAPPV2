@@ -153,31 +153,45 @@ function renderEmpty(icon: string, title: string, description: string): string {
     <div><strong>${escapeHtml(title)}</strong><p>${escapeHtml(description)}</p></div></div>`;
 }
 
+function optionalNumber(value: unknown, suffix = ''): string {
+  return value == null || value === '' || !Number.isFinite(Number(value)) ? '—' : `${Number(value)}${suffix}`;
+}
+
+function optionalOdds(value: unknown): string {
+  return value == null || !Number.isFinite(Number(value)) || Number(value) <= 1 ? '—' : Number(value).toFixed(2);
+}
+
+function objectValue(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
 function shell(content: string, title = 'BETAPP — Futbol Analiz Terminali'): string {
   return `<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#07110d"><meta http-equiv="refresh" content="60"><title>${escapeHtml(title)}</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230b1811'/%3E%3Cpath d='M17 16h18c9 0 14 4 14 11 0 4-2 7-6 9 5 1 8 5 8 10 0 8-6 12-16 12H17V16zm11 9v8h7c3 0 5-1 5-4s-2-4-5-4h-7zm0 17v8h8c4 0 6-1 6-4s-2-4-6-4h-8z' fill='%237cf6a3'/%3E%3C/svg%3E">
   <style>
-  :root{color-scheme:dark;--bg:#07110d;--sidebar:#09150f;--panel:#0d1b14;--panel-2:#11231a;--panel-3:#15291f;--line:#20382a;--line-soft:#17291f;--green:#74f59c;--green-2:#31d878;--blue:#75a7ff;--amber:#ffc95c;--red:#ff7373;--text:#f1fbf4;--muted:#91a69a;--muted-2:#667c70;--shadow:0 18px 54px rgba(0,0,0,.22);--sidebar-w:238px}
-  *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}body:before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(circle at 72% -15%,rgba(50,216,120,.10),transparent 35%),radial-gradient(circle at 20% 90%,rgba(70,120,255,.055),transparent 30%)}
-  a{color:inherit;text-decoration:none}button,input{font:inherit}.app-shell{min-height:100vh}.sidebar{position:fixed;inset:0 auto 0 0;width:var(--sidebar-w);padding:18px 14px;border-right:1px solid var(--line-soft);background:rgba(9,21,15,.96);backdrop-filter:blur(22px);z-index:30}.brand{display:flex;align-items:center;gap:11px;padding:7px 8px 20px;font-weight:950;letter-spacing:-.04em}.brand-mark{display:grid;place-items:center;width:38px;height:38px;border-radius:12px;background:linear-gradient(145deg,var(--green),#47df82);color:#051108;box-shadow:0 0 0 6px rgba(116,245,156,.07)}.brand small{display:block;color:var(--muted);font-size:.63rem;font-weight:750;letter-spacing:.13em;text-transform:uppercase}.side-group{margin-top:14px}.side-label{padding:0 10px 7px;color:var(--muted-2);font-size:.66rem;font-weight:850;letter-spacing:.12em;text-transform:uppercase}.side-nav{display:grid;gap:4px}.side-nav a{display:flex;align-items:center;gap:10px;padding:10px 11px;border-radius:10px;color:var(--muted);font-size:.86rem;font-weight:700;transition:.18s}.side-nav a:hover,.side-nav a.active{background:var(--panel-2);color:var(--text)}.side-nav .nav-icon{width:20px;text-align:center;color:var(--green)}.sidebar-foot{position:absolute;left:14px;right:14px;bottom:18px}.system-pill{display:flex;align-items:center;gap:10px;padding:11px;border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--muted);font-size:.78rem}.live-dot{width:8px;height:8px;border-radius:50%;background:var(--green-2);box-shadow:0 0 0 5px rgba(49,216,120,.10)}.live-dot.wait{background:var(--amber);box-shadow:0 0 0 5px rgba(255,201,92,.09)}
-  .app-main{margin-left:var(--sidebar-w);min-width:0}.topbar{position:sticky;top:0;z-index:22;height:66px;display:flex;align-items:center;justify-content:space-between;gap:18px;padding:0 28px;border-bottom:1px solid rgba(32,56,42,.72);background:rgba(7,17,13,.88);backdrop-filter:blur(18px)}.top-title strong{display:block;font-size:.96rem}.top-title span{color:var(--muted);font-size:.72rem}.search{position:relative;width:min(430px,42vw)}.search input{width:100%;height:38px;padding:0 14px 0 36px;border:1px solid var(--line);border-radius:11px;outline:none;background:var(--panel);color:var(--text)}.search input:focus{border-color:rgba(116,245,156,.55);box-shadow:0 0 0 3px rgba(116,245,156,.07)}.search:before{content:"⌕";position:absolute;left:13px;top:8px;color:var(--muted)}.top-actions{display:flex;align-items:center;gap:8px}.top-chip{padding:7px 10px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--muted);font-size:.74rem;font-weight:750}.mobile-menu{display:none}
-  .content{width:min(1500px,calc(100% - 44px));margin:auto;padding:26px 0 64px}.command-hero{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(260px,.7fr);gap:16px;margin-bottom:16px}.hero-main,.hero-status{border:1px solid var(--line);border-radius:20px;background:linear-gradient(145deg,rgba(17,35,26,.98),rgba(10,22,16,.98));box-shadow:var(--shadow)}.hero-main{position:relative;overflow:hidden;padding:25px}.hero-main:after{content:"";position:absolute;right:-60px;top:-90px;width:220px;height:220px;border-radius:50%;background:rgba(116,245,156,.055)}.eyebrow{margin:0 0 7px;color:var(--green);font-size:.69rem;font-weight:900;letter-spacing:.14em;text-transform:uppercase}.hero-main h1{margin:0;font-size:clamp(1.8rem,3.2vw,3.1rem);line-height:1.03;letter-spacing:-.055em}.hero-copy{max-width:720px;margin:11px 0 0;color:var(--muted);font-size:.88rem}.hero-status{padding:20px}.hero-status-head{display:flex;align-items:center;justify-content:space-between}.hero-status strong{font-size:.86rem}.hero-status-list{display:grid;gap:9px;margin-top:16px}.health-row{display:flex;align-items:center;justify-content:space-between;gap:12px;color:var(--muted);font-size:.78rem}.health-row b{color:var(--text);font-weight:800}
-  .metrics{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin:16px 0}.metric{min-height:112px;padding:16px;border:1px solid var(--line);border-radius:15px;background:var(--panel);box-shadow:var(--shadow)}.metric-label{color:var(--muted);font-size:.67rem;font-weight:850;letter-spacing:.08em;text-transform:uppercase}.metric-value{display:block;margin-top:9px;font-size:1.8rem;font-weight:950;line-height:1;letter-spacing:-.05em}.metric-note{display:block;margin-top:7px;color:var(--muted-2);font-size:.7rem}.metric.alert .metric-value{color:var(--amber)}.metric.danger .metric-value{color:var(--red)}
+  :root{color-scheme:dark;--bg:#080b10;--sidebar:#0b0f15;--panel:#10151d;--panel-2:#151c26;--panel-3:#1a2330;--line:#25303d;--line-soft:#1b2531;--green:#61e89a;--green-2:#25c976;--cyan:#57d6ed;--blue:#75a7ff;--amber:#f5bd55;--red:#ee777d;--text:#edf3f8;--muted:#91a0ae;--muted-2:#647280;--shadow:0 12px 34px rgba(0,0,0,.20);--sidebar-w:246px}
+  *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}body:before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(circle at 72% -15%,rgba(87,214,237,.065),transparent 34%)}
+  a{color:inherit;text-decoration:none}button,input{font:inherit}.app-shell{min-height:100vh}.sidebar{position:fixed;inset:0 auto 0 0;width:var(--sidebar-w);padding:18px 14px;border-right:1px solid var(--line-soft);background:rgba(11,15,21,.97);backdrop-filter:blur(22px);z-index:30}.brand{display:flex;align-items:center;gap:11px;padding:7px 8px 20px;font-weight:950;letter-spacing:-.04em}.brand-mark{display:grid;place-items:center;width:38px;height:38px;border-radius:12px;background:linear-gradient(145deg,var(--green),#47df82);color:#051108;box-shadow:0 0 0 6px rgba(116,245,156,.07)}.brand small{display:block;color:var(--muted);font-size:.63rem;font-weight:750;letter-spacing:.13em;text-transform:uppercase}.side-group{margin-top:14px}.side-label{padding:0 10px 7px;color:var(--muted-2);font-size:.66rem;font-weight:850;letter-spacing:.12em;text-transform:uppercase}.side-nav{display:grid;gap:4px}.side-nav a{display:flex;align-items:center;gap:10px;padding:10px 11px;border-radius:10px;color:var(--muted);font-size:.86rem;font-weight:700;transition:.18s}.side-nav a:hover,.side-nav a.active{background:var(--panel-2);color:var(--text)}.side-nav .nav-icon{width:20px;text-align:center;color:var(--cyan)}.sidebar-foot{position:absolute;left:14px;right:14px;bottom:18px}.system-pill{display:flex;align-items:center;gap:10px;padding:11px;border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--muted);font-size:.78rem}.live-dot{width:8px;height:8px;border-radius:50%;background:var(--green-2);box-shadow:0 0 0 5px rgba(49,216,120,.10)}.live-dot.wait{background:var(--amber);box-shadow:0 0 0 5px rgba(255,201,92,.09)}
+  .app-main{margin-left:var(--sidebar-w);min-width:0}.topbar{position:sticky;top:0;z-index:22;height:66px;display:flex;align-items:center;justify-content:space-between;gap:18px;padding:0 28px;border-bottom:1px solid var(--line-soft);background:rgba(8,11,16,.90);backdrop-filter:blur(18px)}.top-title strong{display:block;font-size:.96rem}.top-title span{color:var(--muted);font-size:.72rem}.search{position:relative;width:min(430px,42vw)}.search input{width:100%;height:38px;padding:0 14px 0 36px;border:1px solid var(--line);border-radius:11px;outline:none;background:var(--panel);color:var(--text)}.search input:focus{border-color:rgba(87,214,237,.5);box-shadow:0 0 0 3px rgba(87,214,237,.07)}.search:before{content:"⌕";position:absolute;left:13px;top:8px;color:var(--muted)}.top-actions{display:flex;align-items:center;gap:8px}.top-chip{padding:7px 10px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--muted);font-size:.74rem;font-weight:750}.mobile-menu{display:none}
+  .content{width:min(1500px,calc(100% - 44px));margin:auto;padding:26px 0 64px}.command-hero{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(260px,.7fr);gap:16px;margin-bottom:16px}.hero-main,.hero-status{border:1px solid var(--line);border-radius:12px;background:linear-gradient(145deg,rgba(17,22,31,.98),rgba(11,15,21,.98));box-shadow:var(--shadow)}.hero-main{position:relative;overflow:hidden;padding:25px}.hero-main:after{content:"";position:absolute;right:-60px;top:-90px;width:220px;height:220px;border-radius:50%;background:rgba(87,214,237,.045)}.eyebrow{margin:0 0 7px;color:var(--cyan);font-size:.69rem;font-weight:900;letter-spacing:.14em;text-transform:uppercase}.hero-main h1{margin:0;font-size:clamp(1.8rem,3.2vw,3.1rem);line-height:1.03;letter-spacing:-.055em}.hero-copy{max-width:720px;margin:11px 0 0;color:var(--muted);font-size:.88rem}.hero-status{padding:20px}.hero-status-head{display:flex;align-items:center;justify-content:space-between}.hero-status strong{font-size:.86rem}.hero-status-list{display:grid;gap:9px;margin-top:16px}.health-row{display:flex;align-items:center;justify-content:space-between;gap:12px;color:var(--muted);font-size:.78rem}.health-row b{color:var(--text);font-weight:800}
+  .metrics{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin:14px 0}.metric{min-height:96px;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}.metric-label{color:var(--muted);font-size:.64rem;font-weight:850;letter-spacing:.08em;text-transform:uppercase}.metric-value{display:block;margin-top:8px;font:900 1.55rem/1 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:-.04em}.metric-note{display:block;margin-top:7px;color:var(--muted-2);font-size:.68rem}.metric.alert .metric-value{color:var(--amber)}.metric.danger .metric-value{color:var(--red)}
   .notice{display:flex;gap:12px;padding:13px 15px;margin:12px 0;border:1px solid rgba(255,201,92,.22);border-radius:13px;background:rgba(255,201,92,.055)}.notice-mark{color:var(--amber);font-weight:900}.notice strong{display:block}.notice p{margin:2px 0 0;color:var(--muted);font-size:.8rem}.section{scroll-margin-top:84px;margin-top:18px}.section-title{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin:26px 0 10px}.section-title h2{margin:0;font-size:1.05rem;letter-spacing:-.02em}.section-title p{margin:3px 0 0;color:var(--muted);font-size:.76rem}.section-kicker{color:var(--green);font-size:.63rem;font-weight:900;letter-spacing:.12em;text-transform:uppercase}
   .workspace{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.35fr);gap:12px}.panel{min-width:0;border:1px solid var(--line);border-radius:17px;background:var(--panel);box-shadow:var(--shadow);overflow:hidden}.panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 17px;border-bottom:1px solid var(--line-soft)}.panel-head h3,.panel-head h2{margin:0;font-size:.9rem}.panel-body{padding:8px}.count{padding:4px 8px;border-radius:999px;background:rgba(116,245,156,.09);color:var(--green);font-size:.68rem;font-weight:850}.match-list,.odds-list{display:grid;gap:4px}.match{display:grid;grid-template-columns:60px minmax(0,1fr) auto;align-items:center;gap:12px;padding:11px;border:1px solid transparent;border-radius:11px;transition:.16s}.match:hover,.odd:hover{background:var(--panel-2);border-color:var(--line)}.match-time{font-size:.9rem;font-weight:900;font-variant-numeric:tabular-nums}.match-time small,.teams small{display:block;color:var(--muted);font-size:.67rem;font-weight:650}.teams{min-width:0;font-weight:780}.teams span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.status{padding:4px 7px;border-radius:7px;background:#17291f;color:var(--muted);font-size:.64rem;font-weight:850;text-transform:uppercase}.status.live{background:rgba(255,115,115,.12);color:var(--red)}.odd{display:grid;grid-template-columns:minmax(175px,1.45fr) minmax(120px,.9fr) 66px 72px;align-items:center;gap:10px;padding:10px;border:1px solid transparent;border-radius:11px}.odd-match,.odd-market{min-width:0}.odd-match{font-weight:760}.odd-match span,.odd-market span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.odd-match small,.odd-market small{display:block;color:var(--muted);font-size:.66rem}.price{display:inline-flex;justify-content:center;padding:7px 8px;border-radius:8px;background:var(--green);color:#07110d;font-weight:950;font-variant-numeric:tabular-nums}.movement{font-size:.72rem;font-weight:850;text-align:right}.movement.up{color:var(--green)}.movement.down{color:var(--red)}.movement.flat{color:var(--muted)}
   .grid,.source-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(245px,1fr));gap:10px}.card,.source{padding:15px;border:1px solid var(--line);border-radius:14px;background:var(--panel)}.card:hover{border-color:#31503c}.row,.source-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.card p,.source p{margin:8px 0 0;color:var(--muted);font-size:.76rem}.source-name{font-weight:850;text-transform:capitalize}.badge{display:inline-flex;align-items:center;padding:4px 7px;border-radius:999px;font-size:.62rem;font-weight:900;text-transform:uppercase;white-space:nowrap}.ok{background:rgba(49,216,120,.11);color:var(--green)}.partial{background:rgba(255,201,92,.11);color:var(--amber)}.bad{background:rgba(255,115,115,.11);color:#ff9898}.neutral{background:#1a2d22;color:var(--muted)}
+  .state-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.state-card{position:relative;min-width:0;padding:15px;border:1px solid var(--line);border-radius:11px;background:var(--panel);overflow:hidden}.state-card:before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:var(--cyan)}.state-card.official:before{background:var(--green)}.state-card.review:before{background:var(--amber)}.state-card.rejected:before{background:var(--red)}.state-card-head{display:flex;justify-content:space-between;gap:8px;color:var(--muted);font-size:.67rem}.state-label{font-size:.64rem;font-weight:950;letter-spacing:.1em;color:var(--cyan)}.official .state-label{color:var(--green)}.review .state-label{color:var(--amber)}.rejected .state-label{color:var(--red)}.state-card>small{display:block;margin-top:15px;color:var(--muted);font-size:.68rem}.state-card h3{margin:3px 0 0;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.state-card h3 span{color:var(--muted-2)}.state-market{min-height:21px;margin:13px 0 0!important;color:var(--text)!important;font-weight:800}.state-metrics{display:flex;gap:5px;flex-wrap:wrap;margin-top:11px}.state-metrics span{padding:5px 7px;border:1px solid var(--line-soft);border-radius:7px;color:var(--muted);font-size:.65rem}.state-metrics b{color:var(--text);font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.state-reason{min-height:36px}.not-official{display:block;margin-top:8px;color:var(--amber);font-size:.72rem}.unavailable{font-style:italic}.analysis-link,.table-action{display:inline-flex;align-items:center;gap:7px;margin-top:10px;color:var(--cyan);font-size:.7rem;font-weight:850}.analysis-link:hover,.table-action:hover{text-decoration:underline}.empty-state{display:flex;min-height:236px;flex-direction:column;justify-content:center}.empty-state strong{margin-top:12px}.filterbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:9px}.filter-buttons{display:flex;gap:5px;flex-wrap:wrap}.filter-button{padding:6px 9px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--muted);cursor:pointer;font-size:.68rem;font-weight:800}.filter-button.active{border-color:rgba(87,214,237,.45);background:rgba(87,214,237,.08);color:var(--cyan)}.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-variant-numeric:tabular-nums}.table-action{margin:0;white-space:nowrap}.match-table td:nth-child(4),.match-table td:nth-child(5),.match-table td:nth-child(6){color:var(--cyan);font-weight:850}.hidden-by-state{display:none!important}
   .audit-overview{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:10px}.audit-mini{padding:14px;border:1px solid var(--line);border-radius:13px;background:var(--panel)}.audit-mini small{display:block;color:var(--muted);font-size:.65rem;font-weight:850;letter-spacing:.07em;text-transform:uppercase}.audit-mini strong{display:block;margin-top:6px;font-size:1.05rem}.audit-mini span{display:block;margin-top:4px;color:var(--muted-2);font-size:.69rem}
   .evidence-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}.evidence-box{padding:11px;border:1px solid var(--line-soft);border-radius:11px;background:rgba(7,17,13,.48)}.evidence-box small{display:block;color:var(--muted-2);font-size:.62rem;font-weight:850;text-transform:uppercase;letter-spacing:.06em}.evidence-box strong{display:block;margin-top:4px;font-size:1rem}.result-map{display:grid;gap:8px;padding:13px 16px;border-top:1px solid var(--line-soft);background:rgba(7,17,13,.28)}.result-map-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.result-map-head strong{font-size:.78rem}.result-map-head span{color:var(--muted);font-size:.65rem}.result-map-row{display:grid;grid-template-columns:minmax(120px,1fr) 1.6fr 54px;gap:9px;align-items:center}.result-map-label{font-size:.7rem;font-weight:750}.result-track{height:8px;border-radius:999px;background:var(--panel-3);overflow:hidden}.result-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--green-2),var(--green))}.result-map-value{text-align:right;font-size:.7rem;font-weight:900}.evidence-note{margin:10px 0 0;color:var(--muted);font-size:.72rem}
   .similarity-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.similarity-card{overflow:hidden;border:1px solid var(--line);border-radius:16px;background:var(--panel);box-shadow:var(--shadow)}.similarity-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:16px;border-bottom:1px solid var(--line-soft)}.similarity-head h3{margin:0;font-size:.92rem}.similarity-head p{margin:4px 0 0;color:var(--muted);font-size:.7rem}.similarity-current{padding:14px 16px;background:linear-gradient(145deg,rgba(116,245,156,.045),transparent)}.similarity-market{font-weight:900}.similarity-odds{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap}.similarity-arrow{color:var(--muted-2)}.similarity-price{font-size:1.15rem;font-weight:950;font-variant-numeric:tabular-nums}.similarity-meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.similar-list{border-top:1px solid var(--line-soft)}.similar-list-title{padding:10px 14px;color:var(--muted);font-size:.66rem;font-weight:850;letter-spacing:.08em;text-transform:uppercase}.similar-row{display:grid;grid-template-columns:28px minmax(0,1fr) 105px 95px;align-items:center;gap:9px;padding:10px 14px;border-top:1px solid var(--line-soft)}.similar-rank{display:grid;place-items:center;width:24px;height:24px;border-radius:7px;background:var(--panel-3);color:var(--green);font-size:.66rem;font-weight:900}.similar-teams{min-width:0}.similar-teams strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.76rem}.similar-teams span{display:block;color:var(--muted);font-size:.64rem}.similar-history-odds{font-size:.72rem;font-weight:800;font-variant-numeric:tabular-nums}.similar-history-odds small{display:block;color:var(--muted);font-size:.61rem;font-weight:650}.similar-result{text-align:right}.similar-result small{display:block;margin-top:3px;color:var(--muted);font-size:.6rem}
   details{margin-top:9px;border:1px solid var(--line);border-radius:13px;background:rgba(13,27,20,.82)}summary{cursor:pointer;list-style:none;padding:14px 16px;font-weight:800;font-size:.82rem}summary::-webkit-details-marker{display:none}summary:after{content:"+";float:right;color:var(--green)}details[open] summary:after{content:"−"}.details-body{padding:0 12px 12px}.scroll{overflow:auto;border:1px solid var(--line-soft);border-radius:11px}table{width:100%;border-collapse:collapse;background:var(--panel);font-size:.75rem}th,td{padding:10px 11px;border-bottom:1px solid var(--line-soft);text-align:left;vertical-align:top;white-space:nowrap}th{color:var(--muted);font-size:.61rem;letter-spacing:.07em;text-transform:uppercase}tr:last-child td{border-bottom:0}.empty{display:flex;align-items:center;gap:13px;min-height:155px;padding:20px;color:var(--muted)}.empty-icon{display:grid;place-items:center;flex:0 0 auto;width:44px;height:44px;border:1px solid var(--line);border-radius:12px;background:var(--panel-2);color:var(--green)}.empty strong{color:var(--text)}.empty p{max-width:420px;margin:3px 0 0;font-size:.78rem}
   .footer{display:flex;justify-content:space-between;gap:18px;margin-top:28px;padding:18px 0;border-top:1px solid var(--line);color:var(--muted-2);font-size:.7rem}.footer a{color:var(--green)}.hidden-by-search{display:none!important}
-  @media(max-width:1180px){:root{--sidebar-w:205px}.metrics{grid-template-columns:repeat(3,1fr)}.command-hero{grid-template-columns:1fr}.audit-overview{grid-template-columns:repeat(2,1fr)}.similarity-grid{grid-template-columns:1fr}}
+  @media(max-width:1180px){:root{--sidebar-w:215px}.metrics{grid-template-columns:repeat(3,1fr)}.state-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.command-hero{grid-template-columns:1fr}.audit-overview{grid-template-columns:repeat(2,1fr)}.similarity-grid{grid-template-columns:1fr}}
   @media(max-width:860px){.sidebar{display:none}.app-main{margin-left:0}.mobile-menu{display:inline-flex}.topbar{padding:0 16px}.search{width:min(390px,58vw)}.content{width:min(100% - 26px,1500px)}.workspace{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}}
-  @media(max-width:560px){.evidence-strip{grid-template-columns:1fr}.result-map-row{grid-template-columns:minmax(95px,1fr) 1.3fr 46px}.top-title{display:none}.top-actions .top-chip{display:none}.search{width:100%}.topbar{gap:10px}.content{width:min(100% - 18px,1500px);padding-top:16px}.hero-main,.hero-status{border-radius:15px}.hero-main{padding:19px}.metrics{gap:7px}.metric{min-height:95px;padding:12px}.metric-value{font-size:1.45rem}.audit-overview{grid-template-columns:1fr 1fr}.section-title{align-items:flex-start;flex-direction:column;gap:3px}.odd{grid-template-columns:minmax(0,1fr) 62px}.odd-market,.movement{display:none}.match{grid-template-columns:55px minmax(0,1fr)}.match .status{display:none}.grid,.source-grid{grid-template-columns:1fr}.similar-row{grid-template-columns:24px minmax(0,1fr) 86px}.similar-result{grid-column:2/4;text-align:left}.footer{flex-direction:column}}
+  @media(max-width:560px){.evidence-strip{grid-template-columns:1fr}.result-map-row{grid-template-columns:minmax(95px,1fr) 1.3fr 46px}.top-title{display:none}.top-actions .top-chip{display:none}.search{width:100%}.topbar{gap:10px}.content{width:min(100% - 18px,1500px);padding-top:16px}.hero-main,.hero-status{border-radius:12px}.hero-main{padding:19px}.metrics,.state-grid{grid-template-columns:1fr}.metrics{gap:7px}.metric{min-height:82px;padding:12px}.metric-value{font-size:1.4rem}.audit-overview{grid-template-columns:1fr}.section-title,.filterbar{align-items:flex-start;flex-direction:column;gap:6px}.odd{grid-template-columns:minmax(0,1fr) 62px}.odd-market,.movement{display:none}.match{grid-template-columns:55px minmax(0,1fr)}.match .status{display:none}.grid,.source-grid{grid-template-columns:1fr}.similar-row{grid-template-columns:24px minmax(0,1fr) 86px}.similar-result{grid-column:2/4;text-align:left}.footer{flex-direction:column}}
   </style></head><body>${content}
   <script>
-  (()=>{const input=document.querySelector('[data-global-search]');if(!input)return;input.addEventListener('input',()=>{const q=input.value.trim().toLocaleLowerCase('tr-TR');document.querySelectorAll('[data-search-row]').forEach(el=>{const hit=!q||el.textContent.toLocaleLowerCase('tr-TR').includes(q);el.classList.toggle('hidden-by-search',!hit)})});const links=[...document.querySelectorAll('.side-nav a[href^="#"]')];const obs=new IntersectionObserver(entries=>{for(const e of entries){if(e.isIntersecting){links.forEach(a=>a.classList.toggle('active',a.getAttribute('href')==='#'+e.target.id))}}},{rootMargin:'-25% 0px -65% 0px'});document.querySelectorAll('main section[id]').forEach(s=>obs.observe(s));})();
+  (()=>{const input=document.querySelector('[data-global-search]');if(input)input.addEventListener('input',()=>{const q=input.value.trim().toLocaleLowerCase('tr-TR');document.querySelectorAll('[data-search-row]').forEach(el=>{const hit=!q||el.textContent.toLocaleLowerCase('tr-TR').includes(q);el.classList.toggle('hidden-by-search',!hit)})});document.querySelectorAll('[data-state-filter]').forEach(button=>button.addEventListener('click',()=>{const state=button.dataset.stateFilter;document.querySelectorAll('[data-state-filter]').forEach(item=>item.classList.toggle('active',item===button));document.querySelectorAll('[data-match-state]').forEach(row=>row.classList.toggle('hidden-by-state',state!=='ALL'&&row.dataset.matchState!==state))}));const links=[...document.querySelectorAll('.side-nav a[href^="#"]')];const obs=new IntersectionObserver(entries=>{for(const e of entries){if(e.isIntersecting){links.forEach(a=>a.classList.toggle('active',a.getAttribute('href')==='#'+e.target.id))}}},{rootMargin:'-25% 0px -65% 0px'});document.querySelectorAll('main section[id]').forEach(s=>obs.observe(s));})();
   </script></body></html>`;
 }
 export function renderDashboard(data: DashboardData): string {
@@ -207,16 +221,21 @@ export function renderDashboard(data: DashboardData): string {
   const predictionThresholds = (predictionDiagnostics?.thresholds ?? {}) as Record<string, unknown>;
   const predictionHistorical = (predictionDiagnostics?.historical ?? {}) as Record<string, unknown>;
   const requiredHistoricalSample = finiteNumber(predictionThresholds.minimumHistoricalSample);
-  const historicalExampleCount = finiteNumber(predictionHistorical.eligible ?? predictionHistorical.total);
+  const historicalExampleRaw = predictionHistorical.eligible ?? predictionHistorical.total;
+  const historicalExampleCount = finiteNumber(historicalExampleRaw);
   const archivedOddsMatchCount = finiteNumber(archiveSummary.finished_matches_with_odds);
-  const preKickoffSnapshotCount = finiteNumber(archiveSummary.pre_kickoff_snapshots);
+  const preKickoffSnapshotRaw = archiveSummary.pre_kickoff_snapshots;
+  const preKickoffSnapshotCount = finiteNumber(preKickoffSnapshotRaw);
   const healthyProviders = data.providers.filter((provider) => provider.status === 'healthy').length;
   const percent = (value: unknown) => `${(finiteNumber(value) * 100).toFixed(1)}%`;
-  const sources = data.providers.length ? data.providers : [
-    { provider: 'fotmob', status: 'waiting', message: 'Fikstür ve maç verisi bekleniyor' },
-    { provider: 'nowgoal', status: 'waiting', message: 'Pre-match oran akışı bekleniyor' },
-  ];
-  const statusText = healthyProviders > 0 ? `${healthyProviders} kaynak aktif` : 'Sistem hazır · veri bekleniyor';
+  const sources = data.providers;
+  const allSourcesHealthy = sources.length > 0 && healthyProviders === sources.length;
+  const statusText = sources.length === 0 ? 'Durum bilinmiyor'
+    : healthyProviders === sources.length ? 'Tüm kaynaklar sağlıklı'
+    : healthyProviders > 0 ? `${healthyProviders}/${sources.length} kaynak sağlıklı` : 'Kaynaklar kontrol edilmeli';
+  const gateStatus = (item: Record<string, unknown>) => String(
+    (item.predictionGate as Record<string, unknown> | undefined)?.overallStatus ?? '');
+  const reviewPredictions = predictionReviewCandidates.filter((item) => gateStatus(item) === 'REVIEW');
 
   const matchCards = matches.length ? matches.map((match) => {
     const status = String(match.status ?? 'scheduled');
@@ -225,13 +244,12 @@ export function renderDashboard(data: DashboardData): string {
     const hasCorner = analyses.some((analysis) => String(analysis.match_id ?? '') === matchId);
     const officialPrediction = predictions.find((prediction) => String(prediction.match_id ?? '') === matchId);
     const previewPrediction = predictionPreviews.find((prediction) => String(prediction.match_id ?? '') === matchId);
-    const reviewCandidate = predictionReviewCandidates.find((item) => String(item.matchId ?? '') === matchId);
+    const reviewCandidate = reviewPredictions.find((item) => String(item.matchId ?? '') === matchId);
     const prediction = officialPrediction ?? previewPrediction;
     const inspectorStatus = String((prediction?.predictionGate as Record<string, unknown> | undefined)?.overallStatus ?? '');
     const decision = inspectorStatus === 'OFFICIAL' ? 'Resmi tahmin'
       : inspectorStatus === 'WAITING' ? 'Veri bekleniyor'
       : inspectorStatus === 'REJECTED' ? 'Reddedildi'
-      : officialPrediction && String(officialPrediction.decision) === 'PREDICT' ? 'Resmi tahmin'
       : reviewCandidate ? 'İnceleme adayı'
       : prediction && String(prediction.decision) === 'SKIP' ? 'Tahmin yok' : 'Henüz değerlendirilmedi';
     const actionHref = hasCorner && matchId ? `/matches/${encodeURIComponent(matchId)}/corners` : '#odds-analysis';
@@ -269,13 +287,12 @@ export function renderDashboard(data: DashboardData): string {
       <div class="odd-market"><span>${escapeHtml(translateSelection(odd.selection))}</span><small>${escapeHtml(translateMarket(odd.market_type ?? odd.market_name))}${odd.line == null ? '' : ` · ${escapeHtml(odd.line)}`}</small></div>
       <span class="price">${finiteNumber(odd.current_odds).toFixed(2)}</span><span class="movement ${movementClass}">${escapeHtml(movementLabel)}</span></article>`;
   }).join('') : renderEmpty('↗', 'Nowgoal oranları bekleniyor', 'Maçlar FotMob ile eşleştikten sonra 1X2, Asya handikapı, gol ve korner oranları burada listelenecek.');
-  const providerCards = sources.map((provider) => {
+  const providerCards = sources.length ? sources.map((provider) => {
     const status = String(provider.status ?? 'unknown').toLowerCase();
     const badgeClass = status === 'healthy' ? 'ok' : ['degraded','waiting'].includes(status) ? 'partial' : 'neutral';
-    const statusLabel = status === 'healthy' ? 'Çalışıyor'
-      : status === 'waiting' ? 'Veri bekleniyor'
-      : status === 'degraded' ? 'Kısmi çalışıyor'
-      : status === 'blocked' ? 'Kullanılmıyor' : 'Kontrol ediliyor';
+    const statusLabel = status === 'healthy' ? 'HEALTHY'
+      : ['waiting','degraded'].includes(status) ? 'DEGRADED'
+      : status === 'blocked' ? 'BLOCKED' : 'UNKNOWN';
     const name = String(provider.provider ?? 'Veri kaynağı');
     const lower = name.toLowerCase();
     const explanation = lower.includes('fotmob') ? 'Maç, fikstür ve istatistik verileri'
@@ -284,14 +301,8 @@ export function renderDashboard(data: DashboardData): string {
       : 'Sistem veri kaynağı';
     return `<article class="source"><div class="source-top"><span class="source-name">${escapeHtml(name)}</span>
       <span class="badge ${badgeClass}">${escapeHtml(statusLabel)}</span></div>
-      <p>${escapeHtml(explanation)} · ${status === 'healthy' ? 'veri geliyor' : statusLabel.toLocaleLowerCase('tr-TR')}</p></article>`;
-  }).join('') + [
-    ['StatBunker', '⚠ Kullanım izni kontrol ediliyor', 'partial'],
-    ['SoccerStats', '⚠ Kullanım izni kontrol ediliyor', 'partial'],
-    ['AdamChoi', '⚠ Kullanım izni kontrol ediliyor', 'partial'],
-    ['FootyStats', '○ Ücretli API kullanılmıyor', 'neutral'],
-  ].map(([name, message, badge]) => `<article class="source"><div class="source-top"><span class="source-name">${name}</span>
-    <span class="badge ${badge}">Politika</span></div><p>${message}</p></article>`).join('');
+      <p>${escapeHtml(explanation)} · ${escapeHtml(provider.message ?? (status === 'healthy' ? 'Veri akışı aktif' : statusLabel))}</p></article>`;
+  }).join('') : renderEmpty('◇', 'Provider durumu bilinmiyor', 'Runtime provider sağlık verisi henüz alınamadı.');
 
   const capabilities = [...new Set((data.qualification ?? []).map((item) => String(item.capability)))];
   const qualificationProviders = [...new Set((data.qualification ?? []).map((item) => String(item.provider)))];
@@ -393,10 +404,8 @@ export function renderDashboard(data: DashboardData): string {
     const conflicts = Array.isArray(entry.conflictCheck) ? entry.conflictCheck as Array<Record<string, unknown>> : [];
     return `<article class="card" data-search-row><div class="row"><div><span class="section-kicker">Oran Rotası</span><h3>${escapeHtml(match.homeTeam)} — ${escapeHtml(match.awayTeam)}</h3><p>${escapeHtml(match.league)} · ${escapeHtml(routeText || 'Yeterli gerçek snapshot yok')}</p></div><span class="badge neutral">${escapeHtml(route.direction ?? 'FLAT')} · ${escapeHtml(route.strength ?? 'WEAK')}</span></div><p class="evidence-note">Geçmiş İkizler: ${escapeHtml(twins.length)} · Kanıt seviyesi: ${escapeHtml(entry.evidenceStrength ?? 'VERY_LOW')} · Mod: ${escapeHtml(entry.searchMode ?? 'CLOSEST_NEIGHBORS')}</p><div class="evidence-strip"><div class="evidence-box"><small>Sonuç Haritası</small><strong>${escapeHtml(map.length)}</strong><span>gözlemlenebilir market</span></div><div class="evidence-box"><small>Çelişki Kontrolü</small><strong>${escapeHtml(conflicts.filter((item) => item.state === 'CONFLICT').length)}</strong><span>ters sinyal</span></div></div><ul class="details-list">${resultRows || '<li>Sonuç haritası için yeterli gerçek sonuç yok.</li>'}</ul><p class="evidence-note">Geçmiş benzerlik ve sonuç dağılımıdır; resmi tahmin veya bahis kararı değildir.</p></article>`;
   }).join('') : renderEmpty('↗', 'Oran rotası için veri birikiyor', 'Yalnız gerçek pre-match odds snapshotları yeterli olduğunda analiz görünür.');
-  const gateStatus = (item: Record<string, unknown>) => String((item.predictionGate as Record<string, unknown> | undefined)?.overallStatus ?? '');
-  const officialPredictions = predictions.filter((item) => gateStatus(item) === 'OFFICIAL'
-    || (!item.predictionGate && String(item.decision) === 'PREDICT'));
-  const reviewMatchIds = new Set(predictionReviewCandidates.map((item) => String(item.matchId ?? '')));
+  const officialPredictions = predictions.filter((item) => gateStatus(item) === 'OFFICIAL');
+  const reviewMatchIds = new Set(reviewPredictions.map((item) => String(item.matchId ?? '')));
   const waitingPredictions = [...predictions, ...predictionPreviews].filter((item) => gateStatus(item) === 'WAITING');
   const rejectedByMatch = new Map<string, Record<string, unknown>>();
   for (const item of [...predictions, ...predictionPreviews]) {
@@ -408,21 +417,28 @@ export function renderDashboard(data: DashboardData): string {
   const rejectedPredictions = [...rejectedByMatch.values()];
 
   const officialPredictionCards = officialPredictions.length ? officialPredictions.map((prediction) => {
-    const score = finiteNumber(prediction.prediction_score);
-    const hist = finiteNumber(prediction.historical_settled_sample_size ?? prediction.historical_sample_size);
-    const hit = prediction.historical_hit_rate == null ? '—' : percent(prediction.historical_hit_rate);
+    const gateCandidate = objectValue(objectValue(prediction.predictionGate)?.candidate);
+    const gateHistorical = objectValue(gateCandidate?.historical);
+    const score = gateCandidate?.predictionScore ?? prediction.prediction_score;
+    const hist = gateHistorical?.settledSampleSize ?? prediction.historical_settled_sample_size ?? prediction.historical_sample_size;
+    const hitValue = gateHistorical?.historicalHitRate ?? prediction.historical_hit_rate;
+    const hit = hitValue == null ? '—' : percent(hitValue);
+    const market = gateCandidate?.marketType ?? prediction.market_type;
+    const line = gateCandidate?.line ?? prediction.line;
+    const selection = gateCandidate?.selection ?? prediction.selection;
+    const referenceOdds = gateCandidate?.currentOdds ?? gateCandidate?.referenceOdds ?? prediction.reference_odds;
     return `<article class="card prediction-card" data-search-row><div class="row"><div><strong>${escapeHtml(prediction.home_team)} — ${escapeHtml(prediction.away_team)}</strong>
       <p>${escapeHtml(prediction.league)} · ${escapeHtml(formatDate(prediction.kickoff_at, { day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' }))}</p></div>
       <span class="badge ok">Resmi tahmin</span></div>
-      <p style="font-size:1rem;color:var(--text)"><strong>${escapeHtml(translateMarket(prediction.market_type))} ${escapeHtml(prediction.line ?? '')} · ${escapeHtml(translateSelection(prediction.selection))}</strong></p>
-      <div class="similarity-meta"><span class="badge ok">Tahmin skoru ${score}/100</span>
-        <span class="badge neutral">Benzer geçmiş maç: ${hist}</span><span class="badge neutral">Geçmiş başarı: ${escapeHtml(hit)}</span>
-        <span class="badge neutral">Oran: ${finiteNumber(prediction.reference_odds).toFixed(2)}</span></div>
+      ${market == null ? '' : `<p style="font-size:1rem;color:var(--text)"><strong>${escapeHtml(translateMarket(market))} ${escapeHtml(line ?? '')} · ${escapeHtml(translateSelection(selection))}</strong></p>`}
+      <div class="similarity-meta">${score == null ? '' : `<span class="badge ok">Tahmin skoru ${escapeHtml(score)}/100</span>`}
+        ${hist == null ? '' : `<span class="badge neutral">Benzer geçmiş maç: ${escapeHtml(hist)}</span>`}<span class="badge neutral">Geçmiş başarı: ${escapeHtml(hit)}</span>
+        ${referenceOdds == null ? '' : `<span class="badge neutral">Oran: ${escapeHtml(optionalOdds(referenceOdds))}</span>`}</div>
       <p>Bu maç mevcut resmi tahmin kurallarının tamamını geçti.</p>
       ${renderGateInspector(prediction.predictionGate)}</article>`;
   }).join('') : renderEmpty('✓', 'Şu anda resmi tahmin yok', 'Sistem kriterleri karşılayan bir maç bulduğunda resmi tahmin burada görünecek.');
 
-  const reviewCandidateCards = predictionReviewCandidates.length ? predictionReviewCandidates.map((entry) => {
+  const reviewCandidateCards = reviewPredictions.length ? reviewPredictions.map((entry) => {
     const candidate = (entry.candidate ?? {}) as Record<string, unknown>;
     const historical = (candidate.historical ?? {}) as Record<string, unknown>;
     const reasons = Array.isArray(entry.skipReasons) ? entry.skipReasons : [];
@@ -450,7 +466,7 @@ export function renderDashboard(data: DashboardData): string {
       <p><strong>Bahis şirketi uyumu:</strong> ${Math.round(agreement * 100)}% · Çoğunluğun aynı yönde hareket edip etmediği burada ölçülür.</p>
       <p><strong>Neden henüz resmi tahmin değil?</strong></p>
       <ul style="margin:5px 0 0;padding-left:18px;color:var(--muted)">${missing || '<li>Resmi tahmin için gereken kanıt henüz tamamlanmadı.</li>'}</ul>
-      <p style="color:var(--muted-2)">Bu kart inceleme içindir; resmi tahmin ve performans kaydına dahil değildir.</p>
+      <p class="not-official">Resmi tahmin değildir.</p><p style="color:var(--muted-2)">Bu kart inceleme içindir; performans kaydına dahil değildir.</p>
       ${renderGateInspector(entry.predictionGate)}</article>`;
   }).join('') : renderEmpty('◇', 'Şu anda inceleme adayı yok', 'Resmi tahmin seviyesine yaklaşan maçlar burada gösterilecek.');
 
@@ -464,10 +480,9 @@ export function renderDashboard(data: DashboardData): string {
     const reasons = Array.isArray(prediction.skip_reasons) ? prediction.skip_reasons as unknown[]
       : Array.isArray(prediction.reasons) ? prediction.reasons as unknown[] : [];
     const mainReason = reasons[0] == null ? 'Resmi tahmin koşulları henüz oluşmadı' : translateReason(reasons[0]);
-    return `<tr data-search-row><td><strong>${escapeHtml(prediction.home_team)} — ${escapeHtml(prediction.away_team)}</strong>
-      ${prediction.predictionGate ? `<details><summary>Gate ayrıntısı</summary><div class="details-body">${renderGateInspector(prediction.predictionGate)}</div></details>` : ''}</td>
+    return `<tr data-search-row><td><strong>${escapeHtml(prediction.home_team)} — ${escapeHtml(prediction.away_team)}</strong></td>
       <td>${escapeHtml(formatDate(prediction.kickoff_at, { hour: '2-digit', minute: '2-digit' }))}</td>
-      <td>${escapeHtml(mainReason)}</td><td><span class="badge neutral">Tahmin oluşturulmadı</span></td></tr>`;
+      <td>${escapeHtml(mainReason)}</td><td><span class="badge bad">Tahmin oluşturulmadı</span></td></tr>`;
   });
   const rejectedCompact = rejectedRows.length
     ? `<div class="scroll"><table><thead><tr><th>Maç</th><th>Saat</th><th>Ana neden</th><th>Durum</th></tr></thead><tbody>${rejectedRows.slice(0, 5).join('')}</tbody></table></div>
@@ -643,9 +658,93 @@ export function renderDashboard(data: DashboardData): string {
         : `<div class="notice"><span class="notice-mark">i</span><div><strong>Veri senkronizasyonu bekleniyor</strong><p>Collector devreye girdiğinde fikstür ve oranlar otomatik olarak burada görünür.</p></div></div>`;
 
   const officialPredictionCount = officialPredictions.length;
-  const reviewCandidateCount = predictionReviewCandidates.length;
+  const reviewCandidateCount = reviewPredictions.length;
   const waitingPredictionCount = waitingPredictions.length;
   const rejectedPredictionCount = rejectedPredictions.length;
+  const stateLabel: Record<string, string> = { OFFICIAL: 'RESMİ TAHMİN', REVIEW: 'İNCELEME',
+    WAITING: 'VERİ BEKLENİYOR', REJECTED: 'REDDEDİLDİ' };
+  const stateClass: Record<string, string> = { OFFICIAL: 'official', REVIEW: 'review',
+    WAITING: 'waiting', REJECTED: 'rejected' };
+  const featureEntry = (status: string): Record<string, unknown> | undefined => status === 'OFFICIAL'
+    ? officialPredictions[0] : status === 'REVIEW' ? reviewPredictions[0]
+      : status === 'WAITING' ? waitingPredictions[0] : rejectedPredictions[0];
+  const featureCard = (status: 'OFFICIAL' | 'REVIEW' | 'WAITING' | 'REJECTED') => {
+    const featureId: Record<string, string> = { OFFICIAL: 'official-predictions', REVIEW: 'review-predictions',
+      WAITING: 'waiting-predictions', REJECTED: 'rejected-predictions' };
+    const entry = featureEntry(status);
+    if (!entry) {
+      const emptyText: Record<string, string> = { OFFICIAL: 'Şu anda resmi tahmin yok.',
+        REVIEW: 'Şu anda inceleme adayı yok.', WAITING: 'Veri bekleyen maç yok.',
+        REJECTED: 'Reddedilen güncel değerlendirme yok.' };
+      return `<article class="state-card ${stateClass[status]} empty-state" id="${featureId[status]}" data-prediction-state="${status}">
+        <span class="state-label">${stateLabel[status]}</span><strong>${emptyText[status]}</strong>
+        <p>Yeni gerçek değerlendirmeler oluştuğunda bu alan otomatik güncellenir.</p></article>`;
+    }
+    const inspector = objectValue(entry.predictionGate);
+    const candidate = objectValue(inspector?.candidate) ?? objectValue(entry.candidate) ?? objectValue(entry.selected_candidate);
+    const historical = objectValue(candidate?.historical);
+    const matchId = String(entry.match_id ?? entry.matchId ?? '');
+    const home = entry.home_team ?? entry.homeTeam;
+    const away = entry.away_team ?? entry.awayTeam;
+    const league = entry.league;
+    const kickoff = entry.kickoff_at ?? entry.kickoffAt;
+    const market = candidate?.marketType ?? entry.market_type;
+    const selection = candidate?.selection ?? entry.selection;
+    const line = candidate?.line ?? entry.line;
+    const score = candidate?.predictionScore ?? entry.prediction_score;
+    const sample = historical?.settledSampleSize ?? entry.historical_settled_sample_size ?? entry.historical_sample_size;
+    const currentOdds = candidate?.currentOdds ?? candidate?.referenceOdds ?? entry.reference_odds;
+    const movement = candidate?.movementClass ?? entry.movement_class;
+    const bookmakers = candidate?.bookmakerCount ?? entry.bookmaker_count;
+    const blockers = Array.isArray(inspector?.blockers) ? inspector.blockers as unknown[]
+      : Array.isArray(entry.skipReasons) ? entry.skipReasons as unknown[]
+      : Array.isArray(entry.skip_reasons) ? entry.skip_reasons as unknown[] : [];
+    const reason = status === 'OFFICIAL' ? inspector?.summary
+      : status === 'REVIEW' ? (blockers[0] == null ? inspector?.summary : translateReason(blockers[0]))
+      : inspector?.summary ?? (blockers[0] == null ? null : translateReason(blockers[0]));
+    const chips = [score == null ? '' : `<span>Tahmin skoru <b>${escapeHtml(score)}/100</b></span>`,
+      sample == null ? '' : `<span>Geçmiş örnek <b>${escapeHtml(sample)}</b></span>`,
+      currentOdds == null ? '' : `<span>Güncel oran <b>${escapeHtml(optionalOdds(currentOdds))}</b></span>`,
+      movement == null ? '' : `<span>Hareket <b>${escapeHtml(movement)}</b></span>`,
+      bookmakers == null ? '' : `<span>Bookmaker <b>${escapeHtml(bookmakers)}</b></span>`].filter(Boolean).join('');
+    const marketText = market == null ? '' : `${translateMarket(market)}${line == null ? '' : ` ${escapeHtml(line)}`}${selection == null ? '' : ` · ${translateSelection(selection)}`}`;
+    return `<article class="state-card ${stateClass[status]}" id="${featureId[status]}" data-prediction-state="${status}" data-search-row>
+      <div class="state-card-head"><span class="state-label">${stateLabel[status]}</span><span>${escapeHtml(formatDate(kickoff, { hour: '2-digit', minute: '2-digit' }))}</span></div>
+      <small>${escapeHtml(league ?? '—')}</small><h3>${escapeHtml(home ?? '—')} <span>—</span> ${escapeHtml(away ?? '—')}</h3>
+      ${status === 'REVIEW' ? '<strong class="not-official">Resmi tahmin değildir.</strong>' : ''}
+      ${marketText ? `<p class="state-market">${marketText}</p>` : ''}
+      ${chips ? `<div class="state-metrics">${chips}</div>` : '<p class="unavailable">Henüz hesaplanmadı</p>'}
+      ${reason ? `<p class="state-reason">${escapeHtml(reason)}</p>` : ''}
+      ${matchId ? `<a class="analysis-link" href="/api/predictions/${encodeURIComponent(matchId)}/gates">Detaylı Analiz <span>→</span></a>` : ''}
+    </article>`;
+  };
+  const featuredStateCards = (['OFFICIAL','REVIEW','WAITING','REJECTED'] as const).map(featureCard).join('');
+
+  const predictionForMatch = (matchId: string) => [...predictions, ...predictionPreviews]
+    .find((item) => String(item.match_id ?? item.matchId ?? '') === matchId)
+    ?? reviewPredictions.find((item) => String(item.matchId ?? '') === matchId);
+  const todayMatchRows = todayMatches.length ? todayMatches.map((match) => {
+    const matchId = String(match.id ?? '');
+    const prediction = predictionForMatch(matchId);
+    const inspector = objectValue(prediction?.predictionGate);
+    const status = String(inspector?.overallStatus ?? 'UNKNOWN');
+    const candidate = objectValue(inspector?.candidate) ?? objectValue(prediction?.candidate);
+    const historical = objectValue(candidate?.historical);
+    const matchOdds = odds.filter((item) => String(item.match_id ?? '') === matchId
+      && ['MATCH_RESULT','1X2'].includes(String(item.market_type ?? item.market_name ?? '').toUpperCase()));
+    const price = (selection: string) => optionalOdds(matchOdds.find((item) =>
+      String(item.selection ?? '').toUpperCase() === selection)?.current_odds);
+    const market = candidate?.marketType == null ? '—' : `${translateMarket(candidate.marketType)}${candidate.line == null ? '' : ` ${candidate.line}`}
+      ${candidate.selection == null ? '' : `· ${translateSelection(candidate.selection)}`}`;
+    const humanStatus = status === 'UNKNOWN' ? 'Değerlendirilmedi' : stateLabel[status] ?? status;
+    return `<tr data-search-row data-match-state="${escapeHtml(status)}"><td class="mono">${escapeHtml(formatDate(match.kickoff_at, { hour: '2-digit', minute: '2-digit' }))}</td>
+      <td><strong>${escapeHtml(match.home_team)} — ${escapeHtml(match.away_team)}</strong></td><td>${escapeHtml(match.league)}</td>
+      <td class="mono">${price('HOME')}</td><td class="mono">${price('DRAW')}</td><td class="mono">${price('AWAY')}</td>
+      <td><span class="badge ${status === 'OFFICIAL' ? 'ok' : status === 'REVIEW' ? 'partial' : status === 'REJECTED' ? 'bad' : 'neutral'}">${escapeHtml(humanStatus)}</span></td>
+      <td>${escapeHtml(market)}</td><td class="mono">${escapeHtml(optionalNumber(candidate?.predictionScore, '/100'))}</td>
+      <td class="mono">${escapeHtml(optionalNumber(historical?.settledSampleSize))}</td><td>${escapeHtml(candidate?.movementClass ?? '—')}</td>
+      <td><a class="table-action" href="/api/predictions/${encodeURIComponent(matchId)}/gates">Analizi Aç</a></td></tr>`;
+  }).join('') : '<tr><td colspan="12">Bugün için desteklenen maç bulunmuyor.</td></tr>';
   const globalAuditRaw = String(predictionSelfAudit?.status ?? 'NOT_AVAILABLE');
   const globalAuditGuard = Boolean(predictionSelfAudit?.guardActive);
   const globalAuditStatus = globalAuditRaw === 'PAUSED' && !globalAuditGuard ? 'RECOVERY' : globalAuditRaw;
@@ -668,51 +767,60 @@ export function renderDashboard(data: DashboardData): string {
 
   return shell(`<div class="app-shell">
     <aside class="sidebar">
-      <a class="brand" href="/"><span class="brand-mark">B</span><span>BETAPP<small>Futbol Analiz Sistemi</small></span></a>
-      <div class="side-group"><div class="side-label">Menü</div><nav class="side-nav" aria-label="Ana menü">
-        <a class="active" href="#overview"><span class="nav-icon">⌂</span>Ana Sayfa</a>
-        <a href="#matches"><span class="nav-icon">◫</span>Maçlar</a>
-        <a href="#archive"><span class="nav-icon">◷</span>Veri Arşivi</a>
-        <a href="#predictions"><span class="nav-icon">◎</span>Tahminler</a>
-        <a href="#odds-analysis"><span class="nav-icon">↗</span>Oran Eşleşmeleri</a>
-        <a href="#prediction-history"><span class="nav-icon">◷</span>Geçmiş Tahminler</a>
-        <a href="#prediction-self-audit"><span class="nav-icon">◇</span>Sistem Kontrolü</a>
+      <a class="brand" href="/"><span class="brand-mark">B</span><span>BETAPP<small>Analiz Terminali</small></span></a>
+      <div class="side-group"><div class="side-label">Terminal</div><nav class="side-nav" aria-label="Ana menü">
+        <a class="active" href="#overview"><span class="nav-icon">⌂</span>Genel Bakış</a>
+        <a href="#matches"><span class="nav-icon">◫</span>Bugünün Maçları</a>
+        <a href="#official-predictions"><span class="nav-icon">●</span>Resmi Tahminler</a>
+        <a href="#review-predictions"><span class="nav-icon">◇</span>İnceleme Adayları</a>
+        <a href="#odds"><span class="nav-icon">↗</span>Oran Analizi</a>
+        <a href="#odds-analysis"><span class="nav-icon">∿</span>Geçmiş İkizler</a>
+        <a href="#prediction-history"><span class="nav-icon">◷</span>Tahmin Geçmişi</a>
+        <a href="#prediction-self-audit"><span class="nav-icon">◉</span>Sistem Durumu</a>
       </nav></div>
-      <div class="sidebar-foot"><a class="system-pill" href="/health"><span class="live-dot ${healthyProviders ? '' : 'wait'}"></span><span><strong style="display:block;color:var(--text)">${escapeHtml(statusText)}</strong>Sistem durumu</span></a></div>
+      <div class="sidebar-foot"><a class="system-pill" href="#prediction-self-audit"><span class="live-dot ${allSourcesHealthy ? '' : 'wait'}"></span><span><strong style="display:block;color:var(--text)">${escapeHtml(statusText)}</strong>${sources.length} runtime provider</span></a></div>
     </aside>
     <div class="app-main">
-      <header class="topbar"><div class="top-title"><strong>BETAPP</strong><span>Futbol oran ve maç analiz sistemi · 60 saniyede bir yenilenir</span></div>
-        <label class="search" aria-label="Panelde ara"><input data-global-search type="search" placeholder="Maç, lig veya bahis türü ara…"></label>
-        <div class="top-actions"><a class="top-chip" href="#prediction-self-audit">Sistem Kontrolü</a></div>
+      <header class="topbar"><div class="top-title"><strong>BETAPP Futbol Analiz Terminali</strong><span>${escapeHtml(formatDate(new Date(), { day: '2-digit', month: 'long', year: 'numeric' }))} · ${supportedCompetitions.length ? `${supportedCompetitions.length} desteklenen lig` : 'Lig bilgisi bekleniyor'}</span></div>
+        <label class="search" aria-label="Takım veya lig ara"><input data-global-search type="search" placeholder="Takım veya lig ara"></label>
+        <div class="top-actions"><a class="top-chip" href="#prediction-self-audit"><span class="live-dot ${allSourcesHealthy ? '' : 'wait'}"></span> ${escapeHtml(statusText)}</a></div>
       </header>
       <main class="content">
         <section class="command-hero" id="overview">
-          <article class="hero-main"><p class="eyebrow">BETAPP canlı durum</p><h1>${todayMatches.length
+          <article class="hero-main"><p class="eyebrow">OPERASYON ÖZETİ</p><h1>${todayMatches.length
               ? `Bugün ${todayMatches.length} maç<br>takip ediliyor.`
               : matches.length
                 ? `Bugün maç yok.<br>Önümüzdeki 7 günde ${matches.length} maç var.`
                 : `Bugün maç yok.<br>Geçmiş analiz arşivi hazır.`}</h1>
-            <p class="hero-copy">Sistem yalnız bugünkü maçları göstermiyor. Yaklaşan fikstür, geçmiş oran arşivi, tamamlanan maçlar ve historical analiz örnekleri tek ekranda izleniyor.</p></article>
-          <article class="hero-status"><div class="hero-status-head"><strong>Şu anda ne oluyor?</strong><span class="badge ${healthyProviders ? 'ok' : 'partial'}">${healthyProviders ? 'Sistem çalışıyor' : 'Veri bekleniyor'}</span></div>
+            <p class="hero-copy">Fikstür, gerçek pre-match oranlar ve Prediction Gate Inspector durumları tek terminalde izlenir. Bu ekran bahis yürütmez.</p></article>
+          <article class="hero-status"><div class="hero-status-head"><strong>Canlı telemetri</strong><span class="badge ${allSourcesHealthy ? 'ok' : sources.length ? 'partial' : 'neutral'}">${escapeHtml(statusText)}</span></div>
             <div class="hero-status-list"><div class="health-row"><span>Yaklaşan fikstür</span><b>${matches.length ? `${matches.length} maç` : 'Bu hafta görünmüyor'}</b></div>
               <div class="health-row"><span>Canlı oranlar</span><b>${odds.length ? `${odds.length} kayıt` : 'Maç bekleniyor'}</b></div>
               <div class="health-row"><span>Historical örnekler</span><b>${historicalExampleCount}</b></div>
               <div class="health-row"><span>Geçmiş oran snapshotları</span><b>${preKickoffSnapshotCount.toLocaleString('tr-TR')}</b></div></div></article>
         </section>
         <section class="metrics" aria-label="Sistem özeti">
-          <article class="metric"><span class="metric-label">Bugün</span><strong class="metric-value">${todayMatches.length}</strong><span class="metric-note">Bugünkü desteklenen maç</span></article>
-          <article class="metric"><span class="metric-label">Yaklaşan 14 gün</span><strong class="metric-value">${matches.length}</strong><span class="metric-note">Fikstürdeki maç</span></article>
-          <article class="metric"><span class="metric-label">Historical örnek</span><strong class="metric-value">${historicalExampleCount}</strong><span class="metric-note">Benzerlik motoru verisi</span></article>
-          <article class="metric"><span class="metric-label">Oran geçmişi olan maç</span><strong class="metric-value">${archivedOddsMatchCount}</strong><span class="metric-note">Gerçek pre-match arşivi</span></article>
-          <article class="metric"><span class="metric-label">Geçmiş snapshot</span><strong class="metric-value">${preKickoffSnapshotCount.toLocaleString('tr-TR')}</strong><span class="metric-note">Gerçek pre-match kayıt</span></article>
-          <article class="metric"><span class="metric-label">Çalışan veri kaynağı</span><strong class="metric-value">${healthyProviders}</strong><span class="metric-note">Aktif bağlantı</span></article>
+          <article class="metric"><span class="metric-label">Bugünkü Maçlar</span><strong class="metric-value">${todayMatches.length}</strong><span class="metric-note">Desteklenen fikstür</span></article>
+          <article class="metric"><span class="metric-label">Resmi Tahmin</span><strong class="metric-value">${officialPredictionCount}</strong><span class="metric-note">Gate Inspector OFFICIAL</span></article>
+          <article class="metric"><span class="metric-label">İnceleme</span><strong class="metric-value">${reviewCandidateCount}</strong><span class="metric-note">Resmi tahmin değildir</span></article>
+          <article class="metric"><span class="metric-label">Veri Bekleyen</span><strong class="metric-value">${waitingPredictionCount}</strong><span class="metric-note">Gate Inspector WAITING</span></article>
+          <article class="metric"><span class="metric-label">Tarihsel Örnek</span><strong class="metric-value">${historicalExampleRaw == null ? '—' : historicalExampleCount}</strong><span class="metric-note">Benzerlik motoru verisi</span></article>
+          <article class="metric"><span class="metric-label">Pre-match Snapshot</span><strong class="metric-value">${preKickoffSnapshotRaw == null ? '—' : preKickoffSnapshotCount.toLocaleString('tr-TR')}</strong><span class="metric-note">Gerçek oran kaydı</span></article>
         </section>
         ${waitingNotice}
 
-        <section class="section" id="matches"><div class="section-title"><div><span class="section-kicker">Fikstür</span><h2>Önümüzdeki 14 Gün</h2><p>Bugün maç yoksa bile sıradaki desteklenen lig maçları burada görünür.</p></div></div>
-          ${upcomingLeagueSummary}
-          <div class="workspace"><article class="panel"><div class="panel-head"><h3>Yaklaşan maçlar</h3><span class="count">${matches.length}</span></div><div class="panel-body match-list">${matchCards}</div></article>
-            <article class="panel" id="odds"><div class="panel-head"><h3>Güncel oranlar</h3><span class="count">${odds.length}</span></div><div class="panel-body odds-list">${oddsRows}</div></article></div></section>
+        <section class="section" id="predictions"><div class="section-title"><div><span class="section-kicker">Prediction Gate Inspector</span><h2>Güncel Tahmin Durumları</h2><p>Her durumdan en fazla bir gerçek güncel maç gösterilir.</p></div></div>
+          <div class="state-grid">${featuredStateCards}</div></section>
+
+        <section class="section" id="matches"><div class="section-title"><div><span class="section-kicker">Fikstür</span><h2>Bugünün Maçları</h2><p>Gerçek oranlar ve Gate Inspector durumlarıyla kompakt görünüm.</p></div><span class="count">${todayMatches.length}</span></div>
+          <div class="filterbar"><div class="filter-buttons" aria-label="Tahmin durumuna göre filtrele">
+            <button class="filter-button active" type="button" data-state-filter="ALL">Tümü</button><button class="filter-button" type="button" data-state-filter="OFFICIAL">Resmi</button>
+            <button class="filter-button" type="button" data-state-filter="REVIEW">İnceleme</button><button class="filter-button" type="button" data-state-filter="WAITING">Bekleyen</button>
+            <button class="filter-button" type="button" data-state-filter="REJECTED">Reddedildi</button></div></div>
+          <div class="scroll match-table"><table><thead><tr><th>Saat</th><th>Maç</th><th>Lig</th><th>1</th><th>X</th><th>2</th><th>Durum</th><th>Ana aday</th><th>Tahmin skoru</th><th>Geçmiş örnek</th><th>Hareket</th><th>Action</th></tr></thead><tbody>${todayMatchRows}</tbody></table></div>
+          <details><summary>Önümüzdeki 14 Gün · fikstür ve güncel oran akışı</summary><div class="details-body">${upcomingLeagueSummary}
+            <div class="workspace"><article class="panel"><div class="panel-head"><h3>Yaklaşan maçlar</h3><span class="count">${matches.length}</span></div><div class="panel-body match-list">${matchCards}</div></article>
+              <article class="panel" id="odds"><div class="panel-head"><h3>Güncel oranlar</h3><span class="count">${odds.length}</span></div><div class="panel-body odds-list">${oddsRows}</div></article></div></div></details></section>
 
         <section class="section" id="archive"><div class="section-title"><div><span class="section-kicker">Sistem boş değil</span><h2>Veri Arşivi</h2><p>Canlı maç olmasa da sistemin elindeki gerçek geçmiş veriyi burada görebilirsin.</p></div></div>
           <div class="grid">
@@ -724,7 +832,7 @@ export function renderDashboard(data: DashboardData): string {
           <div class="section-title"><div><h2>Son Tamamlanan Maçlar</h2><p>Skor ve elimizdeki geçmiş oran kayıtlarıyla birlikte.</p></div></div>
           <article class="panel"><div class="panel-body match-list">${recentFinishedCards}</div></article></section>
 
-        <section class="section" id="predictions"><div class="section-title"><div><span class="section-kicker">Tahminler</span><h2>Tahmin Durumu</h2><p>Resmi tahminler, incelemeye değer adaylar ve neden tahmin oluşturulmadığı.</p></div></div>
+        <section class="section" id="prediction-lists"><div class="section-title"><div><span class="section-kicker">Tahminler</span><h2>Tüm Tahmin Kayıtları</h2><p>Resmi tahminler, incelemeye değer adaylar ve neden tahmin oluşturulmadığı.</p></div></div>
           ${predictionDiagnosticSummary}
           <div class="section-title"><div><h2>Resmi Tahminler</h2><p>Sadece tüm resmi kriterleri geçen maçlar.</p></div><span class="badge ok">${officialPredictionCount}</span></div>
           <div class="grid">${officialPredictionCards}</div>

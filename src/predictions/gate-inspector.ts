@@ -1,9 +1,10 @@
 import { predictionConfig, type PredictionConfig } from './config.js';
-import { isSupportedPredictionMarket, officialCandidateBlockers, predictionWindowState } from './prediction-gates.js';
+import { hasRequiredCompleteStates, isSupportedPredictionMarket, officialCandidateBlockers,
+  predictionWindowState } from './prediction-gates.js';
 import type { PredictionCandidate, PredictionDecision } from './types.js';
 
 export type PredictionGateStatus = 'OFFICIAL' | 'REVIEW' | 'REJECTED' | 'WAITING';
-export type PredictionGateKey = 'ODDS_ANALYSIS' | 'ODDS_ELIGIBILITY' | 'BOOKMAKERS' | 'COMPLETE_STATES' | 'DATA_QUALITY'
+export type PredictionGateKey = 'ODDS_ANALYSIS' | 'PREDICTION_RUN' | 'ODDS_ELIGIBILITY' | 'BOOKMAKERS' | 'COMPLETE_STATES' | 'DATA_QUALITY'
   | 'MODEL_CONFIDENCE' | 'MOVEMENT' | 'HISTORICAL_SAMPLE' | 'PREDICTION_SCORE'
   | 'CORNER_MODEL_CONFLICT' | 'OFFICIAL_WINDOW' | 'SELF_AUDIT_GLOBAL' | 'SELF_AUDIT_SEGMENT';
 export type PredictionGateResult = { key: PredictionGateKey; label: string; current: unknown; required: unknown;
@@ -19,6 +20,7 @@ export type PredictionGateInspector = {
 
 export const predictionGateReasonTranslations: Readonly<Record<string, string>> = {
   NO_ODDS_ANALYSIS: 'Bu maç için henüz oran analizi oluşmadı.',
+  PREDICTION_NOT_GENERATED: 'Oran analizi hazır ancak Prediction V1 değerlendirmesi henüz oluşmadı.',
   ODDS_NOT_ELIGIBLE: 'Oran verisi resmi tahmin için henüz yeterli değil.',
   INSUFFICIENT_BOOKMAKERS: 'Yeterli sayıda bahis şirketinden veri yok.',
   INSUFFICIENT_COMPLETE_STATES: 'Açılış ve güncel oranı karşılaştırmak için yeterli ölçüm yok.',
@@ -71,6 +73,8 @@ export function bestPredictionCandidate(selected: unknown, candidates: unknown):
 }
 
 export function isMeaningfulReviewCandidate(candidate: PredictionCandidate | null): boolean {
+  // Presentation-only discovery thresholds. They MUST NOT affect Prediction V1 qualification,
+  // official locking, execution authority, or historical backtest qualification.
   if (!candidate || !isSupportedPredictionMarket(candidate.marketType)) return false;
   const validOdds = [candidate.openingOdds, candidate.currentOdds, candidate.referenceOdds]
     .every((value) => Number.isFinite(value) && value > 1);
@@ -80,7 +84,8 @@ export function isMeaningfulReviewCandidate(candidate: PredictionCandidate | nul
 
 type InspectorInput = { decision: PredictionDecision; state?: string | undefined; kickoffAt: Date; now?: Date;
   selectedCandidate?: unknown; candidates?: unknown; skipReasons?: unknown; metadata?: unknown;
-  evidence?: Record<string, unknown> | null };
+  evidence?: Record<string, unknown> | null; oddsAnalysisExists?: boolean | undefined;
+  predictionRunExists?: boolean | undefined };
 
 const gate = (key: PredictionGateKey, label: string, current: unknown, required: unknown,
   passed: boolean, reasonCode: string | null): PredictionGateResult => ({ key, label, current, required, passed,
@@ -89,6 +94,8 @@ const gate = (key: PredictionGateKey, label: string, current: unknown, required:
 export function inspectPredictionGates(input: InspectorInput,
   config: PredictionConfig = predictionConfig): PredictionGateInspector {
   const candidate = bestPredictionCandidate(input.selectedCandidate, input.candidates);
+  const predictionRunExists = input.predictionRunExists ?? Boolean(candidate);
+  const oddsAnalysisExists = input.oddsAnalysisExists ?? Boolean(candidate);
   const skipReasons = parsePredictionReasons(input.skipReasons);
   const metadataValue = parseJson(input.metadata);
   const metadata = metadataValue && typeof metadataValue === 'object' ? metadataValue as Record<string, unknown> : {};
@@ -101,16 +108,16 @@ export function inspectPredictionGates(input: InspectorInput,
   const globalPaused = skipReasons.includes('SELF_AUDIT_PAUSED') || metadata.selfAuditGuardActive === true;
   const segmentPaused = skipReasons.includes('SELF_AUDIT_SEGMENT_PAUSED')
     || Object.values((metadata.selfAuditSegmentGuards ?? {}) as Record<string, unknown>).some(Boolean);
-  const candidateBlockers = candidate ? officialCandidateBlockers(candidate, config) : ['NO_ODDS_ANALYSIS' as const];
+  const candidateBlockers = candidate ? officialCandidateBlockers(candidate, config)
+    : [oddsAnalysisExists ? 'PREDICTION_NOT_GENERATED' : 'NO_ODDS_ANALYSIS'];
   const hasCompleteMetrics = Boolean(candidate && Number.isFinite(candidate.completeStateBookmakerCount)
     && Number.isFinite(candidate.minimumCompleteStateCount));
-  const completePassed = Boolean(candidate && (hasCompleteMetrics
-    ? candidate.completeStateBookmakerCount >= config.minimumBookmakerCount
-      && candidate.minimumCompleteStateCount >= config.minimumCompleteStateCount
-    : candidate.analysisEligible));
+  const completePassed = Boolean(candidate && hasRequiredCompleteStates(candidate, config));
   const corner = Boolean(candidate?.marketType.toUpperCase().includes('TOTAL_CORNERS'));
   const gates: PredictionGateResult[] = [
-    gate('ODDS_ANALYSIS', 'Oran analizi', candidate ? 'VAR' : 'YOK', 'VAR', Boolean(candidate), 'NO_ODDS_ANALYSIS'),
+    gate('ODDS_ANALYSIS', 'Oran analizi', oddsAnalysisExists ? 'VAR' : 'YOK', 'VAR', oddsAnalysisExists, 'NO_ODDS_ANALYSIS'),
+    gate('PREDICTION_RUN', 'Prediction V1 değerlendirmesi', predictionRunExists ? 'VAR' : 'HENÜZ YOK', 'VAR',
+      predictionRunExists, oddsAnalysisExists ? 'PREDICTION_NOT_GENERATED' : null),
     gate('ODDS_ELIGIBILITY', 'Oran analizi uygunluğu', candidate?.analysisEligible ? 'UYGUN' : 'HENÜZ UYGUN DEĞİL',
       'UYGUN', Boolean(candidate?.analysisEligible), 'ODDS_NOT_ELIGIBLE'),
     gate('BOOKMAKERS', 'Bahis şirketi', candidate?.bookmakerCount ?? 0, config.minimumBookmakerCount,
@@ -140,22 +147,25 @@ export function inspectPredictionGates(input: InspectorInput,
     gate('SELF_AUDIT_SEGMENT', 'Self-Audit lig / market güvenliği', segmentPaused ? 'PAUSED' : 'AKTİF',
       'PAUSE YOK', !segmentPaused, 'SELF_AUDIT_SEGMENT_PAUSED'),
   ];
-  const visibleFailedGates = candidate ? gates : gates.filter((item) => ['ODDS_ANALYSIS','OFFICIAL_WINDOW',
+  const visibleFailedGates = candidate ? gates : gates.filter((item) => ['ODDS_ANALYSIS','PREDICTION_RUN','OFFICIAL_WINDOW',
     'SELF_AUDIT_GLOBAL','SELF_AUDIT_SEGMENT'].includes(item.key));
   const blockers = [...new Set([...candidateBlockers, ...visibleFailedGates.filter((item) => !item.passed && item.reasonCode)
     .map((item) => item.reasonCode!), ...skipReasons.filter((reason) => ['LOCK_WINDOW_MISSED','SELF_AUDIT_PAUSED',
       'SELF_AUDIT_SEGMENT_PAUSED'].includes(reason))])];
   const hardRejected = lockedSkip || blockers.some((reason) => ['UNSUPPORTED_MARKET','LOCK_WINDOW_MISSED','SELF_AUDIT_PAUSED',
     'SELF_AUDIT_SEGMENT_PAUSED'].includes(reason));
-  const waiting = blockers.some((reason) => ['NO_ODDS_ANALYSIS','ODDS_NOT_ELIGIBLE','INSUFFICIENT_COMPLETE_STATES',
+  const waiting = blockers.some((reason) => ['NO_ODDS_ANALYSIS','PREDICTION_NOT_GENERATED','ODDS_NOT_ELIGIBLE','INSUFFICIENT_COMPLETE_STATES',
     'OFFICIAL_WINDOW_NOT_OPEN'].includes(reason));
   const allOfficialGatesPassed = gates.every((item) => item.passed) && candidateBlockers.length === 0;
-  const overallStatus: PredictionGateStatus = input.decision === 'PREDICT' && allOfficialGatesPassed
+  const awaitingOfficialLock = input.decision === 'PREDICT' && !lockedPrediction && allOfficialGatesPassed;
+  const overallStatus: PredictionGateStatus = lockedPrediction && input.decision === 'PREDICT' && allOfficialGatesPassed
     ? 'OFFICIAL' : hardRejected ? 'REJECTED' : waiting ? 'WAITING'
+      : awaitingOfficialLock ? 'WAITING'
       : isMeaningfulReviewCandidate(candidate) ? 'REVIEW' : 'REJECTED';
   const reasonText = blockers.slice(0, 3).map(translatePredictionGateReason);
   const summary = overallStatus === 'OFFICIAL'
     ? 'Resmi tahmin oluştu: bütün Prediction V1 güvenlik kapıları geçildi.'
+    : awaitingOfficialLock ? 'Resmi tahmin koşulları geçti ancak tahmin henüz kilitlenmedi.'
     : `${overallStatus === 'WAITING' ? 'Veri bekleniyor' : 'Resmi tahmin oluşmadı'}: ${reasonText.join(' ')}`;
   return { overallStatus, thresholds: {
     minimumHistoricalSample: config.minimumHistoricalSample, minimumPredictionScore: config.minimumPredictionScore,
@@ -171,5 +181,7 @@ export function inspectPredictionRow(row: Record<string, unknown>, now = new Dat
   return inspectPredictionGates({ decision: String(row.decision ?? 'SKIP') as PredictionDecision,
     state: row.state == null ? undefined : String(row.state), kickoffAt: new Date(String(row.kickoff_at ?? row.kickoffAt)), now,
     selectedCandidate: row.selected_candidate ?? row.selectedCandidate, candidates: row.candidates,
-    skipReasons: row.skip_reasons ?? row.skipReasons, metadata: row.metadata, evidence: row.evidence as Record<string, unknown> | null }, config);
+    skipReasons: row.skip_reasons ?? row.skipReasons, metadata: row.metadata, evidence: row.evidence as Record<string, unknown> | null,
+    oddsAnalysisExists: row.odds_analysis_exists == null ? undefined : Boolean(row.odds_analysis_exists),
+    predictionRunExists: row.prediction_run_exists == null ? undefined : Boolean(row.prediction_run_exists) }, config);
 }

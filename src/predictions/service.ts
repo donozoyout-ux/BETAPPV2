@@ -17,7 +17,8 @@ import type { HistoricalExample, PredictionEvaluation, PredictionTarget, Settlem
 import { inspectPredictionRow } from './gate-inspector.js';
 
 function withPredictionGate(row: Record<string, unknown>, now = new Date(), config: PredictionConfig = predictionConfig) {
-  return { ...row, predictionGate: inspectPredictionRow(row, now, config) };
+  const facts = { prediction_run_exists: true, odds_analysis_exists: true, ...row };
+  return { ...row, predictionGate: inspectPredictionRow(facts, now, config) };
 }
 
 function analysisItem(row: Record<string, unknown>): AnalysisItem {
@@ -544,7 +545,7 @@ export class PredictionRepository {
       ORDER BY r.match_id,r.created_at DESC,r.id DESC`, [now]);
 
     return result.rows.flatMap((row) => {
-      const predictionGate = inspectPredictionRow(row, now);
+      const predictionGate = inspectPredictionRow({ prediction_run_exists: true, odds_analysis_exists: true, ...row }, now);
       if (predictionGate.overallStatus !== 'REVIEW' || !predictionGate.candidate) return [];
       return [{
         matchId: String(row.match_id), kickoffAt: row.kickoff_at, league: String(row.league),
@@ -918,8 +919,10 @@ export class PredictionRepository {
     const result = await this.pool.query(`SELECT m.id match_id,m.kickoff_at,l.name league,ht.name home_team,at.name away_team,
       COALESCE(jr.decision,lr.decision,'SKIP') decision,COALESCE(jr.selected_candidate,lr.selected_candidate) selected_candidate,
       COALESCE(jr.candidates,lr.candidates) candidates,
-      CASE WHEN COALESCE(jr.id,lr.id) IS NULL THEN '["NO_ODDS_ANALYSIS"]'::jsonb
+      CASE WHEN COALESCE(jr.id,lr.id) IS NULL AND oa.id IS NULL THEN '["NO_ODDS_ANALYSIS"]'::jsonb
+        WHEN COALESCE(jr.id,lr.id) IS NULL THEN '[]'::jsonb
         ELSE COALESCE(jr.skip_reasons,lr.skip_reasons) END skip_reasons,COALESCE(jr.metadata,lr.metadata) metadata,
+      oa.id IS NOT NULL odds_analysis_exists,COALESCE(jr.id,lr.id) IS NOT NULL prediction_run_exists,
       CASE WHEN j.decision='PREDICT' THEN 'LOCKED_PREDICTION' WHEN j.id IS NOT NULL THEN 'LOCKED_SKIP'
         WHEN lr.id IS NOT NULL THEN 'PREVIEW' ELSE 'NOT_GENERATED' END state
       FROM matches m JOIN leagues l ON l.id=m.league_id JOIN teams ht ON ht.id=m.home_team_id
@@ -927,7 +930,10 @@ export class PredictionRepository {
       LEFT JOIN prediction_journal j ON j.match_id=m.id AND j.model_version='PREDICTION_V1'
       LEFT JOIN prediction_runs jr ON jr.id=j.prediction_run_id
       LEFT JOIN LATERAL(SELECT * FROM prediction_runs pr WHERE pr.match_id=m.id
-        ORDER BY pr.created_at DESC,pr.id DESC LIMIT 1) lr ON true WHERE m.id=$1`, [matchId]);
+        ORDER BY pr.created_at DESC,pr.id DESC LIMIT 1) lr ON true
+      LEFT JOIN LATERAL(SELECT ar.id FROM odds_analysis_runs ar
+        WHERE ar.match_id=m.id AND EXISTS(SELECT 1 FROM odds_analysis_items ai WHERE ai.run_id=ar.id)
+        ORDER BY ar.created_at DESC,ar.id DESC LIMIT 1) oa ON true WHERE m.id=$1`, [matchId]);
     const row = result.rows[0];
     if (!row) return null;
     return { matchId: String(row.match_id), state: String(row.state), ...inspectPredictionRow(row, now) };

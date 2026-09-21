@@ -243,6 +243,18 @@ describe('FootballRepository integration', () => {
     const predictionRepository = new PredictionRepository(pool);
     const targetAnalysis = await new OddsAnalysisRepository(pool).analyzeAndSave(targetId, targetCurrent);
     expect(targetAnalysis?.inserted).toBe(true);
+    const analysisOnlyGate = await predictionRepository.gates(targetId, new Date('2099-09-20T17:00:00Z'));
+    expect(analysisOnlyGate).toMatchObject({ overallStatus: 'WAITING' });
+    expect(analysisOnlyGate!.gates.find((gate) => gate.key === 'ODDS_ANALYSIS')).toMatchObject({ passed: true });
+    expect(analysisOnlyGate!.blockers).toContain('PREDICTION_NOT_GENERATED');
+    expect(analysisOnlyGate!.blockers).not.toContain('NO_ODDS_ANALYSIS');
+    const noOddsId = await repository.upsertMatch('prediction-source',
+      fixture('prediction-no-odds', new Date('2099-09-20T20:00:00Z'), 'scheduled', null, null));
+    const noOddsGate = await predictionRepository.gates(noOddsId, new Date('2099-09-20T18:30:00Z'));
+    expect(noOddsGate).toMatchObject({ overallStatus: 'WAITING' });
+    expect(noOddsGate!.gates.find((gate) => gate.key === 'ODDS_ANALYSIS'))
+      .toMatchObject({ passed: false, reasonCode: 'NO_ODDS_ANALYSIS' });
+    expect(noOddsGate!.blockers).toContain('NO_ODDS_ANALYSIS');
     const loadedTargets = await predictionRepository.loadTargets('m.id=$1', [targetId]);
     expect(loadedTargets).toHaveLength(1);
     expect(loadedTargets[0]).toMatchObject({ matchId: targetId });

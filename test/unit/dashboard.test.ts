@@ -128,6 +128,19 @@ describe('renderDashboard', () => {
     expect(html).not.toContain('<script>Ev</script>');
   });
 
+  it('keeps a PREVIEW PREDICT visible under waiting and never labels it official', () => {
+    const predictionGate = { overallStatus: 'WAITING',
+      summary: 'Resmi tahmin koşulları geçti ancak tahmin henüz kilitlenmedi.', gates: [] };
+    const html = renderDashboard({ providers: [], matches: [], predictions: [], predictionPreviews: [{
+      match_id: 'preview-predict', decision: 'PREDICT', state: 'PREVIEW', home_team: 'Preview Ev',
+      away_team: 'Preview Deplasman', league: 'Süper Lig', kickoff_at: '2026-09-21T18:00:00Z', predictionGate,
+    }] });
+    expect(html).toContain('Veri Bekleyenler');
+    expect(html).toContain('Preview Ev — Preview Deplasman');
+    expect(html).toContain('Resmi tahmin koşulları geçti ancak tahmin henüz kilitlenmedi.');
+    expect(html).not.toContain('<span class="badge ok">Resmi tahmin</span>');
+  });
+
   it('renders the main navigation and system status in plain Turkish', () => {
     const html = renderDashboard({
       providers: [{ provider: 'fotmob', status: 'healthy' }, { provider: 'nowgoal', status: 'healthy' }],

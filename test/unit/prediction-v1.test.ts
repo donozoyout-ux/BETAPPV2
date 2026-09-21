@@ -88,6 +88,17 @@ describe('PREDICTION_V1 similarity and scoring', () => {
     expect(skipped).toMatchObject({ decision: 'SKIP', skipReasons: ['NO_ODDS_ANALYSIS'] });
   });
 
+  it('does not select a candidate with too few complete-state bookmakers', () => {
+    const strictCompleteness = { ...looseConfig, minimumBookmakerCount: 3, minimumCompleteStateCount: 2 };
+    const target: PredictionTarget = { matchId: 'incomplete-target', competitionId: 'league-a', kickoffAt: kickoff,
+      oddsInputHash: 'incomplete-input', oddsItems: [item({ bookmakerCount: 7, completeStateBookmakerCount: 1,
+        minimumCompleteStateCount: 2, analysisEligible: true })] };
+    const result = evaluatePrediction(target, [example(1)], kickoff, strictCompleteness);
+    expect(result.decision).toBe('SKIP');
+    expect(result.selectedCandidate).toBeNull();
+    expect(result.skipReasons).toContain('INSUFFICIENT_COMPLETE_STATES');
+  });
+
   it('exposes pre-kickoff lock eligibility and never permits a late lock', () => {
     expect(lockWindowState(kickoff, new Date('2026-09-20T17:00:00Z')).eligible).toBe(true);
     expect(lockWindowState(kickoff, new Date('2026-09-20T17:55:00Z')).missed).toBe(true);

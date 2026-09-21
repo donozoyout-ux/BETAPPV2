@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { predictionConfig } from '../../src/predictions/config.js';
 import { inspectPredictionGates, translatePredictionGateReason } from '../../src/predictions/gate-inspector.js';
+import { officialCandidateBlockers } from '../../src/predictions/prediction-gates.js';
 import type { PredictionCandidate } from '../../src/predictions/types.js';
 
 const kickoffAt = new Date('2026-09-21T18:00:00Z');
@@ -54,12 +55,45 @@ describe('Prediction Gate Inspector V1', () => {
     expect(result.overallStatus).toBe('REVIEW');
   });
 
-  it('returns OFFICIAL only for a real PREDICT with every gate passed', () => {
-    const result = inspect(candidate(), 'PREDICT');
+  it('keeps a passing PREVIEW PREDICT in WAITING until it is persisted as an official lock', () => {
+    const result = inspect(candidate(), 'PREDICT', { state: 'PREVIEW' });
+    expect(result.overallStatus).toBe('WAITING');
+    expect(result.summary).toBe('Resmi tahmin koşulları geçti ancak tahmin henüz kilitlenmedi.');
+  });
+
+  it('returns OFFICIAL only for a LOCKED_PREDICTION with every gate passed', () => {
+    const result = inspect(candidate(), 'PREDICT', { state: 'LOCKED_PREDICTION' });
     expect(result.overallStatus).toBe('OFFICIAL');
     expect(result.gates.every((item) => item.passed)).toBe(true);
     expect(result.executionAuthority).toBe(false);
     expect(result.aiPredictionAuthority).toBe(false);
+  });
+
+  it('uses the same complete-state policy as the official engine blocker', () => {
+    const value = candidate({ bookmakerCount: 7, completeStateBookmakerCount: 1,
+      minimumCompleteStateCount: 2, analysisEligible: true });
+    const result = inspect(value);
+    expect(officialCandidateBlockers(value)).toContain('INSUFFICIENT_COMPLETE_STATES');
+    expect(byKey(result, 'COMPLETE_STATES')).toMatchObject({ passed: false });
+  });
+
+  it('distinguishes ready odds analysis from a missing Prediction V1 run', () => {
+    const result = inspectPredictionGates({ decision: 'SKIP', state: 'NOT_GENERATED', kickoffAt, now: insideWindow,
+      oddsAnalysisExists: true, predictionRunExists: false, skipReasons: [], metadata: {} });
+    expect(byKey(result, 'ODDS_ANALYSIS').passed).toBe(true);
+    expect(byKey(result, 'PREDICTION_RUN')).toMatchObject({ passed: false, reasonCode: 'PREDICTION_NOT_GENERATED' });
+    expect(result.overallStatus).toBe('WAITING');
+    expect(result.blockers).toContain('PREDICTION_NOT_GENERATED');
+    expect(result.blockers).not.toContain('NO_ODDS_ANALYSIS');
+  });
+
+  it('reports NO_ODDS_ANALYSIS only when analysis and prediction run are both missing', () => {
+    const result = inspectPredictionGates({ decision: 'SKIP', state: 'NOT_GENERATED', kickoffAt, now: insideWindow,
+      oddsAnalysisExists: false, predictionRunExists: false, skipReasons: [], metadata: {} });
+    expect(byKey(result, 'ODDS_ANALYSIS')).toMatchObject({ passed: false, reasonCode: 'NO_ODDS_ANALYSIS' });
+    expect(result.overallStatus).toBe('WAITING');
+    expect(result.blockers).toContain('NO_ODDS_ANALYSIS');
+    expect(result.blockers).not.toContain('PREDICTION_NOT_GENERATED');
   });
 
   it('rejects unsupported markets and active Self-Audit guards with Turkish reasons', () => {

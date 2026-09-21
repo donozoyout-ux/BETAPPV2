@@ -13,6 +13,8 @@ export const fotmobCompetitions = [
   { id: 42, name: 'UEFA Champions League', key: 'ChampionsLeague' },
   { id: 73, name: 'UEFA Europa League', key: 'EuropaLeague' },
   { id: 10216, name: 'UEFA Conference League', key: 'ConferenceLeague' },
+  { id: 130, name: 'MLS', key: 'MLS' },
+  { id: 268, name: 'Brasileirão Série A', key: 'BrasileiraoSerieA' },
 ] as const;
 export const fotmobLeagueIds = fotmobCompetitions.map((competition) => competition.id);
 
@@ -70,13 +72,15 @@ export class FotMobProvider implements FootballDataProvider, QualifiableProvider
   }
 
   private normalizeMatch(league: FotMobLeague, match: FotMobMatch, fetchedAt: Date): NormalizedMatch {
+    const configuredCompetition = fotmobCompetitions.find((competition) => competition.id === league.primaryId);
+    const canonicalLeagueName = configuredCompetition?.name ?? league.name;
     const team = (value: FotMobMatch['home']) => ({ providerExternalId: String(value.id), name: value.name,
       shortName: null, country: null, logoUrl: `https://images.fotmob.com/image_resources/logo/teamlogo/${value.id}_small.png`,
       sourceUpdatedAt: fetchedAt, raw: { id: value.id, name: value.name } });
     const score = match.status.scoreStr?.split(/\s*-\s*/).map(Number) ?? [];
     return {
       providerExternalId: String(match.id),
-      league: { providerExternalId: String(league.primaryId), name: league.name, country: league.ccode ?? null,
+      league: { providerExternalId: String(league.primaryId), name: canonicalLeagueName, country: league.ccode ?? null,
         logoUrl: `https://images.fotmob.com/image_resources/logo/leaguelogo/${league.primaryId}.png`, sourceUpdatedAt: fetchedAt,
         raw: { id: league.id, primaryId: league.primaryId, name: league.name, ccode: league.ccode } },
       homeTeam: team(match.home), awayTeam: team(match.away), kickoffAt: new Date(match.status.utcTime),

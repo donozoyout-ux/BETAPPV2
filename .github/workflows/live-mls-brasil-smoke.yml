@@ -1,0 +1,30 @@
+name: Live MLS Brazil Smoke
+
+on:
+  push:
+    branches:
+      - chatgpt/live-mls-brasil-smoke-v1
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: postgresql://localhost/betapp
+      LOG_LEVEL: silent
+      PROVIDER_REQUESTS_PER_SECOND: "1"
+      PROVIDER_MAX_RETRIES: "1"
+      PROVIDER_TIMEOUT_MS: "15000"
+      HISTORICAL_REQUEST_DELAY_MS: "500"
+      SUPPORTED_COMPETITIONS: PremierLeague,LaLiga,Bundesliga,SerieA,Ligue1,SuperLig,ChampionsLeague,EuropaLeague,ConferenceLeague,MLS,BrasileiraoSerieA
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: MLS 2026 live dry run
+        run: npm run historical:dry-run -- --competition=MLS --season=2026 --sample=6
+      - name: Brasileirao 2026 live dry run
+        run: npm run historical:dry-run -- --competition=BrasileiraoSerieA --season=2026 --sample=6

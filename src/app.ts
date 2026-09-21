@@ -33,6 +33,15 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
   const app = Fastify({ loggerInstance: logger });
   void app.register(helmet, { contentSecurityPolicy: false });
 
+  const optionalDashboardSource = async <T>(source: string, task: () => Promise<T>, fallback: T): Promise<T> => {
+    try {
+      return await task();
+    } catch (error) {
+      logger.warn({ err: error, source }, 'Optional dashboard source failed');
+      return fallback;
+    }
+  };
+
   app.get('/health', async (_request, reply) => {
     const [database, operations] = await Promise.all([repository.databaseHealth(), repository.operationalHealth().catch(() => ({
       providers: {}, worker: { lastRun: null, lastSuccess: null }, backfill: { status: 'UNKNOWN' },
@@ -44,10 +53,21 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
   });
 
   app.get('/api/dashboard', async () => {
-    const [data, today, previews, reviewCandidates, history, performance, selfAudit, segmentAudits, rootCauses, adaptiveProposals, oddsSimilarity, predictionDiagnostics, oddsIntelligenceData] = await Promise.all([repository.dashboardData('Europe/Istanbul'),
-      predictions?.today() ?? [], predictions?.previews() ?? [], predictions?.reviewCandidates() ?? [], predictions?.history(20) ?? [], predictions?.performance() ?? null,
-      predictions?.latestSelfAudit() ?? null, predictions?.latestSegmentSelfAudits() ?? [], predictions?.latestRootCauseAudits() ?? [],
-      predictions?.latestAdaptiveRuleProposals() ?? [], predictions?.oddsSimilarityShowcase(4, 5) ?? [], predictions?.diagnostics() ?? null, oddsIntelligence?.upcoming(4) ?? []]);
+    const [data, today, previews, reviewCandidates, history, performance, selfAudit, segmentAudits, rootCauses, adaptiveProposals, oddsSimilarity, predictionDiagnostics, oddsIntelligenceData] = await Promise.all([
+      repository.dashboardData('Europe/Istanbul'),
+      predictions ? optionalDashboardSource('predictions.today', () => predictions.today(), []) : [],
+      predictions ? optionalDashboardSource('predictions.previews', () => predictions.previews(), []) : [],
+      predictions ? optionalDashboardSource('predictions.reviewCandidates', () => predictions.reviewCandidates(), []) : [],
+      predictions ? optionalDashboardSource('predictions.history', () => predictions.history(20), []) : [],
+      predictions ? optionalDashboardSource('predictions.performance', () => predictions.performance(), null) : null,
+      predictions ? optionalDashboardSource('predictions.latestSelfAudit', () => predictions.latestSelfAudit(), null) : null,
+      predictions ? optionalDashboardSource('predictions.latestSegmentSelfAudits', () => predictions.latestSegmentSelfAudits(), []) : [],
+      predictions ? optionalDashboardSource('predictions.latestRootCauseAudits', () => predictions.latestRootCauseAudits(), []) : [],
+      predictions ? optionalDashboardSource('predictions.latestAdaptiveRuleProposals', () => predictions.latestAdaptiveRuleProposals(), []) : [],
+      predictions ? optionalDashboardSource('predictions.oddsSimilarityShowcase', () => predictions.oddsSimilarityShowcase(4, 5), []) : [],
+      predictions ? optionalDashboardSource('predictions.diagnostics', () => predictions.diagnostics(), null) : null,
+      oddsIntelligence ? optionalDashboardSource('oddsIntelligence.upcoming', () => oddsIntelligence.upcoming(4), []) : [],
+    ]);
     return { ...data, supportedCompetitions: config.SUPPORTED_COMPETITIONS,
       predictions: attachOddsEvidence(today, oddsIntelligenceData),
       predictionPreviews: attachOddsEvidence(previews, oddsIntelligenceData),
@@ -123,10 +143,21 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
   app.get<{ Params: { matchId: string } }>('/api/predictions/:matchId', async (request) => predictions
     ? predictions.detail(request.params.matchId) : { matchId: request.params.matchId, state: 'NOT_GENERATED', journal: null, runs: [] });
   app.get('/', async (_request, reply) => {
-    const [data, today, previews, reviewCandidates, history, performance, selfAudit, segmentAudits, rootCauses, adaptiveProposals, oddsSimilarity, predictionDiagnostics, oddsIntelligenceData] = await Promise.all([repository.dashboardData('Europe/Istanbul'),
-      predictions?.today() ?? [], predictions?.previews() ?? [], predictions?.reviewCandidates() ?? [], predictions?.history(20) ?? [], predictions?.performance() ?? null,
-      predictions?.latestSelfAudit() ?? null, predictions?.latestSegmentSelfAudits() ?? [], predictions?.latestRootCauseAudits() ?? [],
-      predictions?.latestAdaptiveRuleProposals() ?? [], predictions?.oddsSimilarityShowcase(4, 5) ?? [], predictions?.diagnostics() ?? null, oddsIntelligence?.upcoming(4) ?? []]);
+    const [data, today, previews, reviewCandidates, history, performance, selfAudit, segmentAudits, rootCauses, adaptiveProposals, oddsSimilarity, predictionDiagnostics, oddsIntelligenceData] = await Promise.all([
+      repository.dashboardData('Europe/Istanbul'),
+      predictions ? optionalDashboardSource('predictions.today', () => predictions.today(), []) : [],
+      predictions ? optionalDashboardSource('predictions.previews', () => predictions.previews(), []) : [],
+      predictions ? optionalDashboardSource('predictions.reviewCandidates', () => predictions.reviewCandidates(), []) : [],
+      predictions ? optionalDashboardSource('predictions.history', () => predictions.history(20), []) : [],
+      predictions ? optionalDashboardSource('predictions.performance', () => predictions.performance(), null) : null,
+      predictions ? optionalDashboardSource('predictions.latestSelfAudit', () => predictions.latestSelfAudit(), null) : null,
+      predictions ? optionalDashboardSource('predictions.latestSegmentSelfAudits', () => predictions.latestSegmentSelfAudits(), []) : [],
+      predictions ? optionalDashboardSource('predictions.latestRootCauseAudits', () => predictions.latestRootCauseAudits(), []) : [],
+      predictions ? optionalDashboardSource('predictions.latestAdaptiveRuleProposals', () => predictions.latestAdaptiveRuleProposals(), []) : [],
+      predictions ? optionalDashboardSource('predictions.oddsSimilarityShowcase', () => predictions.oddsSimilarityShowcase(4, 5), []) : [],
+      predictions ? optionalDashboardSource('predictions.diagnostics', () => predictions.diagnostics(), null) : null,
+      oddsIntelligence ? optionalDashboardSource('oddsIntelligence.upcoming', () => oddsIntelligence.upcoming(4), []) : [],
+    ]);
     return reply.type('text/html; charset=utf-8').send(renderDashboard({ ...data, supportedCompetitions: config.SUPPORTED_COMPETITIONS,
       predictions: attachOddsEvidence(today, oddsIntelligenceData),
       predictionPreviews: attachOddsEvidence(previews, oddsIntelligenceData),

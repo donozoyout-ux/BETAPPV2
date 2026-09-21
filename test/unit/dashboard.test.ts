@@ -118,6 +118,7 @@ describe('renderDashboard', () => {
       predictionSelfAuditSegments: [],
       predictionSelfAuditRootCauses: [],
       predictionAdaptiveRuleProposals: [],
+      supportedCompetitions: ['PremierLeague','MLS','BrasileiraoSerieA'],
     });
     expect(html).toContain('Futbol Analiz Sistemi');
     expect(html).toContain('Ana Sayfa');
@@ -129,6 +130,10 @@ describe('renderDashboard', () => {
     expect(html).toContain('Sistem Kontrolü');
     expect(html).toContain('Çalışıyor');
     expect(html).toContain('Sağlıklı');
+    expect(html).toContain('Aktif Ligler');
+    expect(html).toContain('Premier League');
+    expect(html).toContain('MLS');
+    expect(html).toContain('Brasileirão Série A');
     expect(html).not.toContain('BETAPP Command Center');
     expect(html).not.toContain('SELF-AUDIT V1');
   });

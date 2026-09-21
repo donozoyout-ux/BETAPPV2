@@ -480,7 +480,7 @@ export class FootballRepository {
          FROM matches m JOIN leagues l ON l.id=m.league_id JOIN teams ht ON ht.id=m.home_team_id
          JOIN teams at ON at.id=m.away_team_id LEFT JOIN match_statistics s ON s.match_id=m.id
          WHERE (m.kickoff_at AT TIME ZONE $1)::date BETWEEN (now() AT TIME ZONE $1)::date
-           AND (now() AT TIME ZONE $1)::date + 7
+           AND (now() AT TIME ZONE $1)::date + 14
          GROUP BY m.id,l.name,ht.name,at.name ORDER BY m.kickoff_at`,
         [timeZone],
       ),

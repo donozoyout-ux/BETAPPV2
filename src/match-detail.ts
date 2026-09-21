@@ -22,6 +22,10 @@ function percentText(value: unknown): string {
   return value == null || !Number.isFinite(Number(value)) ? '—' : `%${(Number(value) * 100).toFixed(1)}`;
 }
 
+function percentagePointText(value: unknown): string {
+  return value == null || !Number.isFinite(Number(value)) ? '—' : `%${Number(value).toFixed(1)}`;
+}
+
 function arrayValue(value: unknown): Array<Record<string, unknown>> {
   return Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => Boolean(item)
     && typeof item === 'object' && !Array.isArray(item)) : [];
@@ -82,13 +86,11 @@ function renderTwins(intelligence: Record<string, unknown> | null): string {
   if (!twins.length) return renderEmpty('Geçmiş ikiz bulunamadı', 'Bu oran profiline benzeyen yeterli sonuçlanmış maç henüz yok.');
   return `<div class="twins-summary"><strong>${twins.length} geçmiş ikiz</strong><span>Kanıt gücü: ${escapeHtml(intelligence?.evidenceStrength ?? '—')}</span></div>
     <div class="twin-list">${twins.map((item) => {
-      const outcome = objectValue(item.outcome);
       const score = item.homeScore == null || item.awayScore == null ? '' : `${item.homeScore} — ${item.awayScore}`;
       const corners = item.homeCorners == null || item.awayCorners == null ? '' : `${item.homeCorners} — ${item.awayCorners} korner`;
       return `<article class="twin-row"><div><strong>${escapeHtml(item.homeTeam)} — ${escapeHtml(item.awayTeam)}</strong><small>${escapeHtml(item.league)} · ${escapeHtml(formatDate(item.kickoffAt, { day: '2-digit', month: 'short', year: 'numeric' }))}</small></div>
         <div class="mono">${escapeHtml(optionalOdds(item.openingOdds))} → ${escapeHtml(optionalOdds(item.decisionOdds))}</div>
-        <div><strong>${escapeHtml(percentText(item.similarity))}</strong><small>${escapeHtml(score)}${score && corners ? ' · ' : ''}${escapeHtml(corners)}</small></div>
-        ${outcome ? `<span class="badge neutral">${escapeHtml(outcome.home == null ? 'Sonuç yok' : outcome.home)}</span>` : ''}</article>`;
+        <div><strong>${escapeHtml(percentagePointText(item.similarity))}</strong><small>${escapeHtml(score)}${score && corners ? ' · ' : ''}${escapeHtml(corners)}</small></div></article>`;
     }).join('')}</div>`;
 }
 

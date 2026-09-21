@@ -77,14 +77,30 @@ describe('match analysis detail renderer', () => {
         home_value: '7<8', away_value: '3>2', provider: '<b>fotmob</b>' }] },
       oddsIntelligence: { evidenceStrength: 'MEDIUM', oddsRoute: null,
         pastTwins: [{ homeTeam: '<svg>', awayTeam: 'Rakip & Co', league: '<i>Lig</i>', kickoffAt: '2026-01-01T12:00:00Z',
-          openingOdds: 2.08, decisionOdds: 1.91, similarity: 0.92, homeScore: 2, awayScore: 1,
-          homeCorners: 6, awayCorners: 4, outcome: { home: 'WIN' } }], resultMap: [], conflictCheck: [] },
+          openingOdds: 2.08, decisionOdds: 1.91, similarity: 92, homeScore: 2, awayScore: 1,
+          homeCorners: 6, awayCorners: 4, outcome: { home: 2, away: 1 } }], resultMap: [], conflictCheck: [] },
     }));
     expect(html).toContain('&lt;script&gt;Şut&lt;/script&gt;');
     expect(html).toContain('&lt;b&gt;fotmob&lt;/b&gt;');
     expect(html).toContain('&lt;svg&gt;');
+    expect(html).toContain('%92.0');
+    expect(html).not.toContain('%9200.0');
+    expect(html).toContain('2 — 1');
+    expect(html).not.toContain('<span class="badge neutral">2</span>');
     expect(html).not.toContain('<script>Şut</script>');
     expect(html).not.toContain('<svg>');
+  });
+
+  it('renders the full 0–100 HistoricalTwin similarity boundaries without ratio scaling', () => {
+    const twin = (similarity: number, name: string) => ({ homeTeam: name, awayTeam: 'Rakip', league: 'Lig',
+      kickoffAt: '2026-01-01T12:00:00Z', openingOdds: 2.08, decisionOdds: 1.91, similarity,
+      homeScore: 0, awayScore: 0, outcome: { home: 0, away: 0 } });
+    const html = renderMatchAnalysis(page('REVIEW', { oddsIntelligence: { evidenceStrength: 'LOW', oddsRoute: null,
+      pastTwins: [twin(0, 'Alt sınır'), twin(100, 'Üst sınır')], resultMap: [], conflictCheck: [] } }));
+    expect(html).toContain('%0.0');
+    expect(html).toContain('%100.0');
+    expect(html).not.toContain('%10000.0');
+    expect(html).not.toContain('<span class="badge neutral">0</span>');
   });
 
   it('renders the real result-map sample and rate plus safety disclaimers', () => {

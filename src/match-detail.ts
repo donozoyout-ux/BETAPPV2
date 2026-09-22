@@ -14,11 +14,6 @@ const statusLabels: Record<string, string> = { OFFICIAL: 'RESMİ TAHMİN', REVIE
   WAITING: 'VERİ BEKLENİYOR', REJECTED: 'REDDEDİLDİ' };
 const statusClasses: Record<string, string> = { OFFICIAL: 'ok', REVIEW: 'partial', WAITING: 'neutral', REJECTED: 'bad' };
 
-function finiteNumber(value: unknown, fallback = 0): number {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
-
 function numberText(value: unknown, digits = 0): string {
   return value == null || !Number.isFinite(Number(value)) ? '—' : Number(value).toFixed(digits);
 }
@@ -86,42 +81,25 @@ function renderOddsRoute(intelligence: Record<string, unknown> | null): string {
     <p class="detail-disclaimer">Odds Neighbor V2 açıklayıcı kanıttır; Prediction V1 kararını değiştirmez.</p>`;
 }
 
-function renderTwins(intelligence: Record<string, unknown> | null, targetLeague = ''): string {
-  const targetMatch = objectValue(intelligence?.match);
-  const referenceLeague = String(targetMatch?.league ?? targetLeague);
-  const twins = arrayValue(intelligence?.pastTwins)
-    .filter((item) => finiteNumber(item.similarity, -1) >= 70);
-  if (!twins.length) return renderEmpty('Yeterli benzer oran örneği bulunamadı',
-    '%70 benzerlik eşiğini geçen sonuçlanmış maç oluştuğunda burada gösterilecek.');
-  const averageSimilarity = twins.reduce((sum, item) => sum + finiteNumber(item.similarity), 0) / twins.length;
-  const evidenceReady = twins.length >= 5;
-  const groupLabel = evidenceReady && averageSimilarity >= 80 ? 'Geçmiş ikizler' : 'Yakın oran örnekleri';
-  const evidenceText = evidenceReady ? `Kanıt gücü: ${String(intelligence?.evidenceStrength ?? '—')}`
-    : 'Örnek yetersiz · güvenilir başarı oranı için en az 5 maç gerekir';
-  const similarityQuality = (value: unknown) => {
-    const score = finiteNumber(value);
-    return score >= 90 ? 'Güçlü ikiz' : score >= 80 ? 'İyi benzerlik' : score >= 70 ? 'Zayıf benzerlik' : 'Eşik altı';
-  };
-  return `<div class="twins-summary"><strong>${twins.length} ${escapeHtml(groupLabel)}</strong><span>${escapeHtml(evidenceText)}</span></div>
+function renderTwins(intelligence: Record<string, unknown> | null): string {
+  const twins = arrayValue(intelligence?.pastTwins);
+  if (!twins.length) return renderEmpty('Geçmiş ikiz bulunamadı', 'Bu oran profiline benzeyen yeterli sonuçlanmış maç henüz yok.');
+  return `<div class="twins-summary"><strong>${twins.length} geçmiş ikiz</strong><span>Kanıt gücü: ${escapeHtml(intelligence?.evidenceStrength ?? '—')}</span></div>
     <div class="twin-list">${twins.map((item) => {
       const score = item.homeScore == null || item.awayScore == null ? '' : `${item.homeScore} — ${item.awayScore}`;
       const corners = item.homeCorners == null || item.awayCorners == null ? '' : `${item.homeCorners} — ${item.awayCorners} korner`;
-      const differentLeague = referenceLeague.length > 0 && String(item.league ?? '') !== referenceLeague;
-      return `<article class="twin-row"><div><strong>${escapeHtml(item.homeTeam)} — ${escapeHtml(item.awayTeam)}</strong><small>${escapeHtml(item.league)} · ${escapeHtml(formatDate(item.kickoffAt, { day: '2-digit', month: 'short', year: 'numeric' }))}${differentLeague ? ' · Farklı lig' : ''}</small></div>
+      return `<article class="twin-row"><div><strong>${escapeHtml(item.homeTeam)} — ${escapeHtml(item.awayTeam)}</strong><small>${escapeHtml(item.league)} · ${escapeHtml(formatDate(item.kickoffAt, { day: '2-digit', month: 'short', year: 'numeric' }))}</small></div>
         <div class="mono">${escapeHtml(optionalOdds(item.openingOdds))} → ${escapeHtml(optionalOdds(item.decisionOdds))}</div>
-        <div><strong>${escapeHtml(percentagePointText(item.similarity))}</strong><small>${escapeHtml(similarityQuality(item.similarity))}${score ? ` · ${escapeHtml(score)}` : ''}${score && corners ? ' · ' : ''}${escapeHtml(corners)}</small></div></article>`;
+        <div><strong>${escapeHtml(percentagePointText(item.similarity))}</strong><small>${escapeHtml(score)}${score && corners ? ' · ' : ''}${escapeHtml(corners)}</small></div></article>`;
     }).join('')}</div>`;
 }
 
 function renderResultMap(intelligence: Record<string, unknown> | null): string {
   const rows = arrayValue(intelligence?.resultMap);
   if (!rows.length) return renderEmpty('Sonuç haritası henüz yok', 'Geçmiş ikizlerde ölçülebilir sonuç oluştuğunda dağılım gösterilecek.');
-  return `<div class="result-cards">${rows.map((item) => {
-    const sample = finiteNumber(item.sampleSize);
-    return `<article><small>${escapeHtml(translateMarket(item.market))}${item.line == null ? '' : ` ${escapeHtml(item.line)}`}</small>
+  return `<div class="result-cards">${rows.map((item) => `<article><small>${escapeHtml(translateMarket(item.market))}${item.line == null ? '' : ` ${escapeHtml(item.line)}`}</small>
     <strong>${escapeHtml(translateSelection(item.selection))}</strong><span>${escapeHtml(item.positiveCount)} / ${escapeHtml(item.sampleSize)}</span>
-    <b>${sample >= 5 ? escapeHtml(percentText(item.positiveRate)) : 'Örnek yetersiz'}</b></article>`;
-  }).join('')}</div>
+    <b>${escapeHtml(percentText(item.positiveRate))}</b></article>`).join('')}</div>
     <p class="detail-disclaimer">Geçmiş dağılım garantili gelecek sonucu ifade etmez.</p>`;
 }
 
@@ -201,7 +179,7 @@ export function renderMatchAnalysis(data: MatchAnalysisPageData): string {
     <div class="side-group"><div class="side-label">Maç Terminali</div><nav class="side-nav" aria-label="Maç analizi menüsü">
       <a href="/"><span class="nav-icon">←</span>Genel Bakış</a><a class="active" href="#match-overview"><span class="nav-icon">◎</span>Maç Özeti</a>
       <a href="#gate-inspector"><span class="nav-icon">✓</span>Gate Inspector</a><a href="#odds-route"><span class="nav-icon">↗</span>Oran Rotası</a>
-      <a href="#past-twins"><span class="nav-icon">∿</span>Benzer Oran Örnekleri</a><a href="#match-statistics"><span class="nav-icon">▤</span>İstatistikler</a>
+      <a href="#past-twins"><span class="nav-icon">∿</span>Geçmiş İkizler</a><a href="#match-statistics"><span class="nav-icon">▤</span>İstatistikler</a>
       <a href="#corner-analysis"><span class="nav-icon">⌁</span>Korner Analizi</a></nav></div>
     <div class="sidebar-foot"><a class="system-pill" href="/"><span class="live-dot ${status === 'OFFICIAL' ? '' : 'wait'}"></span><span><strong style="display:block;color:var(--text)">${escapeHtml(statusLabels[status] ?? status)}</strong>Prediction Gate Inspector</span></a></div></aside>
     <div class="app-main"><header class="topbar"><div class="top-title"><strong>BETAPP Maç Analizi</strong><span>${escapeHtml(match.league)} · ${escapeHtml(formatDate(match.kickoff_at, { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }))}</span></div>
@@ -223,7 +201,7 @@ export function renderMatchAnalysis(data: MatchAnalysisPageData): string {
       <section class="detail-grid evidence-grid"><article class="detail-panel wide" id="gate-inspector"><div class="detail-title"><div><span class="section-kicker">PREDICTION V1</span><h2>Prediction Gate Inspector</h2></div><span>${passed} / ${gates.length} geçti</span></div>${renderGateTable(gates)}</article>
         <article class="detail-panel" id="odds-route"><span class="section-kicker">ODDS NEIGHBOR V2</span><h2>Oran Rotası</h2>${renderOddsRoute(data.oddsIntelligence ?? null)}</article></section>
 
-      <section class="detail-grid split-grid"><article class="detail-panel" id="past-twins"><span class="section-kicker">GEÇMİŞ KANIT</span><h2>Benzer Oran Örnekleri</h2>${renderTwins(data.oddsIntelligence ?? null, String(match.league ?? ''))}</article>
+      <section class="detail-grid split-grid"><article class="detail-panel" id="past-twins"><span class="section-kicker">GEÇMİŞ KANIT</span><h2>Geçmiş İkizler</h2>${renderTwins(data.oddsIntelligence ?? null)}</article>
         <article class="detail-panel"><span class="section-kicker">SONUÇ HARİTASI</span><h2>Geçmiş benzer oran profillerinin sonuç dağılımı</h2>${renderResultMap(data.oddsIntelligence ?? null)}</article></section>
 
       <section class="detail-grid split-grid"><article class="detail-panel"><span class="section-kicker">KANIT UYUMU</span><h2>Çelişki Kontrolü</h2>${renderConflicts(data.oddsIntelligence ?? null)}</article>

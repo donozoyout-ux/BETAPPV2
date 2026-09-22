@@ -13,8 +13,15 @@ export const fotmobCompetitions = [
   { id: 42, name: 'UEFA Champions League', key: 'ChampionsLeague' },
   { id: 73, name: 'UEFA Europa League', key: 'EuropaLeague' },
   { id: 10216, name: 'UEFA Conference League', key: 'ConferenceLeague' },
-  { id: 130, name: 'MLS', key: 'MLS' },
   { id: 268, name: 'Brasileirão Série A', key: 'BrasileiraoSerieA' },
+  { id: 77, name: 'FIFA World Cup', key: 'WorldCup' },
+  { id: 50, name: 'EURO', key: 'EURO' },
+  { id: 9806, name: 'UEFA Nations League A', key: 'UefaNationsLeagueA' },
+  { id: 9807, name: 'UEFA Nations League B', key: 'UefaNationsLeagueB' },
+  { id: 9808, name: 'UEFA Nations League C', key: 'UefaNationsLeagueC' },
+  { id: 9809, name: 'UEFA Nations League D', key: 'UefaNationsLeagueD' },
+  { id: 10195, name: 'World Cup Qualification UEFA', key: 'WorldCupQualificationUEFA' },
+  { id: 114, name: 'Friendlies', key: 'InternationalFriendlies' },
 ] as const;
 export const fotmobLeagueIds = fotmobCompetitions.map((competition) => competition.id);
 

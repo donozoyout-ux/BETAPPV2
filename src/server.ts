@@ -12,7 +12,7 @@ const logger = createLogger(config, 'betapp-web');
 const pool = createPool(config);
 const repository = new FootballRepository(pool);
 const oddsAnalysis = new OddsAnalysisRepository(pool);
-const predictions = new PredictionRepository(pool);
+const predictions = new PredictionRepository(pool, config.SUPPORTED_COMPETITIONS);
 const oddsIntelligence = new OddsIntelligenceRepository(pool);
 const app = buildApp(config, repository, logger, oddsAnalysis, predictions, oddsIntelligence);
 

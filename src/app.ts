@@ -39,8 +39,12 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
     return league == null || isCompetitionConfigured(String(league), config.SUPPORTED_COMPETITIONS);
   };
   const activeRows = <T extends Record<string, unknown>>(rows: T[]): T[] => rows.filter(competitionAllowed);
+  const intelligenceRows = (value: unknown): OddsIntelligence[] =>
+    Array.isArray(value) ? value.filter((item): item is OddsIntelligence =>
+      Boolean(item) && typeof item === 'object' && !Array.isArray(item)
+      && Boolean((item as OddsIntelligence).match)) : [];
   const activeIntelligence = (rows: OddsIntelligence[]): OddsIntelligence[] => rows.filter((item) =>
-    isCompetitionConfigured(String(item.match.league ?? ''), config.SUPPORTED_COMPETITIONS));
+    isCompetitionConfigured(String(item.match?.league ?? ''), config.SUPPORTED_COMPETITIONS));
   const activeSimilarityRows = (rows: Array<Record<string, unknown>>) => rows.filter((item) => {
     const current = item.current;
     const league = current && typeof current === 'object' && !Array.isArray(current)
@@ -99,17 +103,17 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
       predictions ? optionalDashboardSource('predictions.diagnostics', () => predictions.diagnostics(), null) : null,
       oddsIntelligence ? optionalDashboardSource('oddsIntelligence.upcoming', () => oddsIntelligence.upcoming(4), []) : [],
     ]);
-    const activeOddsIntelligence = activeIntelligence(oddsIntelligenceData);
+    const activeOddsIntelligence = activeIntelligence(intelligenceRows(oddsIntelligenceData));
     return { ...data,
       matches: activeRows(recordRows(data.matches)), recentFinishedMatches: activeRows(recordRows(data.recentFinishedMatches)),
       odds: activeRows(recordRows(data.odds)), oddsAnalyses: activeRows(recordRows(data.oddsAnalyses)),
       supportedCompetitions: config.SUPPORTED_COMPETITIONS,
-      predictions: attachOddsEvidence(activeRows(today), activeOddsIntelligence),
-      predictionPreviews: attachOddsEvidence(activeRows(previews), activeOddsIntelligence),
-      predictionReviewCandidates: attachOddsEvidence(activeRows(reviewCandidates), activeOddsIntelligence), predictionHistory: history,
+      predictions: attachOddsEvidence(activeRows(recordRows(today)), activeOddsIntelligence),
+      predictionPreviews: attachOddsEvidence(activeRows(recordRows(previews)), activeOddsIntelligence),
+      predictionReviewCandidates: attachOddsEvidence(activeRows(recordRows(reviewCandidates)), activeOddsIntelligence), predictionHistory: history,
       predictionPerformance: performance, predictionSelfAudit: selfAudit, predictionSelfAuditSegments: segmentAudits,
       predictionSelfAuditRootCauses: rootCauses, predictionAdaptiveRuleProposals: adaptiveProposals,
-      oddsSimilarity: activeSimilarityRows(oddsSimilarity), predictionDiagnostics, oddsIntelligence: activeOddsIntelligence };
+      oddsSimilarity: activeSimilarityRows(recordRows(oddsSimilarity)), predictionDiagnostics, oddsIntelligence: activeOddsIntelligence };
   });
   app.get('/api/odds/upcoming', async () => ({ odds: await repository.upcomingOdds(1000) }));
   app.get('/api/backfill/status', async () => repository.backfillStatus());
@@ -194,17 +198,17 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
       predictions ? optionalDashboardSource('predictions.diagnostics', () => predictions.diagnostics(), null) : null,
       oddsIntelligence ? optionalDashboardSource('oddsIntelligence.upcoming', () => oddsIntelligence.upcoming(4), []) : [],
     ]);
-    const activeOddsIntelligence = activeIntelligence(oddsIntelligenceData);
+    const activeOddsIntelligence = activeIntelligence(intelligenceRows(oddsIntelligenceData));
     const dashboardPayload = { ...data,
       matches: activeRows(recordRows(data.matches)), recentFinishedMatches: activeRows(recordRows(data.recentFinishedMatches)),
       odds: activeRows(recordRows(data.odds)), oddsAnalyses: activeRows(recordRows(data.oddsAnalyses)),
       supportedCompetitions: config.SUPPORTED_COMPETITIONS,
-      predictions: attachOddsEvidence(activeRows(today), activeOddsIntelligence),
-      predictionPreviews: attachOddsEvidence(activeRows(previews), activeOddsIntelligence),
-      predictionReviewCandidates: attachOddsEvidence(activeRows(reviewCandidates), activeOddsIntelligence), predictionHistory: history, predictionPerformance: performance,
+      predictions: attachOddsEvidence(activeRows(recordRows(today)), activeOddsIntelligence),
+      predictionPreviews: attachOddsEvidence(activeRows(recordRows(previews)), activeOddsIntelligence),
+      predictionReviewCandidates: attachOddsEvidence(activeRows(recordRows(reviewCandidates)), activeOddsIntelligence), predictionHistory: history, predictionPerformance: performance,
       predictionSelfAudit: selfAudit, predictionSelfAuditSegments: segmentAudits,
       predictionSelfAuditRootCauses: rootCauses, predictionAdaptiveRuleProposals: adaptiveProposals,
-      oddsSimilarity: activeSimilarityRows(oddsSimilarity), predictionDiagnostics, oddsIntelligence: activeOddsIntelligence };
+      oddsSimilarity: activeSimilarityRows(recordRows(oddsSimilarity)), predictionDiagnostics, oddsIntelligence: activeOddsIntelligence };
     try {
       return reply.type('text/html; charset=utf-8').send(renderDashboard(dashboardPayload));
     } catch (error) {

@@ -14,6 +14,11 @@ const statusLabels: Record<string, string> = { OFFICIAL: 'RESMİ TAHMİN', REVIE
   WAITING: 'VERİ BEKLENİYOR', REJECTED: 'REDDEDİLDİ' };
 const statusClasses: Record<string, string> = { OFFICIAL: 'ok', REVIEW: 'partial', WAITING: 'neutral', REJECTED: 'bad' };
 
+function finiteNumber(value: unknown, fallback = 0): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 function numberText(value: unknown, digits = 0): string {
   return value == null || !Number.isFinite(Number(value)) ? '—' : Number(value).toFixed(digits);
 }

@@ -14,7 +14,10 @@ import { PredictionRepository, PredictionService } from './predictions/service.j
 
 const config = loadConfig();
 const logger = createLogger(config, 'betapp-worker');
-const pool = createPool(config);
+const pool = createPool({ ...config,
+  DB_POOL_MAX: Math.min(config.DB_POOL_MAX, 4),
+  DB_CONNECT_TIMEOUT: Math.max(config.DB_CONNECT_TIMEOUT, 15_000),
+});
 const repository = new FootballRepository(pool);
 const cornerRepository = new CornerRepository(pool);
 const oddsRepository = new OddsRepository(pool, (error, matchId) => {

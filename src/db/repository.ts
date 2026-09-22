@@ -471,7 +471,7 @@ export class FootballRepository {
   }
 
   async dashboardData(timeZone: string) {
-    const [matches, recentFinished, archiveSummary, providers, qualification, cornerAnalyses, oddsAnalyses, datasetAudit, validation, backfill, odds] = await Promise.all([
+    const [matches, recentFinished, archiveSummary, providers] = await Promise.all([
       this.pool.query(
         `SELECT m.id,m.kickoff_at,m.status,m.home_score,m.away_score,l.name AS league,
           ht.name AS home_team,at.name AS away_team,
@@ -510,6 +510,9 @@ export class FootballRepository {
          LEFT JOIN odds_snapshots os ON os.match_id=m.id`
       ),
       this.pool.query('SELECT * FROM provider_status ORDER BY provider'),
+    ]);
+
+    const [qualification, cornerAnalyses, oddsAnalyses, datasetAudit] = await Promise.all([
       this.pool.query('SELECT * FROM provider_qualification ORDER BY provider,capability'),
       this.pool.query(
         `SELECT DISTINCT ON(ca.match_id) ca.*,ht.name home_team,at.name away_team,m.kickoff_at
@@ -527,16 +530,19 @@ export class FootballRepository {
           AND (newer.created_at,newer.id)>(r.created_at,r.id))
         GROUP BY r.id,m.kickoff_at,l.name,ht.name,at.name ORDER BY m.kickoff_at`),
       this.pool.query('SELECT report,created_at FROM dataset_audits ORDER BY created_at DESC LIMIT 1'),
+    ]);
+
+    const [validation, backfill, odds] = await Promise.all([
       this.pool.query('SELECT report,model_version,config_hash,created_at FROM corner_backtests ORDER BY created_at DESC LIMIT 1'),
       this.pool.query('SELECT * FROM backfill_runs ORDER BY updated_at DESC LIMIT 20'),
       this.upcomingOdds(300),
     ]);
+
     return { matches: matches.rows, recentFinishedMatches: recentFinished.rows, archiveSummary: archiveSummary.rows[0] ?? null,
       providers: providers.rows, qualification: qualification.rows, cornerAnalyses: cornerAnalyses.rows,
       oddsAnalyses: oddsAnalyses.rows, datasetAudit: datasetAudit.rows[0] ?? null,
       validation: validation.rows[0] ?? null, backfill: backfill.rows, odds };
   }
-
   async upcomingOdds(limit = 300) {
     const safeLimit = Math.max(1, Math.min(1000, Math.trunc(limit)));
     return (await this.pool.query(

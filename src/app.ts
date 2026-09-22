@@ -57,6 +57,37 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
     }
   };
 
+  const loadDashboardSources = async () => {
+    const data = await repository.dashboardData('Europe/Istanbul');
+
+    const [today, previews, reviewCandidates] = await Promise.all([
+      predictions ? optionalDashboardSource('predictions.today', () => predictions.today(), []) : [],
+      predictions ? optionalDashboardSource('predictions.previews', () => predictions.previews(), []) : [],
+      predictions ? optionalDashboardSource('predictions.reviewCandidates', () => predictions.reviewCandidates(), []) : [],
+    ]);
+
+    const [history, performance, selfAudit] = await Promise.all([
+      predictions ? optionalDashboardSource('predictions.history', () => predictions.history(20), []) : [],
+      predictions ? optionalDashboardSource('predictions.performance', () => predictions.performance(), null) : null,
+      predictions ? optionalDashboardSource('predictions.latestSelfAudit', () => predictions.latestSelfAudit(), null) : null,
+    ]);
+
+    const [segmentAudits, rootCauses, adaptiveProposals] = await Promise.all([
+      predictions ? optionalDashboardSource('predictions.latestSegmentSelfAudits', () => predictions.latestSegmentSelfAudits(), []) : [],
+      predictions ? optionalDashboardSource('predictions.latestRootCauseAudits', () => predictions.latestRootCauseAudits(), []) : [],
+      predictions ? optionalDashboardSource('predictions.latestAdaptiveRuleProposals', () => predictions.latestAdaptiveRuleProposals(), []) : [],
+    ]);
+
+    const [oddsSimilarity, predictionDiagnostics, oddsIntelligenceData] = await Promise.all([
+      predictions ? optionalDashboardSource('predictions.oddsSimilarityShowcase', () => predictions.oddsSimilarityShowcase(4, 5), []) : [],
+      predictions ? optionalDashboardSource('predictions.diagnostics', () => predictions.diagnostics(), null) : null,
+      oddsIntelligence ? optionalDashboardSource('oddsIntelligence.upcoming', () => oddsIntelligence.upcoming(4), []) : [],
+    ]);
+
+    return { data, today, previews, reviewCandidates, history, performance, selfAudit, segmentAudits,
+      rootCauses, adaptiveProposals, oddsSimilarity, predictionDiagnostics, oddsIntelligenceData };
+  };
+
   app.get('/health', async (_request, reply) => {
     const [database, operations] = await Promise.all([repository.databaseHealth(), repository.operationalHealth().catch(() => ({
       providers: {}, worker: { lastRun: null, lastSuccess: null }, backfill: { status: 'UNKNOWN' },
@@ -68,21 +99,8 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
   });
 
   app.get('/api/dashboard', async () => {
-    const [data, today, previews, reviewCandidates, history, performance, selfAudit, segmentAudits, rootCauses, adaptiveProposals, oddsSimilarity, predictionDiagnostics, oddsIntelligenceData] = await Promise.all([
-      repository.dashboardData('Europe/Istanbul'),
-      predictions ? optionalDashboardSource('predictions.today', () => predictions.today(), []) : [],
-      predictions ? optionalDashboardSource('predictions.previews', () => predictions.previews(), []) : [],
-      predictions ? optionalDashboardSource('predictions.reviewCandidates', () => predictions.reviewCandidates(), []) : [],
-      predictions ? optionalDashboardSource('predictions.history', () => predictions.history(20), []) : [],
-      predictions ? optionalDashboardSource('predictions.performance', () => predictions.performance(), null) : null,
-      predictions ? optionalDashboardSource('predictions.latestSelfAudit', () => predictions.latestSelfAudit(), null) : null,
-      predictions ? optionalDashboardSource('predictions.latestSegmentSelfAudits', () => predictions.latestSegmentSelfAudits(), []) : [],
-      predictions ? optionalDashboardSource('predictions.latestRootCauseAudits', () => predictions.latestRootCauseAudits(), []) : [],
-      predictions ? optionalDashboardSource('predictions.latestAdaptiveRuleProposals', () => predictions.latestAdaptiveRuleProposals(), []) : [],
-      predictions ? optionalDashboardSource('predictions.oddsSimilarityShowcase', () => predictions.oddsSimilarityShowcase(4, 5), []) : [],
-      predictions ? optionalDashboardSource('predictions.diagnostics', () => predictions.diagnostics(), null) : null,
-      oddsIntelligence ? optionalDashboardSource('oddsIntelligence.upcoming', () => oddsIntelligence.upcoming(4), []) : [],
-    ]);
+    const { data, today, previews, reviewCandidates, history, performance, selfAudit, segmentAudits,
+      rootCauses, adaptiveProposals, oddsSimilarity, predictionDiagnostics, oddsIntelligenceData } = await loadDashboardSources();
     const activeOddsIntelligence = activeIntelligence(oddsIntelligenceData);
     return { ...data,
       matches: activeRows(data.matches ?? []), recentFinishedMatches: activeRows(data.recentFinishedMatches ?? []),
@@ -163,21 +181,8 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
   app.get<{ Params: { matchId: string } }>('/api/predictions/:matchId', async (request) => predictions
     ? predictions.detail(request.params.matchId) : { matchId: request.params.matchId, state: 'NOT_GENERATED', journal: null, runs: [] });
   app.get('/', async (_request, reply) => {
-    const [data, today, previews, reviewCandidates, history, performance, selfAudit, segmentAudits, rootCauses, adaptiveProposals, oddsSimilarity, predictionDiagnostics, oddsIntelligenceData] = await Promise.all([
-      repository.dashboardData('Europe/Istanbul'),
-      predictions ? optionalDashboardSource('predictions.today', () => predictions.today(), []) : [],
-      predictions ? optionalDashboardSource('predictions.previews', () => predictions.previews(), []) : [],
-      predictions ? optionalDashboardSource('predictions.reviewCandidates', () => predictions.reviewCandidates(), []) : [],
-      predictions ? optionalDashboardSource('predictions.history', () => predictions.history(20), []) : [],
-      predictions ? optionalDashboardSource('predictions.performance', () => predictions.performance(), null) : null,
-      predictions ? optionalDashboardSource('predictions.latestSelfAudit', () => predictions.latestSelfAudit(), null) : null,
-      predictions ? optionalDashboardSource('predictions.latestSegmentSelfAudits', () => predictions.latestSegmentSelfAudits(), []) : [],
-      predictions ? optionalDashboardSource('predictions.latestRootCauseAudits', () => predictions.latestRootCauseAudits(), []) : [],
-      predictions ? optionalDashboardSource('predictions.latestAdaptiveRuleProposals', () => predictions.latestAdaptiveRuleProposals(), []) : [],
-      predictions ? optionalDashboardSource('predictions.oddsSimilarityShowcase', () => predictions.oddsSimilarityShowcase(4, 5), []) : [],
-      predictions ? optionalDashboardSource('predictions.diagnostics', () => predictions.diagnostics(), null) : null,
-      oddsIntelligence ? optionalDashboardSource('oddsIntelligence.upcoming', () => oddsIntelligence.upcoming(4), []) : [],
-    ]);
+    const { data, today, previews, reviewCandidates, history, performance, selfAudit, segmentAudits,
+      rootCauses, adaptiveProposals, oddsSimilarity, predictionDiagnostics, oddsIntelligenceData } = await loadDashboardSources();
     const activeOddsIntelligence = activeIntelligence(oddsIntelligenceData);
     return reply.type('text/html; charset=utf-8').send(renderDashboard({ ...data,
       matches: activeRows(data.matches ?? []), recentFinishedMatches: activeRows(data.recentFinishedMatches ?? []),
@@ -185,8 +190,8 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
       supportedCompetitions: config.SUPPORTED_COMPETITIONS,
       predictions: attachOddsEvidence(activeRows(today), activeOddsIntelligence),
       predictionPreviews: attachOddsEvidence(activeRows(previews), activeOddsIntelligence),
-      predictionReviewCandidates: attachOddsEvidence(activeRows(reviewCandidates), activeOddsIntelligence), predictionHistory: history, predictionPerformance: performance,
-      predictionSelfAudit: selfAudit, predictionSelfAuditSegments: segmentAudits,
+      predictionReviewCandidates: attachOddsEvidence(activeRows(reviewCandidates), activeOddsIntelligence), predictionHistory: history,
+      predictionPerformance: performance, predictionSelfAudit: selfAudit, predictionSelfAuditSegments: segmentAudits,
       predictionSelfAuditRootCauses: rootCauses, predictionAdaptiveRuleProposals: adaptiveProposals,
       oddsSimilarity: activeSimilarityRows(oddsSimilarity), predictionDiagnostics, oddsIntelligence: activeOddsIntelligence }));
   });

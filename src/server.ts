@@ -9,7 +9,10 @@ import { OddsIntelligenceRepository } from './odds-neighbors/repository.js';
 
 const config = loadConfig();
 const logger = createLogger(config, 'betapp-web');
-const pool = createPool(config);
+const pool = createPool({ ...config,
+  DB_POOL_MAX: Math.min(config.DB_POOL_MAX, 6),
+  DB_CONNECT_TIMEOUT: Math.max(config.DB_CONNECT_TIMEOUT, 15_000),
+});
 const repository = new FootballRepository(pool);
 const oddsAnalysis = new OddsAnalysisRepository(pool);
 const predictions = new PredictionRepository(pool, config.SUPPORTED_COMPETITIONS);

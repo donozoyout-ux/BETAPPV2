@@ -36,7 +36,7 @@ const nowgoal = new NowgoalProvider(config, logger);
 const oddsCollector = config.NOWGOAL_ENABLED
   ? new OddsCollector(nowgoal, oddsRepository, repository, config, logger)
   : null;
-const predictionRepository = new PredictionRepository(pool);
+const predictionRepository = new PredictionRepository(pool, config.SUPPORTED_COMPETITIONS);
 const predictionService = new PredictionService(predictionRepository);
 const collectors = [...footballCollectors, ...(oddsCollector ? [oddsCollector] : [])];
 let stopped = false;

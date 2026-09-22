@@ -39,12 +39,8 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
     return league == null || isCompetitionConfigured(String(league), config.SUPPORTED_COMPETITIONS);
   };
   const activeRows = <T extends Record<string, unknown>>(rows: T[]): T[] => rows.filter(competitionAllowed);
-  const intelligenceRows = (value: unknown): OddsIntelligence[] =>
-    Array.isArray(value) ? value.filter((item): item is OddsIntelligence =>
-      Boolean(item) && typeof item === 'object' && !Array.isArray(item)
-      && Boolean((item as OddsIntelligence).match)) : [];
   const activeIntelligence = (rows: OddsIntelligence[]): OddsIntelligence[] => rows.filter((item) =>
-    isCompetitionConfigured(String(item.match?.league ?? ''), config.SUPPORTED_COMPETITIONS));
+    isCompetitionConfigured(String(item.match.league ?? ''), config.SUPPORTED_COMPETITIONS));
   const activeSimilarityRows = (rows: Array<Record<string, unknown>>) => rows.filter((item) => {
     const current = item.current;
     const league = current && typeof current === 'object' && !Array.isArray(current)
@@ -60,22 +56,6 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
       return fallback;
     }
   };
-  const emptyDashboardData = () => ({
-    matches: [] as Array<Record<string, unknown>>,
-    recentFinishedMatches: [] as Array<Record<string, unknown>>,
-    archiveSummary: null as Record<string, unknown> | null,
-    providers: [] as Array<Record<string, unknown>>,
-    qualification: [] as Array<Record<string, unknown>>,
-    cornerAnalyses: [] as Array<Record<string, unknown>>,
-    oddsAnalyses: [] as Array<Record<string, unknown>>,
-    datasetAudit: null as Record<string, unknown> | null,
-    validation: null as Record<string, unknown> | null,
-    backfill: [] as Array<Record<string, unknown>>,
-    odds: [] as Array<Record<string, unknown>>,
-  });
-  const recordRows = (value: unknown): Array<Record<string, unknown>> =>
-    Array.isArray(value) ? value.filter((item): item is Record<string, unknown> =>
-      Boolean(item) && typeof item === 'object' && !Array.isArray(item)) : [];
 
   app.get('/health', async (_request, reply) => {
     const [database, operations] = await Promise.all([repository.databaseHealth(), repository.operationalHealth().catch(() => ({
@@ -89,7 +69,7 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
 
   app.get('/api/dashboard', async () => {
     const [data, today, previews, reviewCandidates, history, performance, selfAudit, segmentAudits, rootCauses, adaptiveProposals, oddsSimilarity, predictionDiagnostics, oddsIntelligenceData] = await Promise.all([
-      optionalDashboardSource('repository.dashboardData', () => repository.dashboardData('Europe/Istanbul'), emptyDashboardData()),
+      repository.dashboardData('Europe/Istanbul'),
       predictions ? optionalDashboardSource('predictions.today', () => predictions.today(), []) : [],
       predictions ? optionalDashboardSource('predictions.previews', () => predictions.previews(), []) : [],
       predictions ? optionalDashboardSource('predictions.reviewCandidates', () => predictions.reviewCandidates(), []) : [],
@@ -103,17 +83,17 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
       predictions ? optionalDashboardSource('predictions.diagnostics', () => predictions.diagnostics(), null) : null,
       oddsIntelligence ? optionalDashboardSource('oddsIntelligence.upcoming', () => oddsIntelligence.upcoming(4), []) : [],
     ]);
-    const activeOddsIntelligence = activeIntelligence(intelligenceRows(oddsIntelligenceData));
+    const activeOddsIntelligence = activeIntelligence(oddsIntelligenceData);
     return { ...data,
-      matches: activeRows(recordRows(data.matches)), recentFinishedMatches: activeRows(recordRows(data.recentFinishedMatches)),
-      odds: activeRows(recordRows(data.odds)), oddsAnalyses: activeRows(recordRows(data.oddsAnalyses)),
+      matches: activeRows(data.matches ?? []), recentFinishedMatches: activeRows(data.recentFinishedMatches ?? []),
+      odds: activeRows(data.odds ?? []), oddsAnalyses: activeRows(data.oddsAnalyses ?? []),
       supportedCompetitions: config.SUPPORTED_COMPETITIONS,
-      predictions: attachOddsEvidence(activeRows(recordRows(today)), activeOddsIntelligence),
-      predictionPreviews: attachOddsEvidence(activeRows(recordRows(previews)), activeOddsIntelligence),
-      predictionReviewCandidates: attachOddsEvidence(activeRows(recordRows(reviewCandidates)), activeOddsIntelligence), predictionHistory: history,
+      predictions: attachOddsEvidence(activeRows(today), activeOddsIntelligence),
+      predictionPreviews: attachOddsEvidence(activeRows(previews), activeOddsIntelligence),
+      predictionReviewCandidates: attachOddsEvidence(activeRows(reviewCandidates), activeOddsIntelligence), predictionHistory: history,
       predictionPerformance: performance, predictionSelfAudit: selfAudit, predictionSelfAuditSegments: segmentAudits,
       predictionSelfAuditRootCauses: rootCauses, predictionAdaptiveRuleProposals: adaptiveProposals,
-      oddsSimilarity: activeSimilarityRows(recordRows(oddsSimilarity)), predictionDiagnostics, oddsIntelligence: activeOddsIntelligence };
+      oddsSimilarity: activeSimilarityRows(oddsSimilarity), predictionDiagnostics, oddsIntelligence: activeOddsIntelligence };
   });
   app.get('/api/odds/upcoming', async () => ({ odds: await repository.upcomingOdds(1000) }));
   app.get('/api/backfill/status', async () => repository.backfillStatus());
@@ -184,7 +164,7 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
     ? predictions.detail(request.params.matchId) : { matchId: request.params.matchId, state: 'NOT_GENERATED', journal: null, runs: [] });
   app.get('/', async (_request, reply) => {
     const [data, today, previews, reviewCandidates, history, performance, selfAudit, segmentAudits, rootCauses, adaptiveProposals, oddsSimilarity, predictionDiagnostics, oddsIntelligenceData] = await Promise.all([
-      optionalDashboardSource('repository.dashboardData', () => repository.dashboardData('Europe/Istanbul'), emptyDashboardData()),
+      repository.dashboardData('Europe/Istanbul'),
       predictions ? optionalDashboardSource('predictions.today', () => predictions.today(), []) : [],
       predictions ? optionalDashboardSource('predictions.previews', () => predictions.previews(), []) : [],
       predictions ? optionalDashboardSource('predictions.reviewCandidates', () => predictions.reviewCandidates(), []) : [],
@@ -198,25 +178,17 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
       predictions ? optionalDashboardSource('predictions.diagnostics', () => predictions.diagnostics(), null) : null,
       oddsIntelligence ? optionalDashboardSource('oddsIntelligence.upcoming', () => oddsIntelligence.upcoming(4), []) : [],
     ]);
-    const activeOddsIntelligence = activeIntelligence(intelligenceRows(oddsIntelligenceData));
-    const dashboardPayload = { ...data,
-      matches: activeRows(recordRows(data.matches)), recentFinishedMatches: activeRows(recordRows(data.recentFinishedMatches)),
-      odds: activeRows(recordRows(data.odds)), oddsAnalyses: activeRows(recordRows(data.oddsAnalyses)),
+    const activeOddsIntelligence = activeIntelligence(oddsIntelligenceData);
+    return reply.type('text/html; charset=utf-8').send(renderDashboard({ ...data,
+      matches: activeRows(data.matches ?? []), recentFinishedMatches: activeRows(data.recentFinishedMatches ?? []),
+      odds: activeRows(data.odds ?? []), oddsAnalyses: activeRows(data.oddsAnalyses ?? []),
       supportedCompetitions: config.SUPPORTED_COMPETITIONS,
-      predictions: attachOddsEvidence(activeRows(recordRows(today)), activeOddsIntelligence),
-      predictionPreviews: attachOddsEvidence(activeRows(recordRows(previews)), activeOddsIntelligence),
-      predictionReviewCandidates: attachOddsEvidence(activeRows(recordRows(reviewCandidates)), activeOddsIntelligence), predictionHistory: history, predictionPerformance: performance,
+      predictions: attachOddsEvidence(activeRows(today), activeOddsIntelligence),
+      predictionPreviews: attachOddsEvidence(activeRows(previews), activeOddsIntelligence),
+      predictionReviewCandidates: attachOddsEvidence(activeRows(reviewCandidates), activeOddsIntelligence), predictionHistory: history, predictionPerformance: performance,
       predictionSelfAudit: selfAudit, predictionSelfAuditSegments: segmentAudits,
       predictionSelfAuditRootCauses: rootCauses, predictionAdaptiveRuleProposals: adaptiveProposals,
-      oddsSimilarity: activeSimilarityRows(recordRows(oddsSimilarity)), predictionDiagnostics, oddsIntelligence: activeOddsIntelligence };
-    try {
-      return reply.type('text/html; charset=utf-8').send(renderDashboard(dashboardPayload));
-    } catch (error) {
-      logger.error({ err: error }, 'Dashboard renderer failed; serving degraded shell');
-      return reply.type('text/html; charset=utf-8').send(renderDashboard({
-        ...emptyDashboardData(), supportedCompetitions: config.SUPPORTED_COMPETITIONS,
-      }));
-    }
+      oddsSimilarity: activeSimilarityRows(oddsSimilarity), predictionDiagnostics, oddsIntelligence: activeOddsIntelligence }));
   });
   app.get<{ Params: { matchId: string } }>('/matches/:matchId', async (request, reply) => {
     const matchId = request.params.matchId;

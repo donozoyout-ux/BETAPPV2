@@ -56,6 +56,22 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
       return fallback;
     }
   };
+  const emptyDashboardData = () => ({
+    matches: [] as Array<Record<string, unknown>>,
+    recentFinishedMatches: [] as Array<Record<string, unknown>>,
+    archiveSummary: null as Record<string, unknown> | null,
+    providers: [] as Array<Record<string, unknown>>,
+    qualification: [] as Array<Record<string, unknown>>,
+    cornerAnalyses: [] as Array<Record<string, unknown>>,
+    oddsAnalyses: [] as Array<Record<string, unknown>>,
+    datasetAudit: null as Record<string, unknown> | null,
+    validation: null as Record<string, unknown> | null,
+    backfill: [] as Array<Record<string, unknown>>,
+    odds: [] as Array<Record<string, unknown>>,
+  });
+  const recordRows = (value: unknown): Array<Record<string, unknown>> =>
+    Array.isArray(value) ? value.filter((item): item is Record<string, unknown> =>
+      Boolean(item) && typeof item === 'object' && !Array.isArray(item)) : [];
 
   app.get('/health', async (_request, reply) => {
     const [database, operations] = await Promise.all([repository.databaseHealth(), repository.operationalHealth().catch(() => ({
@@ -69,7 +85,7 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
 
   app.get('/api/dashboard', async () => {
     const [data, today, previews, reviewCandidates, history, performance, selfAudit, segmentAudits, rootCauses, adaptiveProposals, oddsSimilarity, predictionDiagnostics, oddsIntelligenceData] = await Promise.all([
-      repository.dashboardData('Europe/Istanbul'),
+      optionalDashboardSource('repository.dashboardData', () => repository.dashboardData('Europe/Istanbul'), emptyDashboardData()),
       predictions ? optionalDashboardSource('predictions.today', () => predictions.today(), []) : [],
       predictions ? optionalDashboardSource('predictions.previews', () => predictions.previews(), []) : [],
       predictions ? optionalDashboardSource('predictions.reviewCandidates', () => predictions.reviewCandidates(), []) : [],
@@ -85,8 +101,8 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
     ]);
     const activeOddsIntelligence = activeIntelligence(oddsIntelligenceData);
     return { ...data,
-      matches: activeRows(data.matches ?? []), recentFinishedMatches: activeRows(data.recentFinishedMatches ?? []),
-      odds: activeRows(data.odds ?? []), oddsAnalyses: activeRows(data.oddsAnalyses ?? []),
+      matches: activeRows(recordRows(data.matches)), recentFinishedMatches: activeRows(recordRows(data.recentFinishedMatches)),
+      odds: activeRows(recordRows(data.odds)), oddsAnalyses: activeRows(recordRows(data.oddsAnalyses)),
       supportedCompetitions: config.SUPPORTED_COMPETITIONS,
       predictions: attachOddsEvidence(activeRows(today), activeOddsIntelligence),
       predictionPreviews: attachOddsEvidence(activeRows(previews), activeOddsIntelligence),
@@ -164,7 +180,7 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
     ? predictions.detail(request.params.matchId) : { matchId: request.params.matchId, state: 'NOT_GENERATED', journal: null, runs: [] });
   app.get('/', async (_request, reply) => {
     const [data, today, previews, reviewCandidates, history, performance, selfAudit, segmentAudits, rootCauses, adaptiveProposals, oddsSimilarity, predictionDiagnostics, oddsIntelligenceData] = await Promise.all([
-      repository.dashboardData('Europe/Istanbul'),
+      optionalDashboardSource('repository.dashboardData', () => repository.dashboardData('Europe/Istanbul'), emptyDashboardData()),
       predictions ? optionalDashboardSource('predictions.today', () => predictions.today(), []) : [],
       predictions ? optionalDashboardSource('predictions.previews', () => predictions.previews(), []) : [],
       predictions ? optionalDashboardSource('predictions.reviewCandidates', () => predictions.reviewCandidates(), []) : [],
@@ -179,16 +195,24 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
       oddsIntelligence ? optionalDashboardSource('oddsIntelligence.upcoming', () => oddsIntelligence.upcoming(4), []) : [],
     ]);
     const activeOddsIntelligence = activeIntelligence(oddsIntelligenceData);
-    return reply.type('text/html; charset=utf-8').send(renderDashboard({ ...data,
-      matches: activeRows(data.matches ?? []), recentFinishedMatches: activeRows(data.recentFinishedMatches ?? []),
-      odds: activeRows(data.odds ?? []), oddsAnalyses: activeRows(data.oddsAnalyses ?? []),
+    const dashboardPayload = { ...data,
+      matches: activeRows(recordRows(data.matches)), recentFinishedMatches: activeRows(recordRows(data.recentFinishedMatches)),
+      odds: activeRows(recordRows(data.odds)), oddsAnalyses: activeRows(recordRows(data.oddsAnalyses)),
       supportedCompetitions: config.SUPPORTED_COMPETITIONS,
       predictions: attachOddsEvidence(activeRows(today), activeOddsIntelligence),
       predictionPreviews: attachOddsEvidence(activeRows(previews), activeOddsIntelligence),
       predictionReviewCandidates: attachOddsEvidence(activeRows(reviewCandidates), activeOddsIntelligence), predictionHistory: history, predictionPerformance: performance,
       predictionSelfAudit: selfAudit, predictionSelfAuditSegments: segmentAudits,
       predictionSelfAuditRootCauses: rootCauses, predictionAdaptiveRuleProposals: adaptiveProposals,
-      oddsSimilarity: activeSimilarityRows(oddsSimilarity), predictionDiagnostics, oddsIntelligence: activeOddsIntelligence }));
+      oddsSimilarity: activeSimilarityRows(oddsSimilarity), predictionDiagnostics, oddsIntelligence: activeOddsIntelligence };
+    try {
+      return reply.type('text/html; charset=utf-8').send(renderDashboard(dashboardPayload));
+    } catch (error) {
+      logger.error({ err: error }, 'Dashboard renderer failed; serving degraded shell');
+      return reply.type('text/html; charset=utf-8').send(renderDashboard({
+        ...emptyDashboardData(), supportedCompetitions: config.SUPPORTED_COMPETITIONS,
+      }));
+    }
   });
   app.get<{ Params: { matchId: string } }>('/matches/:matchId', async (request, reply) => {
     const matchId = request.params.matchId;

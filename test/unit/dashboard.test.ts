@@ -42,7 +42,7 @@ describe('renderDashboard', () => {
         ],
       }],
     });
-    expect(html).toContain('Geçmiş İkizler & Sonuç Haritası');
+    expect(html).toContain('Benzer Oran Örnekleri & Sonuç Haritası');
     expect(html).toContain('Bu hesabı oluşturan en yakın geçmiş maçlar');
     expect(html).toContain('Sonuç Haritası');
     expect(html).toContain('Kanıt farkı');
@@ -67,12 +67,32 @@ describe('renderDashboard', () => {
       searchMode: 'CLOSEST_NEIGHBORS', resultMap: [{ market: 'TOTAL_GOALS', line: 2.5, selection: 'OVER', positiveCount: 8, sampleSize: 10, positiveRate: 0.8 }],
       conflictCheck: [{ state: 'CONFLICT' }],
     }] });
-    expect(html).toContain('Oran Rotası · Geçmiş İkizler · Çelişki Kontrolü');
+    expect(html).toContain('Oran Rotası · Benzer Oran Örnekleri · Çelişki Kontrolü');
     expect(html).toContain('2.05 → 1.91');
-    expect(html).toContain('Geçmiş İkizler: 1');
+    expect(html).toContain('Yakın oran örneği: 1');
+    expect(html).toContain('ÖRNEK YETERSİZ');
     expect(html).toContain('&lt;img&gt;');
     expect(html).not.toContain('<img>');
     expect(html).not.toMatch(/KESİN|GARANTİ|BANKO/);
+  });
+
+  it('does not present a single low-similarity historical example as a twin', () => {
+    const html = renderDashboard({ providers: [], matches: [], oddsSimilarity: [{
+      current: { matchId: 'weak', kickoffAt: '2026-09-20T18:00:00Z', league: 'UEFA Nations League B',
+        homeTeam: 'Kosovo', awayTeam: 'Ireland', state: 'MATCH_ONLY', marketType: 'TOTAL_GOALS',
+        marketName: 'Total Goals', line: 2.25, selection: 'UNDER', openingOdds: 1.78, currentOdds: 1.78,
+        historicalSettledSampleSize: 1, historicalHitRate: 1, averageSimilarity: 0.50 },
+      evidenceGap: { baselineRate: 1, gapPp: 0, baselineSampleSize: 1, baselineScope: 'GLOBAL_SUPPORTED_COMPETITIONS' },
+      matches: [{ rank: 1, league: 'Serie A', homeTeam: 'Bologna', awayTeam: 'Torino',
+        kickoffAt: '2026-09-19T18:00:00Z', openingOdds: 2.03, currentOdds: 1.92, outcome: 'HALF_WIN' }],
+      resultMap: [],
+    }] });
+    expect(html).toContain('Benzer oran kanıtı yetersiz');
+    expect(html).toContain('en az 5 geçmiş maç');
+    expect(html).toContain('%70 ortalama benzerlik');
+    expect(html).not.toContain('Kosovo — Ireland');
+    expect(html).not.toContain('Bologna — Torino');
+    expect(html).not.toContain('Geçmiş başarı: 100.0%');
   });
 
   it('separates official predictions, review candidates and rejected matches', () => {

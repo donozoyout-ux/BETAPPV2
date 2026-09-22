@@ -39,7 +39,7 @@ describe('Odds Neighbor Engine V2', () => {
   it('ranks each closest neighbor independently and supports a separate odds-band meaning', () => {
     const target = route('target');
     const near: HistoricalNeighborInput = { ...match('near', '2029-01-01T18:00:00Z'), route: route('near', [2.04,1.92]) };
-    const far: HistoricalNeighborInput = { ...match('far', '2028-01-01T18:00:00Z'), route: route('far', [3.2,2.9]) };
+    const far: HistoricalNeighborInput = { ...match('far', '2028-01-01T18:00:00Z'), route: route('far', [2.2,2.1]) };
     const closest = findPastTwins({ competitionId: 'league-1', route: target }, [far, near], { mode: 'CLOSEST_NEIGHBORS', limit: 2 });
     expect(closest.map((item) => item.matchId)).toEqual(['near','far']);
     expect(closest[0]!.similarity).toBeGreaterThan(closest[1]!.similarity);

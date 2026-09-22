@@ -312,7 +312,12 @@ export function renderDashboard(data: DashboardData): string {
   const qualificationProviders = [...new Set((data.qualification ?? []).map((item) => String(item.provider)))];
   const matrix = qualificationProviders.length ? `<div class="scroll"><table><thead><tr><th>Provider</th>${capabilities.map((capability) => `<th>${escapeHtml(capability)}</th>`).join('')}</tr></thead><tbody>${qualificationProviders.map((provider) => `<tr><td><strong>${escapeHtml(provider)}</strong></td>${capabilities.map((capability) => { const item = (data.qualification ?? []).find((entry) => entry.provider === provider && entry.capability === capability); const result = item?.result ?? 'NOT_TESTED'; return `<td><span class="badge ${result === 'SUPPORTED' ? 'ok' : result === 'PARTIAL' ? 'partial' : 'bad'}">${escapeHtml(result)}</span></td>`; }).join('')}</tr>`).join('')}</tbody></table></div>` : renderEmpty('✓', 'Qualification henüz çalışmadı', 'Kaynak yetenek testleri tamamlandığında destek matrisi burada oluşacak.');
 
-  const oddsSimilarityCards = oddsSimilarity.length ? oddsSimilarity.map((entry) => {
+  const qualifiedOddsSimilarity = oddsSimilarity.filter((entry) => {
+    const current = (entry.current ?? {}) as Record<string, unknown>;
+    return finiteNumber(current.historicalSettledSampleSize) >= 5
+      && finiteNumber(current.averageSimilarity) >= 0.70;
+  });
+  const oddsSimilarityCards = qualifiedOddsSimilarity.length ? qualifiedOddsSimilarity.map((entry) => {
     const current = (entry.current ?? {}) as Record<string, unknown>;
     const history = Array.isArray(entry.matches) ? entry.matches as Array<Record<string, unknown>> : [];
     const resultMap = Array.isArray(entry.resultMap) ? entry.resultMap as Array<Record<string, unknown>> : [];
@@ -321,10 +326,15 @@ export function renderDashboard(data: DashboardData): string {
     const stateLabel = state === 'LOCKED_PREDICTION' ? 'Resmi tahmin'
       : state === 'MATCH_ONLY' ? 'Karşılaştırma' : 'İnceleme adayı';
     const stateClass = state === 'LOCKED_PREDICTION' ? 'ok' : state === 'MATCH_ONLY' ? 'neutral' : 'partial';
+    const settledSample = finiteNumber(current.historicalSettledSampleSize);
     const hitRate = current.historicalHitRate == null ? null : finiteNumber(current.historicalHitRate);
-    const hitRateText = hitRate == null ? 'Henüz hesaplanmadı' : percent(hitRate);
-    const avgSimilarity = current.averageSimilarity == null ? '—'
-      : `${(finiteNumber(current.averageSimilarity) * 100).toFixed(0)}%`;
+    const hitRateText = settledSample < 5 ? 'Örnek yetersiz'
+      : hitRate == null ? 'Henüz hesaplanmadı' : percent(hitRate);
+    const avgSimilarityValue = finiteNumber(current.averageSimilarity) * 100;
+    const avgSimilarity = current.averageSimilarity == null ? '—' : `${avgSimilarityValue.toFixed(0)}%`;
+    const similarityLabel = avgSimilarityValue >= 90 ? 'Güçlü ikiz'
+      : avgSimilarityValue >= 80 ? 'İyi benzerlik' : 'Zayıf benzerlik';
+    const similarityHeading = avgSimilarityValue >= 80 ? 'Geçmiş İkizler' : 'Yakın Oran Örnekleri';
     const movement = finiteNumber(current.probabilityDeltaPp);
     const agreement = Math.round(finiteNumber(current.agreementRatio) * 100);
     const line = current.line == null ? '' : ` ${escapeHtml(current.line)}`;
@@ -347,9 +357,11 @@ export function renderDashboard(data: DashboardData): string {
       const rate = item.positiveRate == null ? 0 : finiteNumber(item.positiveRate);
       const itemLine = item.line == null ? '' : ` ${escapeHtml(item.line)}`;
       const label = `${translateMarket(item.marketType)}${itemLine} · ${translateSelection(item.selection)}`;
+      const sample = finiteNumber(item.sampleSize);
+      const rateReady = sample >= 5;
       return `<div class="result-map-row"><span class="result-map-label">${escapeHtml(label)} <small style="color:var(--muted)">(${escapeHtml(item.positiveCount)}/${escapeHtml(item.sampleSize)})</small></span>
-        <span class="result-track"><span class="result-fill" style="width:${Math.max(0, Math.min(100, rate * 100)).toFixed(0)}%"></span></span>
-        <span class="result-map-value">${(rate * 100).toFixed(0)}%</span></div>`;
+        <span class="result-track"><span class="result-fill" style="width:${rateReady ? Math.max(0, Math.min(100, rate * 100)).toFixed(0) : 0}%"></span></span>
+        <span class="result-map-value">${rateReady ? `${(rate * 100).toFixed(0)}%` : 'Örnek yetersiz'}</span></div>`;
     }).join('');
 
     const rows = history.map((item) => {
@@ -358,10 +370,11 @@ export function renderDashboard(data: DashboardData): string {
         : ['LOSS','HALF_LOSS'].includes(rawOutcome) ? 'bad' : 'partial';
       const score = item.homeScore == null || item.awayScore == null ? 'Sonuç yok' : `${item.homeScore} - ${item.awayScore}`;
       const cornerScore = item.homeCorners == null || item.awayCorners == null ? null : `${item.homeCorners} - ${item.awayCorners} korner`;
+      const differentLeague = String(item.league ?? '') !== String(current.league ?? '');
       return `<div class="similar-row" data-search-row>
         <span class="similar-rank">#${escapeHtml(item.rank)}</span>
         <div class="similar-teams"><strong>${escapeHtml(item.homeTeam)} — ${escapeHtml(item.awayTeam)}</strong>
-          <span>${escapeHtml(formatDate(item.kickoffAt, { day: '2-digit', month: 'long', year: 'numeric' }))} · ${escapeHtml(item.league)}</span></div>
+          <span>${escapeHtml(formatDate(item.kickoffAt, { day: '2-digit', month: 'long', year: 'numeric' }))} · ${escapeHtml(item.league)}${differentLeague ? ' · Farklı lig' : ''}</span></div>
         <div class="similar-history-odds">${finiteNumber(item.openingOdds).toFixed(2)} → ${finiteNumber(item.currentOdds).toFixed(2)}
           <small>${escapeHtml(translateMarket(item.marketType))} · ${escapeHtml(translateSelection(item.selection))} · karar -${escapeHtml(item.featureLeadMinutes)} dk</small></div>
         <div class="similar-result"><span class="badge ${outcomeClass}">${escapeHtml(outcomeText(rawOutcome))}</span>
@@ -370,7 +383,7 @@ export function renderDashboard(data: DashboardData): string {
     }).join('');
 
     return `<article class="similarity-card" data-search-row>
-      <div class="similarity-head"><div><span class="section-kicker">Geçmiş İkizler</span><h3>${escapeHtml(current.homeTeam)} — ${escapeHtml(current.awayTeam)}</h3>
+      <div class="similarity-head"><div><span class="section-kicker">${escapeHtml(similarityHeading)}</span><h3>${escapeHtml(current.homeTeam)} — ${escapeHtml(current.awayTeam)}</h3>
         <p>${escapeHtml(current.league)} · ${escapeHtml(formatDate(current.kickoffAt, { day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' }))}</p></div>
         <span class="badge ${stateClass}">${escapeHtml(stateLabel)}</span></div>
       <div class="similarity-current"><div class="similarity-market">${escapeHtml(marketLabel)}</div>
@@ -381,6 +394,7 @@ export function renderDashboard(data: DashboardData): string {
         <div class="similarity-meta"><span class="badge neutral">Benzer geçmiş maç: ${escapeHtml(current.historicalSettledSampleSize)}</span>
           <span class="badge neutral">Geçmiş başarı: ${escapeHtml(hitRateText)}</span>
           <span class="badge neutral">Ortalama benzerlik: ${escapeHtml(avgSimilarity)}</span>
+          <span class="badge neutral">${escapeHtml(similarityLabel)}</span>
           <span class="badge neutral">Bahis şirketi uyumu: ${agreement}%</span></div>
         <div class="evidence-strip">
           <div class="evidence-box"><small>Benzer grubun başarısı</small><strong>${escapeHtml(hitRateText)}</strong></div>
@@ -393,20 +407,27 @@ export function renderDashboard(data: DashboardData): string {
       ${mapRows ? `<div class="result-map"><div class="result-map-head"><strong>Sonuç Haritası</strong><span>Aynı geçmiş ikiz grubunda diğer marketler</span></div>${mapRows}</div>` : ''}
       <div class="similar-list"><div class="similar-list-title">Bu hesabı oluşturan en yakın geçmiş maçlar</div>
         ${rows || '<div class="similar-list-title">Bu oran yapısına benzeyen sonuçlanmış maç henüz bulunamadı.</div>'}</div></article>`;
-  }).join('') : renderEmpty('∿', 'Henüz geçmiş ikiz bulunamadı',
-    oddsAnalyses.length
-      ? 'Oranlar takip ediliyor. Yeterli gerçek historical odds örneği oluştuğunda Geçmiş İkizler ve Sonuç Haritası burada açılacak.'
-      : 'Önce maçların oran verileri toplanacak, ardından gerçek geçmiş oran kayıtlarıyla karşılaştırılacak.');
+  }).join('') : renderEmpty('∿', oddsSimilarity.length ? 'Benzer oran kanıtı yetersiz' : 'Henüz benzer oran örneği bulunamadı',
+    oddsSimilarity.length
+      ? 'Bu kart için en az 5 geçmiş maç ve en az %70 ortalama benzerlik gerekir. Daha zayıf örnekler ikiz olarak gösterilmez.'
+      : oddsAnalyses.length
+        ? 'Oranlar takip ediliyor. Yeterli gerçek historical odds örneği oluştuğunda benzer oran örnekleri burada açılacak.'
+        : 'Önce maçların oran verileri toplanacak, ardından gerçek geçmiş oran kayıtlarıyla karşılaştırılacak.');
   const oddsIntelligenceCards = oddsIntelligence.length ? oddsIntelligence.map((entry) => {
     const match = (entry.match ?? {}) as Record<string, unknown>; const route = (entry.oddsRoute ?? {}) as Record<string, unknown>;
     const twins = Array.isArray(entry.pastTwins) ? entry.pastTwins as Array<Record<string, unknown>> : [];
     const map = Array.isArray(entry.resultMap) ? entry.resultMap as Array<Record<string, unknown>> : [];
     const routeValues = Array.isArray(route.snapshots) ? route.snapshots as Array<Record<string, unknown>> : [];
     const routeText = routeValues.map((item) => finiteNumber(item.medianOdds).toFixed(2)).join(' → ');
-    const resultRows = map.filter((item) => finiteNumber(item.sampleSize) > 0).slice(0, 4).map((item) =>
-      `<li>${escapeHtml(translateMarket(item.market))} ${item.line == null ? '' : escapeHtml(item.line)} · ${escapeHtml(translateSelection(item.selection))}: <strong>${escapeHtml(item.positiveCount)}/${escapeHtml(item.sampleSize)}</strong> (${percent(item.positiveRate)})</li>`).join('');
+    const resultRows = map.filter((item) => finiteNumber(item.sampleSize) > 0).slice(0, 4).map((item) => {
+      const sample = finiteNumber(item.sampleSize);
+      const rateText = sample >= 5 ? percent(item.positiveRate) : 'Örnek yetersiz';
+      return `<li>${escapeHtml(translateMarket(item.market))} ${item.line == null ? '' : escapeHtml(item.line)} · ${escapeHtml(translateSelection(item.selection))}: <strong>${escapeHtml(item.positiveCount)}/${escapeHtml(item.sampleSize)}</strong> (${escapeHtml(rateText)})</li>`;
+    }).join('');
     const conflicts = Array.isArray(entry.conflictCheck) ? entry.conflictCheck as Array<Record<string, unknown>> : [];
-    return `<article class="card" data-search-row><div class="row"><div><span class="section-kicker">Oran Rotası</span><h3>${escapeHtml(match.homeTeam)} — ${escapeHtml(match.awayTeam)}</h3><p>${escapeHtml(match.league)} · ${escapeHtml(routeText || 'Yeterli gerçek snapshot yok')}</p></div><span class="badge neutral">${escapeHtml(route.direction ?? 'FLAT')} · ${escapeHtml(route.strength ?? 'WEAK')}</span></div><p class="evidence-note">Geçmiş İkizler: ${escapeHtml(twins.length)} · Kanıt seviyesi: ${escapeHtml(entry.evidenceStrength ?? 'VERY_LOW')} · Mod: ${escapeHtml(entry.searchMode ?? 'CLOSEST_NEIGHBORS')}</p><div class="evidence-strip"><div class="evidence-box"><small>Sonuç Haritası</small><strong>${escapeHtml(map.length)}</strong><span>gözlemlenebilir market</span></div><div class="evidence-box"><small>Çelişki Kontrolü</small><strong>${escapeHtml(conflicts.filter((item) => item.state === 'CONFLICT').length)}</strong><span>ters sinyal</span></div></div><ul class="details-list">${resultRows || '<li>Sonuç haritası için yeterli gerçek sonuç yok.</li>'}</ul><p class="evidence-note">Geçmiş benzerlik ve sonuç dağılımıdır; resmi tahmin veya bahis kararı değildir.</p></article>`;
+    const twinLabel = twins.length >= 5 ? 'Geçmiş İkizler' : 'Yakın oran örneği';
+    const evidenceLabel = twins.length >= 5 ? String(entry.evidenceStrength ?? 'VERY_LOW') : 'ÖRNEK YETERSİZ';
+    return `<article class="card" data-search-row><div class="row"><div><span class="section-kicker">Oran Rotası</span><h3>${escapeHtml(match.homeTeam)} — ${escapeHtml(match.awayTeam)}</h3><p>${escapeHtml(match.league)} · ${escapeHtml(routeText || 'Yeterli gerçek snapshot yok')}</p></div><span class="badge neutral">${escapeHtml(route.direction ?? 'FLAT')} · ${escapeHtml(route.strength ?? 'WEAK')}</span></div><p class="evidence-note">${escapeHtml(twinLabel)}: ${escapeHtml(twins.length)} · Kanıt seviyesi: ${escapeHtml(evidenceLabel)} · Mod: ${escapeHtml(entry.searchMode ?? 'CLOSEST_NEIGHBORS')}</p><div class="evidence-strip"><div class="evidence-box"><small>Sonuç Haritası</small><strong>${escapeHtml(map.length)}</strong><span>gözlemlenebilir market</span></div><div class="evidence-box"><small>Çelişki Kontrolü</small><strong>${escapeHtml(conflicts.filter((item) => item.state === 'CONFLICT').length)}</strong><span>ters sinyal</span></div></div><ul class="details-list">${resultRows || '<li>Sonuç haritası için yeterli gerçek sonuç yok.</li>'}</ul><p class="evidence-note">Geçmiş benzerlik ve sonuç dağılımıdır; resmi tahmin veya bahis kararı değildir.</p></article>`;
   }).join('') : renderEmpty('↗', 'Oran rotası için veri birikiyor', 'Yalnız gerçek pre-match odds snapshotları yeterli olduğunda analiz görünür.');
   const officialPredictions = predictions.filter((item) => gateStatus(item) === 'OFFICIAL');
   const reviewMatchIds = new Set(reviewPredictions.map((item) => String(item.matchId ?? '')));
@@ -847,10 +868,10 @@ export function renderDashboard(data: DashboardData): string {
           <div class="section-title"><div><h2>Tahmin Oluşturulmayan Maçlar</h2><p>Kalabalık kartlar yerine yalnız ana sebebi gösteriyoruz.</p></div><span class="badge neutral">${rejectedPredictionCount}</span></div>
           ${rejectedCompact}</section>
 
-        <section class="section" id="odds-analysis"><div class="section-title"><div><span class="section-kicker">BETAPP Farkı</span><h2>Geçmiş İkizler & Sonuç Haritası</h2><p>Benzer oran profillerini buluyor, o grubun farklı marketlerde nasıl sonuçlandığını ve lig tabanından farkını açıklıyoruz.</p></div></div>
+        <section class="section" id="odds-analysis"><div class="section-title"><div><span class="section-kicker">BETAPP Farkı</span><h2>Benzer Oran Örnekleri & Sonuç Haritası</h2><p>Benzer oran profillerini buluyor, o grubun farklı marketlerde nasıl sonuçlandığını ve lig tabanından farkını açıklıyoruz.</p></div></div>
           <div class="similarity-grid">${oddsSimilarityCards}</div></section>
 
-        <section class="section"><div class="section-title"><div><span class="section-kicker">Odds Neighbor Engine V2</span><h2>Oran Rotası · Geçmiş İkizler · Çelişki Kontrolü</h2><p>Bu katman Prediction V1’den ayrıdır; yalnız açıklayıcı geçmiş oran analizi üretir.</p></div></div>
+        <section class="section"><div class="section-title"><div><span class="section-kicker">Odds Neighbor Engine V2</span><h2>Oran Rotası · Benzer Oran Örnekleri · Çelişki Kontrolü</h2><p>Bu katman Prediction V1’den ayrıdır; yalnız açıklayıcı geçmiş oran analizi üretir.</p></div></div>
           <div class="grid">${oddsIntelligenceCards}</div></section>
 
         <section class="section" id="prediction-history"><div class="section-title"><div><span class="section-kicker">Geçmiş</span><h2>Geçmiş Tahminler</h2><p>Resmi tahminlerin ve sonuçların geçmiş kaydı.</p></div></div>

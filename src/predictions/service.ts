@@ -15,6 +15,7 @@ import { adaptiveRuleConfigHash, adaptiveRuleEvaluationInputHash, generateAdapti
   type AdaptiveRuleConfig } from './self-audit-v4.js';
 import type { HistoricalExample, PredictionEvaluation, PredictionTarget, SettlementOutcome } from './types.js';
 import { inspectPredictionRow } from './gate-inspector.js';
+import { isCompetitionConfigured } from '../matching/competition.js';
 
 function withPredictionGate(row: Record<string, unknown>, now = new Date(), config: PredictionConfig = predictionConfig) {
   const facts = { prediction_run_exists: true, odds_analysis_exists: true, ...row };
@@ -66,7 +67,11 @@ function historicalExample(row: Record<string, unknown>): HistoricalExample {
 }
 
 export class PredictionRepository {
-  constructor(private readonly pool: DatabasePool) {}
+  constructor(private readonly pool: DatabasePool, private readonly supportedCompetitions?: readonly string[]) {}
+
+  private competitionAllowed(name: unknown): boolean {
+    return !this.supportedCompetitions?.length || isCompetitionConfigured(String(name ?? ''), this.supportedCompetitions);
+  }
 
   async ensureModel(config: PredictionConfig = predictionConfig) {
     await this.pool.query(`INSERT INTO prediction_model_versions(model_version,config_hash,config)
@@ -74,21 +79,24 @@ export class PredictionRepository {
   }
 
   async loadHistoricalExamples(before?: Date, includeIneligible = false): Promise<HistoricalExample[]> {
-    const result = await this.pool.query(`SELECT * FROM prediction_historical_examples
-      WHERE ($1::timestamptz IS NULL OR kickoff_at<$1) AND ($2::boolean OR analysis_eligible=true)
-      ORDER BY kickoff_at,id`, [before ?? null, includeIneligible]);
-    return result.rows.map(historicalExample);
+    const result = await this.pool.query(`SELECT e.*,l.name competition_name FROM prediction_historical_examples e
+      JOIN leagues l ON l.id=e.competition_id
+      WHERE ($1::timestamptz IS NULL OR e.kickoff_at<$1) AND ($2::boolean OR e.analysis_eligible=true)
+      ORDER BY e.kickoff_at,e.id`, [before ?? null, includeIneligible]);
+    return result.rows.filter((row) => this.competitionAllowed(row.competition_name)).map(historicalExample);
   }
 
   async loadTargets(whereSql = "m.status='scheduled' AND m.kickoff_at>now()", params: unknown[] = []): Promise<PredictionTarget[]> {
-    const result = await this.pool.query(`SELECT m.id match_id,m.league_id competition_id,m.kickoff_at,
+    const result = await this.pool.query(`SELECT m.id match_id,m.league_id competition_id,m.kickoff_at,l.name competition_name,
       r.input_hash odds_input_hash,COALESCE(jsonb_agg(to_jsonb(i) ORDER BY i.score DESC)
       FILTER(WHERE i.id IS NOT NULL),'[]'::jsonb) items
-      FROM matches m JOIN LATERAL(SELECT * FROM odds_analysis_runs ar WHERE ar.match_id=m.id
+      FROM matches m JOIN leagues l ON l.id=m.league_id
+      JOIN LATERAL(SELECT * FROM odds_analysis_runs ar WHERE ar.match_id=m.id
         ORDER BY ar.created_at DESC,ar.id DESC LIMIT 1) r ON true
       LEFT JOIN odds_analysis_items i ON i.run_id=r.id WHERE ${whereSql}
-      GROUP BY m.id,r.id,r.input_hash ORDER BY m.kickoff_at`, params);
-    return result.rows.map((row) => ({ matchId: row.match_id, competitionId: row.competition_id,
+      GROUP BY m.id,l.name,r.id,r.input_hash ORDER BY m.kickoff_at`, params);
+    return result.rows.filter((row) => this.competitionAllowed(row.competition_name)).map((row) => ({
+      matchId: row.match_id, competitionId: row.competition_id,
       kickoffAt: new Date(row.kickoff_at), oddsInputHash: row.odds_input_hash,
       oddsItems: (row.items as Array<Record<string, unknown>>).map(analysisItem) }));
   }

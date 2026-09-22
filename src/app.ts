@@ -9,6 +9,7 @@ import type { Logger } from './logger.js';
 import type { PredictionRepository } from './predictions/service.js';
 import type { OddsIntelligenceRepository } from './odds-neighbors/repository.js';
 import type { OddsIntelligence } from './odds-neighbors/types.js';
+import { isCompetitionConfigured } from './matching/competition.js';
 
 function oddsEvidence(analysis: OddsIntelligence | undefined): Record<string, unknown> | null {
   if (!analysis) return null;
@@ -32,6 +33,14 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
   oddsAnalysis?: OddsAnalysisRepository, predictions?: PredictionRepository, oddsIntelligence?: OddsIntelligenceRepository) {
   const app = Fastify({ loggerInstance: logger });
   void app.register(helmet, { contentSecurityPolicy: false });
+
+  const competitionAllowed = (row: Record<string, unknown>): boolean => {
+    const league = row.league ?? row.competition;
+    return league == null || isCompetitionConfigured(String(league), config.SUPPORTED_COMPETITIONS);
+  };
+  const activeRows = <T extends Record<string, unknown>>(rows: T[]): T[] => rows.filter(competitionAllowed);
+  const activeIntelligence = (rows: OddsIntelligence[]): OddsIntelligence[] => rows.filter((item) =>
+    isCompetitionConfigured(String(item.match.league ?? ''), config.SUPPORTED_COMPETITIONS));
 
   const optionalDashboardSource = async <T>(source: string, task: () => Promise<T>, fallback: T): Promise<T> => {
     try {
@@ -68,12 +77,17 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
       predictions ? optionalDashboardSource('predictions.diagnostics', () => predictions.diagnostics(), null) : null,
       oddsIntelligence ? optionalDashboardSource('oddsIntelligence.upcoming', () => oddsIntelligence.upcoming(4), []) : [],
     ]);
-    return { ...data, supportedCompetitions: config.SUPPORTED_COMPETITIONS,
-      predictions: attachOddsEvidence(today, oddsIntelligenceData),
-      predictionPreviews: attachOddsEvidence(previews, oddsIntelligenceData),
-      predictionReviewCandidates: attachOddsEvidence(reviewCandidates, oddsIntelligenceData), predictionHistory: history,
+    const activeOddsIntelligence = activeIntelligence(oddsIntelligenceData);
+    return { ...data,
+      matches: activeRows(data.matches ?? []), recentFinishedMatches: activeRows(data.recentFinishedMatches ?? []),
+      odds: activeRows(data.odds ?? []), oddsAnalyses: activeRows(data.oddsAnalyses ?? []),
+      supportedCompetitions: config.SUPPORTED_COMPETITIONS,
+      predictions: attachOddsEvidence(activeRows(today), activeOddsIntelligence),
+      predictionPreviews: attachOddsEvidence(activeRows(previews), activeOddsIntelligence),
+      predictionReviewCandidates: attachOddsEvidence(activeRows(reviewCandidates), activeOddsIntelligence), predictionHistory: history,
       predictionPerformance: performance, predictionSelfAudit: selfAudit, predictionSelfAuditSegments: segmentAudits,
-      predictionSelfAuditRootCauses: rootCauses, predictionAdaptiveRuleProposals: adaptiveProposals, oddsSimilarity, predictionDiagnostics, oddsIntelligence: oddsIntelligenceData };
+      predictionSelfAuditRootCauses: rootCauses, predictionAdaptiveRuleProposals: adaptiveProposals,
+      oddsSimilarity: activeRows(oddsSimilarity), predictionDiagnostics, oddsIntelligence: activeOddsIntelligence };
   });
   app.get('/api/odds/upcoming', async () => ({ odds: await repository.upcomingOdds(1000) }));
   app.get('/api/backfill/status', async () => repository.backfillStatus());
@@ -158,12 +172,17 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
       predictions ? optionalDashboardSource('predictions.diagnostics', () => predictions.diagnostics(), null) : null,
       oddsIntelligence ? optionalDashboardSource('oddsIntelligence.upcoming', () => oddsIntelligence.upcoming(4), []) : [],
     ]);
-    return reply.type('text/html; charset=utf-8').send(renderDashboard({ ...data, supportedCompetitions: config.SUPPORTED_COMPETITIONS,
-      predictions: attachOddsEvidence(today, oddsIntelligenceData),
-      predictionPreviews: attachOddsEvidence(previews, oddsIntelligenceData),
-      predictionReviewCandidates: attachOddsEvidence(reviewCandidates, oddsIntelligenceData), predictionHistory: history, predictionPerformance: performance,
+    const activeOddsIntelligence = activeIntelligence(oddsIntelligenceData);
+    return reply.type('text/html; charset=utf-8').send(renderDashboard({ ...data,
+      matches: activeRows(data.matches ?? []), recentFinishedMatches: activeRows(data.recentFinishedMatches ?? []),
+      odds: activeRows(data.odds ?? []), oddsAnalyses: activeRows(data.oddsAnalyses ?? []),
+      supportedCompetitions: config.SUPPORTED_COMPETITIONS,
+      predictions: attachOddsEvidence(activeRows(today), activeOddsIntelligence),
+      predictionPreviews: attachOddsEvidence(activeRows(previews), activeOddsIntelligence),
+      predictionReviewCandidates: attachOddsEvidence(activeRows(reviewCandidates), activeOddsIntelligence), predictionHistory: history, predictionPerformance: performance,
       predictionSelfAudit: selfAudit, predictionSelfAuditSegments: segmentAudits,
-      predictionSelfAuditRootCauses: rootCauses, predictionAdaptiveRuleProposals: adaptiveProposals, oddsSimilarity, predictionDiagnostics, oddsIntelligence: oddsIntelligenceData }));
+      predictionSelfAuditRootCauses: rootCauses, predictionAdaptiveRuleProposals: adaptiveProposals,
+      oddsSimilarity: activeRows(oddsSimilarity), predictionDiagnostics, oddsIntelligence: activeOddsIntelligence }));
   });
   app.get<{ Params: { matchId: string } }>('/matches/:matchId', async (request, reply) => {
     const matchId = request.params.matchId;

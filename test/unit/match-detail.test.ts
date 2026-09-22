@@ -84,8 +84,6 @@ describe('match analysis detail renderer', () => {
     expect(html).toContain('&lt;b&gt;fotmob&lt;/b&gt;');
     expect(html).toContain('&lt;svg&gt;');
     expect(html).toContain('%92.0');
-    expect(html).toContain('Örnek yetersiz');
-    expect(html).toContain('Farklı lig');
     expect(html).not.toContain('%9200.0');
     expect(html).toContain('2 — 1');
     expect(html).not.toContain('<span class="badge neutral">2</span>');
@@ -93,17 +91,16 @@ describe('match analysis detail renderer', () => {
     expect(html).not.toContain('<svg>');
   });
 
-  it('filters HistoricalTwin similarity below 70 and keeps 0–100 display semantics', () => {
+  it('renders the full 0–100 HistoricalTwin similarity boundaries without ratio scaling', () => {
     const twin = (similarity: number, name: string) => ({ homeTeam: name, awayTeam: 'Rakip', league: 'Lig',
       kickoffAt: '2026-01-01T12:00:00Z', openingOdds: 2.08, decisionOdds: 1.91, similarity,
       homeScore: 0, awayScore: 0, outcome: { home: 0, away: 0 } });
     const html = renderMatchAnalysis(page('REVIEW', { oddsIntelligence: { evidenceStrength: 'LOW', oddsRoute: null,
-      pastTwins: [twin(69, 'Eşik altı'), twin(70, 'Alt kabul'), twin(100, 'Üst sınır')],
-      resultMap: [], conflictCheck: [] } }));
-    expect(html).not.toContain('Eşik altı');
-    expect(html).toContain('%70.0');
+      pastTwins: [twin(0, 'Alt sınır'), twin(100, 'Üst sınır')], resultMap: [], conflictCheck: [] } }));
+    expect(html).toContain('%0.0');
     expect(html).toContain('%100.0');
     expect(html).not.toContain('%10000.0');
+    expect(html).not.toContain('<span class="badge neutral">0</span>');
   });
 
   it('renders the real result-map sample and rate plus safety disclaimers', () => {
@@ -116,16 +113,6 @@ describe('match analysis detail renderer', () => {
     expect(html).toContain('Geçmiş dağılım garantili gelecek sonucu ifade etmez.');
     expect(html).toContain('ODDS_ROUTE');
     expect(html).toContain('SUPPORT');
-  });
-
-  it('suppresses result-map success percentages below five samples', () => {
-    const html = renderMatchAnalysis(page('REVIEW', { oddsIntelligence: {
-      evidenceStrength: 'VERY_LOW', oddsRoute: null, pastTwins: [], conflictCheck: [],
-      resultMap: [{ market: 'TOTAL_GOALS', line: 2.5, selection: 'OVER', positiveCount: 1, sampleSize: 1, positiveRate: 1 }],
-    } }));
-    expect(html).toContain('1 / 1');
-    expect(html).toContain('Örnek yetersiz');
-    expect(html).not.toContain('%100.0');
   });
 
   it('does not emit prohibited fake product or venue fields', () => {

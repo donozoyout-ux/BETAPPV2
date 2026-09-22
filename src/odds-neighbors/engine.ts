@@ -11,15 +11,11 @@ export function findPastTwins(target: { competitionId: string; route: OddsRoute 
   const lower = options.minimumOdds ?? target.route.openingOdds * (1 - band); const upper = options.maximumOdds ?? target.route.openingOdds * (1 + band);
   const scored = filtered.map((candidate) => ({ candidate, score: routeDistance(target.route, candidate.route, target.competitionId, candidate.competitionId, config) }))
     .filter((item): item is typeof item & { score: NonNullable<typeof item.score> } => item.score != null)
-    .filter((item) => item.score.similarity >= config.minimumTwinSimilarity)
-    .filter((item) => options.mode !== 'ODDS_BAND' || (item.candidate.route.openingOdds >= lower && item.candidate.route.openingOdds <= upper));
-  const sameCompetition = scored.filter((item) => item.candidate.competitionId === target.competitionId);
-  const searchPool = sameCompetition.length >= config.minimumEvidenceSample ? sameCompetition : scored;
-  const selected = searchPool.sort((a, b) => options.mode === 'CLOSEST_NEIGHBORS'
-    ? a.score.distance - b.score.distance || a.candidate.kickoffAt.getTime() - b.candidate.kickoffAt.getTime() || a.candidate.matchId.localeCompare(b.candidate.matchId)
-    : a.candidate.kickoffAt.getTime() - b.candidate.kickoffAt.getTime() || a.candidate.matchId.localeCompare(b.candidate.matchId))
+    .filter((item) => options.mode !== 'ODDS_BAND' || (item.candidate.route.openingOdds >= lower && item.candidate.route.openingOdds <= upper))
+    .sort((a, b) => options.mode === 'CLOSEST_NEIGHBORS' ? a.score.distance - b.score.distance || a.candidate.kickoffAt.getTime() - b.candidate.kickoffAt.getTime() || a.candidate.matchId.localeCompare(b.candidate.matchId)
+      : a.candidate.kickoffAt.getTime() - b.candidate.kickoffAt.getTime() || a.candidate.matchId.localeCompare(b.candidate.matchId))
     .slice(0, options.limit);
-  return selected.map(({ candidate, score }, index) => ({ ...candidate, exampleId: candidate.matchId, distance: score.distance, similarity: score.similarity,
+  return scored.map(({ candidate, score }, index) => ({ ...candidate, exampleId: candidate.matchId, distance: score.distance, similarity: score.similarity,
     matchedDimensions: score.matchedDimensions, differences: score.differences, openingOdds: candidate.route.openingOdds, decisionOdds: candidate.route.latestOdds,
     outcome: { home: candidate.homeScore, away: candidate.awayScore }, rank: index + 1 } as HistoricalTwin));
 }
@@ -34,15 +30,11 @@ export function calculateEvidenceStrength(twins: HistoricalTwin[], gaps: Array<{
   return twins.length >= 5 ? 'LOW' : 'VERY_LOW';
 }
 
-function conflicts(route: OddsRoute, gaps: Array<{ gapPp: number | null }>, twinCount: number,
-  minimumEvidenceSample: number): ConflictCheck[] {
+function conflicts(route: OddsRoute, gaps: Array<{ gapPp: number | null }>): ConflictCheck[] {
   const twinGap = gaps.find((item) => 'market' in item && (item as { market?: string; selection?: string; line?: number | null }).market === route.marketType
     && (item as { selection?: string }).selection === route.selection && (item as { line?: number | null }).line === route.line)?.gapPp ?? null;
-  const twinEvidenceReady = twinCount >= minimumEvidenceSample;
   return [
-    { source: 'ODDS_TWINS', state: !twinEvidenceReady || twinGap == null ? 'UNAVAILABLE' : twinGap >= 2 ? 'SUPPORT' : twinGap <= -2 ? 'CONFLICT' : 'NEUTRAL',
-      reason: twinEvidenceReady ? 'Geçmiş ikiz sonuç dağılımı ile taban karşılaştırması.'
-        : `Güvenilir ikiz kanıtı için en az ${minimumEvidenceSample} geçmiş maç gerekir.` },
+    { source: 'ODDS_TWINS', state: twinGap == null ? 'UNAVAILABLE' : twinGap >= 2 ? 'SUPPORT' : twinGap <= -2 ? 'CONFLICT' : 'NEUTRAL', reason: 'Geçmiş ikiz sonuç dağılımı ile taban karşılaştırması.' },
     { source: 'ODDS_ROUTE', state: route.direction === 'UP' && route.strength !== 'WEAK' ? 'SUPPORT' : route.direction === 'DOWN' && route.strength !== 'WEAK' ? 'CONFLICT' : 'NEUTRAL', reason: 'Yalnız gerçek pre-match odds snapshot rotası.' },
     { source: 'TEAM_HISTORICAL_STATS', state: 'UNAVAILABLE', reason: 'Bu V2 isteğinde takım profili bir karar girdisi değildir.' },
     { source: 'XG', state: 'UNAVAILABLE', reason: 'xG yalnız sonuç/context alanıdır; benzerlik veya karar girdisi değildir.' },
@@ -58,7 +50,7 @@ export function buildOddsIntelligence(target: MatchOutcomeData & { route: OddsRo
   const evidenceStrength = calculateEvidenceStrength(twins, maps, Math.max(0, ...maps.map((row) => row.baselineSampleSize)));
   return { match: { id: target.matchId, kickoffAt: target.kickoffAt, league: target.league, homeTeam: target.homeTeam, awayTeam: target.awayTeam },
     primaryMarket: { marketType: target.route.marketType, marketName: target.route.marketName, line: target.route.line, selection: target.route.selection }, oddsRoute: target.route,
-    searchMode: options.mode, pastTwins: twins, resultMap: maps, evidenceGap: maps, evidenceStrength, conflictCheck: conflicts(target.route, maps, twins.length, config.minimumEvidenceSample),
+    searchMode: options.mode, pastTwins: twins, resultMap: maps, evidenceGap: maps, evidenceStrength, conflictCheck: conflicts(target.route, maps),
     dataCompleteness: { routeSnapshots: target.route.genuineObservations, neighbors: twins.length, resultRowsWithData: maps.length, resultRows: 37 }, generatedAt,
     executionAuthority: false, aiPredictionAuthority: false };
 }

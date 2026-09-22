@@ -300,6 +300,28 @@ Render web süreci `Dockerfile` varsayılan komutunu, worker ise `node dist/work
 
 ## Yeni provider ekleme
 
+### Odds linking ve otomatik korner analizi
+
+NowGoal eşleştiricisi önce normalize edilmiş tam adları, sonra odds'a özel açık alias listesini,
+son olarak yalnız zararsız kulüp tanımlayıcılarını içeren token eşleşmesini dener. İki takımın
+yönü korunur; 30 dakikayı aşan kickoff farkları ve belirsiz adaylar reddedilir. Worker,
+`SUPPORTED_COMPETITIONS` listesini eşleştiriciye aktarır; eski MLS kayıtları silinmeden dışlanır.
+Her döngü gerekçe sayaçlarını ve en fazla 10 eşleşmeyen fixture için yakın adayları loglar.
+Kickoff'a ulaşmış fixture'lar ve kickoff sonrası snapshot'lar pre-match collector'a alınmaz.
+
+FotMob döngüsü tarihsel veriyi, takım profillerini ve lig baseline'larını yeniledikten sonra
+`refreshUpcomingCornerAnalyses` çalışır. Yalnız aktif liglerdeki scheduled maçlar,
+`COLLECTOR_FUTURE_DAYS` ufkuna kadar değerlendirilir. Tamamlanmış tarihsel maçlar yüklenir;
+her hedef için yalnız hedef kickoff'undan önceki geçmiş ve o ana ait baseline kullanılır.
+Mevcut Corner Engine parametreleri ve `(matchId, modelVersion, configHash)` unique koruması
+kullanılır; mevcut analiz satırı yeniden yazılmaz. Düşük kaliteli çıktılar gerçek
+`analysisEligible=false` değeriyle saklanabilir. Döngü özeti `scheduledTargets`, `generated`,
+`alreadyExisting`, `insufficientData` (kalitesi yetersiz hedef sayısı) ve `failed` alanlarını içerir.
+Tek maç hatası sonraki hedefleri engellemez.
+
+Bitmiş ve Prediction durumu `NOT_GENERATED` olan maç detayları “MAÇ ÖNCESİ ANALİZ OLUŞMADI”
+gösterir. Değerlendirilmemiş gate değerleri gizlenir; geriye dönük resmi tahmin üretilmez.
+
 1. Maç verisi için `src/providers/provider.ts` içindeki `FootballDataProvider`, qualification için `QualifiableProvider` interface'ini uygulayın.
 2. Provider payloadını `NormalizedMatch` ve `MatchStatistics` modellerine dönüştürün.
 3. İzin verilen turnuvaları provider'ın kendi turnuva ID'leriyle açıkça eşleyin.

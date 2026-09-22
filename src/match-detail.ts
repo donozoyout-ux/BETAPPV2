@@ -11,7 +11,7 @@ export type MatchAnalysisPageData = {
 };
 
 const statusLabels: Record<string, string> = { OFFICIAL: 'RESMİ TAHMİN', REVIEW: 'İNCELEME',
-  WAITING: 'VERİ BEKLENİYOR', REJECTED: 'REDDEDİLDİ' };
+  WAITING: 'VERİ BEKLENİYOR', REJECTED: 'REDDEDİLDİ', NOT_EVALUATED: 'MAÇ ÖNCESİ ANALİZ OLUŞMADI' };
 const statusClasses: Record<string, string> = { OFFICIAL: 'ok', REVIEW: 'partial', WAITING: 'neutral', REJECTED: 'bad' };
 
 function numberText(value: unknown, digits = 0): string {
@@ -158,18 +158,22 @@ function renderCorners(matchId: string, corner: Record<string, unknown> | null):
 export function renderMatchAnalysis(data: MatchAnalysisPageData): string {
   const match = data.match;
   const matchId = String(match.id ?? '');
-  const gate = data.predictionGate ?? null;
-  const status = String(gate?.overallStatus ?? 'WAITING');
+  const finishedWithoutEvaluation = String(match.status) === 'finished'
+    && (data.predictionDetail?.state ?? data.predictionGate?.state) === 'NOT_GENERATED';
+  const gate = finishedWithoutEvaluation ? null : data.predictionGate ?? null;
+  const status = finishedWithoutEvaluation ? 'NOT_EVALUATED' : String(gate?.overallStatus ?? 'WAITING');
+  const notEvaluatedCopy = 'Bu maç için kickoff öncesinde ODDS_V1 / Prediction V1 değerlendirmesi oluşmadı. Geriye dönük resmi tahmin üretilmez.';
   const candidate = objectValue(gate?.candidate);
   const historical = objectValue(candidate?.historical);
   const gates = arrayValue(gate?.gates);
   const passed = gates.filter((item) => item.passed === true).length;
+  const gateCount = finishedWithoutEvaluation ? 'DEĞERLENDİRİLMEDİ' : `${passed} / ${gates.length} geçti`;
   const odds = arrayValue(match.odds);
   const finished = String(match.status ?? '').toLowerCase() === 'finished';
   const score = finished && match.home_score != null && match.away_score != null
     ? `${escapeHtml(match.home_score)} — ${escapeHtml(match.away_score)}` : 'VS';
   const heroCopy = status === 'OFFICIAL' ? 'Resmi tahmin oluştu.' : status === 'REVIEW' ? 'Resmi tahmin değildir.'
-    : status === 'REJECTED' ? 'Resmi tahmin oluşturulmadı.' : 'Veri bekleniyor.';
+    : status === 'REJECTED' ? 'Resmi tahmin oluşturulmadı.' : finishedWithoutEvaluation ? 'Maç öncesi analiz oluşmadı.' : 'Veri bekleniyor.';
   const mainMarket = candidate ? `${translateMarket(candidate.marketType)}${candidate.line == null ? '' : ` ${candidate.line}`} · ${translateSelection(candidate.selection)}` : null;
   const detail = data.predictionDetail ?? {};
   const runCount = Array.isArray(detail.runs) ? detail.runs.length : 0;
@@ -186,7 +190,7 @@ export function renderMatchAnalysis(data: MatchAnalysisPageData): string {
       <div class="top-actions"><a class="top-chip" href="/">← Genel Bakış</a></div></header><main class="content detail-content">
       <section class="match-hero" id="match-overview"><div class="match-meta"><span>${escapeHtml(match.league)}</span><span>${escapeHtml(formatDate(match.kickoff_at, { day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' }))}</span><span>${escapeHtml(match.status)}</span></div>
         <div class="scoreboard"><strong>${escapeHtml(match.home_team)}</strong><b>${score}</b><strong>${escapeHtml(match.away_team)}</strong></div>
-        <div class="hero-gate"><span class="badge ${statusClasses[status] ?? 'neutral'}">${escapeHtml(statusLabels[status] ?? status)}</span><strong>${heroCopy}</strong><p>${escapeHtml(gate?.summary ?? 'Prediction V1 değerlendirmesi henüz oluşmadı.')}</p></div></section>
+        <div class="hero-gate"><span class="badge ${statusClasses[status] ?? 'neutral'}">${escapeHtml(statusLabels[status] ?? status)}</span><strong>${heroCopy}</strong><p>${escapeHtml(finishedWithoutEvaluation ? notEvaluatedCopy : gate?.summary ?? 'Prediction V1 değerlendirmesi henüz oluşmadı.')}</p></div></section>
       ${renderOneXTwo(odds)}
 
       <section class="detail-grid core-grid"><article class="detail-panel core-panel"><span class="section-kicker">BETAPP ANALİZİ</span><h2>Ana Aday</h2>${candidate ? `<div class="candidate-market">${escapeHtml(mainMarket)}</div>
@@ -195,10 +199,10 @@ export function renderMatchAnalysis(data: MatchAnalysisPageData): string {
           ${candidateMetric('Geçmiş başarı', percentText(historical?.historicalHitRate))}${candidateMetric('Oran hareketi', candidate.movementClass)}
           ${candidateMetric('Bookmaker', candidate.bookmakerCount)}${candidateMetric('Veri kalitesi', candidate.dataQualityGrade)}${candidateMetric('Model güveni', candidate.confidenceGrade)}</div>`
         : renderEmpty('Henüz resmi aday hesaplanmadı', 'Oran analizi ve Prediction V1 değerlendirmesi tamamlandığında ana aday burada görünecek.')}</article>
-        <article class="detail-panel why-panel"><div class="why-head"><div><span class="section-kicker">NEDEN?</span><h2>${passed} / ${gates.length} geçti</h2></div><span class="badge ${statusClasses[status] ?? 'neutral'}">${escapeHtml(statusLabels[status] ?? status)}</span></div>
+        <article class="detail-panel why-panel"><div class="why-head"><div><span class="section-kicker">NEDEN?</span><h2>${gateCount}</h2></div><span class="badge ${statusClasses[status] ?? 'neutral'}">${escapeHtml(statusLabels[status] ?? status)}</span></div>
           <div class="why-list">${gates.length ? gates.map((item) => `<div><span>${item.passed ? '✓' : '×'} ${escapeHtml(item.label)}<small>Mevcut: ${escapeHtml(gateValue(item.current))} · Gerekli: ${escapeHtml(gateValue(item.required))}</small></span><b>${item.passed ? 'GEÇTİ' : 'GEÇMEDİ'}</b></div>`).join('') : '<p>Gate değerlendirmesi henüz oluşmadı.</p>'}</div></article></section>
 
-      <section class="detail-grid evidence-grid"><article class="detail-panel wide" id="gate-inspector"><div class="detail-title"><div><span class="section-kicker">PREDICTION V1</span><h2>Prediction Gate Inspector</h2></div><span>${passed} / ${gates.length} geçti</span></div>${renderGateTable(gates)}</article>
+      <section class="detail-grid evidence-grid"><article class="detail-panel wide" id="gate-inspector"><div class="detail-title"><div><span class="section-kicker">PREDICTION V1</span><h2>Prediction Gate Inspector</h2></div><span>${gateCount}</span></div>${finishedWithoutEvaluation ? renderEmpty('Prediction V1 değerlendirmesi oluşturulmadı.', notEvaluatedCopy) : renderGateTable(gates)}</article>
         <article class="detail-panel" id="odds-route"><span class="section-kicker">ODDS NEIGHBOR V2</span><h2>Oran Rotası</h2>${renderOddsRoute(data.oddsIntelligence ?? null)}</article></section>
 
       <section class="detail-grid split-grid"><article class="detail-panel" id="past-twins"><span class="section-kicker">GEÇMİŞ KANIT</span><h2>Geçmiş İkizler</h2>${renderTwins(data.oddsIntelligence ?? null)}</article>

@@ -6,30 +6,40 @@ import { FotMobProvider, fotmobCompetitions } from '../../src/providers/fotmob.j
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe('MLS and Brasileirao competition support', () => {
-  it('enables both competitions in the default configuration', () => {
+describe('configured club and international competition support', () => {
+  it('keeps Brasileirao, removes MLS, and enables national-team competitions by default', () => {
     const config = loadConfig({ DATABASE_URL: 'postgresql://localhost/betapp' });
-    expect(config.SUPPORTED_COMPETITIONS).toContain('MLS');
+    expect(config.SUPPORTED_COMPETITIONS).not.toContain('MLS');
     expect(config.SUPPORTED_COMPETITIONS).toContain('BrasileiraoSerieA');
+    expect(config.SUPPORTED_COMPETITIONS).toEqual(expect.arrayContaining([
+      'WorldCup','EURO','UefaNationsLeagueA','UefaNationsLeagueB','UefaNationsLeagueC','UefaNationsLeagueD',
+      'WorldCupQualificationUEFA','InternationalFriendlies',
+    ]));
     expect(fotmobCompetitions).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: 130, key: 'MLS', name: 'MLS' }),
       expect.objectContaining({ id: 268, key: 'BrasileiraoSerieA', name: 'Brasileirão Série A' }),
+      expect.objectContaining({ id: 77, key: 'WorldCup', name: 'FIFA World Cup' }),
+      expect.objectContaining({ id: 9806, key: 'UefaNationsLeagueA', name: 'UEFA Nations League A' }),
+    ]));
+    expect(fotmobCompetitions).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 130, key: 'MLS' }),
     ]));
   });
 
-  it('upgrades only the old nine-league Render default to include MLS and Brazil', () => {
+  it('migrates old Render defaults and silently drops legacy MLS from custom subsets', () => {
     const legacy = 'PremierLeague,LaLiga,Bundesliga,SerieA,Ligue1,SuperLig,ChampionsLeague,EuropaLeague,ConferenceLeague';
     const upgraded = loadConfig({ DATABASE_URL: 'postgresql://localhost/betapp', SUPPORTED_COMPETITIONS: legacy });
     expect(upgraded.SUPPORTED_COMPETITIONS).toEqual([
       'PremierLeague','LaLiga','Bundesliga','SerieA','Ligue1','SuperLig',
-      'ChampionsLeague','EuropaLeague','ConferenceLeague','MLS','BrasileiraoSerieA',
+      'ChampionsLeague','EuropaLeague','ConferenceLeague','BrasileiraoSerieA',
+      'WorldCup','EURO','UefaNationsLeagueA','UefaNationsLeagueB','UefaNationsLeagueC','UefaNationsLeagueD',
+      'WorldCupQualificationUEFA','InternationalFriendlies',
     ]);
 
     const custom = loadConfig({
       DATABASE_URL: 'postgresql://localhost/betapp',
       SUPPORTED_COMPETITIONS: 'PremierLeague,MLS',
     });
-    expect(custom.SUPPORTED_COMPETITIONS).toEqual(['PremierLeague','MLS']);
+    expect(custom.SUPPORTED_COMPETITIONS).toEqual(['PremierLeague']);
   });
 
   it('keeps Brazilian Serie A distinct from Italian Serie A', () => {
@@ -63,9 +73,9 @@ describe('MLS and Brasileirao competition support', () => {
     });
     const provider = new FotMobProvider(config, createLogger(config));
     const matches = await provider.getFixtures({ date: new Date('2026-09-21T00:00:00Z') });
-    expect(matches.map((item) => item.league.name)).toEqual(['Serie A', 'Brasileirão Série A', 'MLS']);
+    expect(matches.map((item) => item.league.name)).toEqual(['Serie A', 'Brasileirão Série A']);
     expect(matches.map((item) => competitionKey(item.league.name))).toEqual([
-      'serie_a', 'brasileirao_serie_a', 'mls',
+      'serie_a', 'brasileirao_serie_a',
     ]);
   });
 });

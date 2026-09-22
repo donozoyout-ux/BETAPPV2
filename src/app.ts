@@ -41,6 +41,12 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
   const activeRows = <T extends Record<string, unknown>>(rows: T[]): T[] => rows.filter(competitionAllowed);
   const activeIntelligence = (rows: OddsIntelligence[]): OddsIntelligence[] => rows.filter((item) =>
     isCompetitionConfigured(String(item.match.league ?? ''), config.SUPPORTED_COMPETITIONS));
+  const activeSimilarityRows = (rows: Array<Record<string, unknown>>) => rows.filter((item) => {
+    const current = item.current;
+    const league = current && typeof current === 'object' && !Array.isArray(current)
+      ? (current as Record<string, unknown>).league : null;
+    return league == null || isCompetitionConfigured(String(league), config.SUPPORTED_COMPETITIONS);
+  });
 
   const optionalDashboardSource = async <T>(source: string, task: () => Promise<T>, fallback: T): Promise<T> => {
     try {
@@ -87,7 +93,7 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
       predictionReviewCandidates: attachOddsEvidence(activeRows(reviewCandidates), activeOddsIntelligence), predictionHistory: history,
       predictionPerformance: performance, predictionSelfAudit: selfAudit, predictionSelfAuditSegments: segmentAudits,
       predictionSelfAuditRootCauses: rootCauses, predictionAdaptiveRuleProposals: adaptiveProposals,
-      oddsSimilarity: activeRows(oddsSimilarity), predictionDiagnostics, oddsIntelligence: activeOddsIntelligence };
+      oddsSimilarity: activeSimilarityRows(oddsSimilarity), predictionDiagnostics, oddsIntelligence: activeOddsIntelligence };
   });
   app.get('/api/odds/upcoming', async () => ({ odds: await repository.upcomingOdds(1000) }));
   app.get('/api/backfill/status', async () => repository.backfillStatus());
@@ -182,7 +188,7 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
       predictionReviewCandidates: attachOddsEvidence(activeRows(reviewCandidates), activeOddsIntelligence), predictionHistory: history, predictionPerformance: performance,
       predictionSelfAudit: selfAudit, predictionSelfAuditSegments: segmentAudits,
       predictionSelfAuditRootCauses: rootCauses, predictionAdaptiveRuleProposals: adaptiveProposals,
-      oddsSimilarity: activeRows(oddsSimilarity), predictionDiagnostics, oddsIntelligence: activeOddsIntelligence }));
+      oddsSimilarity: activeSimilarityRows(oddsSimilarity), predictionDiagnostics, oddsIntelligence: activeOddsIntelligence }));
   });
   app.get<{ Params: { matchId: string } }>('/matches/:matchId', async (request, reply) => {
     const matchId = request.params.matchId;

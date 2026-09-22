@@ -116,8 +116,12 @@ function translateCompetitionKey(value: unknown): string {
     PremierLeague: 'Premier League', LaLiga: 'La Liga', Bundesliga: 'Bundesliga',
     SerieA: 'Serie A', Ligue1: 'Ligue 1', SuperLig: 'Süper Lig',
     ChampionsLeague: 'Şampiyonlar Ligi', EuropaLeague: 'Avrupa Ligi',
-    ConferenceLeague: 'Konferans Ligi', MLS: 'MLS',
-    BrasileiraoSerieA: 'Brasileirão Série A',
+    ConferenceLeague: 'Konferans Ligi', BrasileiraoSerieA: 'Brasileirão Série A',
+    WorldCup: 'FIFA Dünya Kupası', EURO: 'EURO',
+    UefaNationsLeagueA: 'UEFA Uluslar Ligi A', UefaNationsLeagueB: 'UEFA Uluslar Ligi B',
+    UefaNationsLeagueC: 'UEFA Uluslar Ligi C', UefaNationsLeagueD: 'UEFA Uluslar Ligi D',
+    WorldCupQualificationUEFA: 'Dünya Kupası Avrupa Elemeleri',
+    InternationalFriendlies: 'Milli Takım Hazırlık Maçları',
   };
   return labels[String(value ?? '')] ?? String(value ?? '—');
 }

@@ -36,6 +36,7 @@ export class OddsCollector {
     }
     let matched = 0;
     let unmatched = 0;
+    const matchReasons: Record<string, number> = {};
     let snapshots = 0;
     let analyses = 0;
     let analysisFailures = 0;
@@ -44,21 +45,26 @@ export class OddsCollector {
         const date = addDays(new Date(), day);
         const matches = await this.provider.getPrematchOddsForDate(date);
         for (const item of matches) {
-          const internalMatchId = await this.oddsRepository.resolveMatch(item.fixture);
-          if (!internalMatchId) { unmatched += 1; continue; }
+          const resolution = 'resolveMatchDetailed' in this.oddsRepository
+            ? await this.oddsRepository.resolveMatchDetailed(item.fixture)
+            : { matchId: await this.oddsRepository.resolveMatch(item.fixture), reason: 'LEGACY' };
+          matchReasons[resolution.reason] = (matchReasons[resolution.reason] ?? 0) + 1;
+          if (!resolution.matchId) { unmatched += 1; continue; }
           matched += 1;
-          const stored = await this.oddsRepository.appendManyAndAnalyze(internalMatchId, item.odds);
+          const stored = await this.oddsRepository.appendManyAndAnalyze(resolution.matchId, item.odds);
           snapshots += stored.inserted;
           if (stored.analysisGenerated) analyses += 1;
           if (stored.analysisFailed) analysisFailures += 1;
         }
       }
-      const completed = { ...cursor, completedAt: new Date().toISOString(), matched, unmatched, snapshots, analyses, analysisFailures,
-        retries: this.provider.consumeRetryCount() };
+      const completed = { ...cursor, completedAt: new Date().toISOString(), matched, unmatched, matchReasons,
+        matchRate: matched + unmatched ? matched / (matched + unmatched) : 0,
+        snapshots, analyses, analysisFailures, retries: this.provider.consumeRetryCount() };
       await this.repository.markSucceeded(this.provider.name, scope, completed);
       await this.repository.markProviderFetch(this.provider.name);
-      this.logger.info({ provider: this.provider.name, matched, unmatched, snapshots, analyses, analysisFailures },
-        'Prematch odds cycle completed');
+      this.logger.info({ provider: this.provider.name, matched, unmatched,
+        matchRate: matched + unmatched ? matched / (matched + unmatched) : 0,
+        matchReasons, snapshots, analyses, analysisFailures }, 'Prematch odds cycle completed');
     } catch (error) {
       await this.repository.markFailed(this.provider.name, scope, error);
       await this.repository.updateProviderStatus(this.provider.name, false, 0,

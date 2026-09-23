@@ -1,3 +1,4 @@
+import { liveSection } from './live/view.js';
 import { translatePredictionGateReason } from './predictions/gate-inspector.js';
 
 type DashboardData = { matches: Array<Record<string, unknown>>; providers: Array<Record<string, unknown>>;
@@ -790,6 +791,7 @@ export function renderDashboard(data: DashboardData): string {
         <div class="top-actions"><a class="top-chip" href="#prediction-self-audit"><span class="live-dot ${allSourcesHealthy ? '' : 'wait'}"></span> ${escapeHtml(statusText)}</a></div>
       </header>
       <main class="content">
+      ${liveSection()}
         <section class="command-hero" id="overview">
           <article class="hero-main"><p class="eyebrow">OPERASYON ÖZETİ</p><h1>${todayMatches.length
               ? `Bugün ${todayMatches.length} maç<br>takip ediliyor.`

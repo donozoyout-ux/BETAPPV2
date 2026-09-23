@@ -69,9 +69,16 @@ describe('FootballRepository integration', () => {
       round: '1', season: '2026/27', homeScore: null, awayScore: null, sourceUpdatedAt: observedAt, raw,
     };
     const firstId = await repository.upsertMatch('sofascore', match);
+    await repository.upsertMatch('sofascore', { ...match, status: 'live', homeScore: 0, awayScore: 0 });
+    expect(await repository.matchAnalysisDetail(firstId)).toMatchObject({ status: 'live', home_score: 0 });
+    await repository.upsertMatch('sofascore', { ...match, status: 'live', homeScore: 1, awayScore: 0 });
+    expect(await repository.matchAnalysisDetail(firstId)).toMatchObject({ status: 'live', home_score: 1 });
     const finished = { ...match, status: 'finished' as const, homeScore: 2, awayScore: 1 };
     const secondId = await repository.upsertMatch('sofascore', finished);
     expect(secondId).toBe(firstId);
+    await repository.upsertMatch('sofascore', { ...match, status: 'live', homeScore: 0, awayScore: 0 });
+    await repository.upsertMatch('sofascore', match);
+    expect(await repository.matchAnalysisDetail(firstId)).toMatchObject({ status: 'finished', home_score: 2, away_score: 1 });
     const statistics = { matchProviderExternalId: 'm-1', sourceUpdatedAt: observedAt, raw: {},
       statistics: [{ key: 'corners', label: 'Corners', period: 'ALL', homeValue: 6, awayValue: 4 }] };
     await repository.upsertStatistics('sofascore', statistics);

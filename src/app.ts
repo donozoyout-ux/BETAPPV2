@@ -1,3 +1,5 @@
+import { liveResponse } from './live/analysis.js';
+import { liveCard, livePollScript } from './live/view.js';
 import helmet from '@fastify/helmet';
 import Fastify from 'fastify';
 import type { AppConfig } from './config.js';
@@ -87,6 +89,27 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
     return { data, today, previews, reviewCandidates, history, performance, selfAudit, segmentAudits,
       rootCauses, adaptiveProposals, oddsSimilarity, predictionDiagnostics, oddsIntelligenceData };
   };
+
+  app.get('/live-poll.js', async (_request, reply) => reply.type('application/javascript').send(livePollScript));
+  app.get('/api/live', async (_request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    const matches = activeRows(await repository.liveMatches()).map(liveResponse);
+    return { matches, html: matches.map(liveCard).join('') || 'Şu anda takip edilen canlı maç yok.' };
+  });
+  app.get<{ Params: { matchId: string } }>('/api/live/:matchId', async (request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(request.params.matchId)) {
+      return reply.code(404).send({ error: 'match_not_found' });
+    }
+    const row = await repository.matchAnalysisDetail(request.params.matchId);
+    if (!row || !competitionAllowed(row)) return reply.code(404).send({ error: 'match_not_found' });
+    const result = liveResponse(row);
+    const [prediction, gate] = await Promise.all([
+      predictions ? predictions.detail(request.params.matchId).catch(() => null) : null,
+      predictions ? predictions.gates(request.params.matchId).catch(() => null) : null,
+    ]);
+    return { ...result, preMatchContext: { contextualOnly: true, prediction, gate }, html: liveCard(result) };
+  });
 
   app.get('/health', async (_request, reply) => {
     const [database, operations] = await Promise.all([repository.databaseHealth(), repository.operationalHealth().catch(() => ({

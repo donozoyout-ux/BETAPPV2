@@ -64,7 +64,7 @@ export class FotMobProvider implements FootballDataProvider, QualifiableProvider
   private readonly http: ResilientHttpClient;
   private readonly baseUrl: string;
   private readonly supportedLeagueIds: Set<number>;
-  private readonly detailsCache = new Map<string, { expiresAt: number; payload: DetailsPayload }>();
+  private readonly detailsCache = new Map<string, { expiresAt: number; fetchedAt: Date; payload: DetailsPayload }>();
 
   constructor(config: AppConfig, logger: Logger) {
     this.baseUrl = config.FOTMOB_BASE_URL.replace(/\/$/, '');
@@ -124,7 +124,7 @@ export class FotMobProvider implements FootballDataProvider, QualifiableProvider
     // Qualification and a backfill can ask for the same detail payload more than once.
     // Keep it process-local and short-lived so we reduce duplicate traffic without
     // treating cached data as persisted historical evidence.
-    this.detailsCache.set(matchId, { payload, expiresAt: Date.now() + 5 * 60_000 });
+    this.detailsCache.set(matchId, { payload, fetchedAt: new Date(), expiresAt: Date.now() + (payload.header?.status?.finished ? 5 * 60_000 : 30_000) });
     return payload;
   }
 
@@ -139,7 +139,7 @@ export class FotMobProvider implements FootballDataProvider, QualifiableProvider
       seen.add(key);
       return [{ key, label: item.title, period: 'ALL', homeValue: item.stats[0] ?? null, awayValue: item.stats[1] ?? null }];
     });
-    return { matchProviderExternalId, statistics, sourceUpdatedAt: new Date(), raw: {
+    return { matchProviderExternalId, statistics, sourceUpdatedAt: this.detailsCache.get(matchProviderExternalId)!.fetchedAt, raw: {
       general: payload.general, header: payload.header, stats: payload.content?.stats,
       lineup: payload.content?.lineup, h2h: payload.content?.h2h, infoBox: payload.content?.matchFacts?.infoBox,
     } };

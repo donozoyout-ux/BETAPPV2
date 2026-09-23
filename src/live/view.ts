@@ -25,6 +25,7 @@ function renderLiveEvidence(data: LiveResponseV2, detail: boolean): string {
     ${detail ? `<h3>Kaynak sağlığı</h3><p>FotMob: ${esc(data.sourceHealth.fotmob.status)} · API-Football: ${esc(data.sourceHealth.apiFootball.status)}</p>
       <p>Skor: ${data.sourceVerified ? 'DOĞRULANDI' : 'Doğrulanmadı'} · Dakika: ${esc(data.minuteSource)}</p>
       <p>${esc(data.LIVE_ANALYSIS_V2.momentumSummary)}</p>
+      ${'LIVE_ANALYSIS_V3' in data ? `<h3>Canlı Momentum V3</h3><p>Son 10 dk olay: ${esc(data.LIVE_ANALYSIS_V3.recentEventsCount)} · Olay üstünlüğü: ${esc(data.LIVE_ANALYSIS_V3.recentEventEdge)}</p><p>Skor sonrası momentum: ${esc(data.LIVE_ANALYSIS_V3.postScoreMomentum.eventEdge)} · ${esc(data.LIVE_ANALYSIS_V3.postScoreMomentum.state)}</p><p>Şut hızlanması: ${esc(data.LIVE_ANALYSIS_V3.shotAcceleration.state)} · Korner hızlanması: ${esc(data.LIVE_ANALYSIS_V3.cornerAcceleration.state)}</p>` : ''}
       ${data.liveOdds.map(o => `<p>${esc(o.provider)} · ${esc(o.bookmaker)} · ${esc(o.market)} ${esc(o.line)} · ${esc(o.selection)}: ${esc(o.odds)} (${esc(o.observedAt)})</p>`).join('')}` : ''}`;
 }
 export function liveSection(match?: Record<string, unknown>): string {

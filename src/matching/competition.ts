@@ -14,6 +14,12 @@ const aliases = new Map<string, string>([
   ['world cup qualification uefa', 'world_cup_qualification_uefa'],
   ['fifa world cup qualification uefa', 'world_cup_qualification_uefa'],
   ['world cup qualifiers europe', 'world_cup_qualification_uefa'],
+  ['euro qualification', 'euro_qualification'], ['uefa euro qualification', 'euro_qualification'],
+  ['european championship qualification', 'euro_qualification'],
+  ['copa america', 'copa_america'], ['conmebol copa america', 'copa_america'],
+  ['world cup qualification conmebol', 'world_cup_qualification_conmebol'],
+  ['fifa world cup qualification conmebol', 'world_cup_qualification_conmebol'],
+  ['world cup qualifiers south america', 'world_cup_qualification_conmebol'],
   ['friendlies', 'friendlies'], ['international friendlies', 'friendlies'], ['friendly', 'friendlies'],
   ['brasileirao serie a', 'brasileirao_serie_a'], ['brasileirao', 'brasileirao_serie_a'],
   ['brazil serie a', 'brasileirao_serie_a'], ['serie a brazil', 'brasileirao_serie_a'],
@@ -34,7 +40,9 @@ const configCompetitionKeys = new Map<string, string>([
   ['WorldCup', 'world_cup'], ['EURO', 'euro'], ['UefaNationsLeagueA', 'uefa_nations_league_a'],
   ['UefaNationsLeagueB', 'uefa_nations_league_b'], ['UefaNationsLeagueC', 'uefa_nations_league_c'],
   ['UefaNationsLeagueD', 'uefa_nations_league_d'],
-  ['WorldCupQualificationUEFA', 'world_cup_qualification_uefa'], ['InternationalFriendlies', 'friendlies'],
+  ['WorldCupQualificationUEFA', 'world_cup_qualification_uefa'], ['EUROQualification', 'euro_qualification'],
+  ['CopaAmerica', 'copa_america'], ['WorldCupQualificationCONMEBOL', 'world_cup_qualification_conmebol'],
+  ['InternationalFriendlies', 'friendlies'],
 ]);
 
 export function isCompetitionConfigured(name: string, configuredKeys: readonly string[]): boolean {

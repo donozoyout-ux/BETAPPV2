@@ -11,6 +11,7 @@ import { NowgoalProvider } from './providers/nowgoal.js';
 import { OddsRepository } from './db/odds-repository.js';
 import { OddsCollector } from './collector/odds-collector.js';
 import { PredictionRepository, PredictionService } from './predictions/service.js';
+import { refreshUpcomingCornerAnalyses } from './corners/refresh.js';
 
 const config = loadConfig();
 const logger = createLogger(config, 'betapp-worker');
@@ -22,7 +23,7 @@ const repository = new FootballRepository(pool);
 const cornerRepository = new CornerRepository(pool);
 const oddsRepository = new OddsRepository(pool, (error, matchId) => {
   logger.warn({ err: error, matchId }, 'ODDS_V1 analysis failed after odds persistence; continuing');
-});
+}, undefined, config.SUPPORTED_COMPETITIONS);
 const sofascore = new SofascoreProvider(config, logger);
 const fotmob = new FotMobProvider(config, logger);
 const footballCollectors = [new Collector(sofascore, repository, config, logger),
@@ -32,6 +33,7 @@ const footballCollectors = [new Collector(sofascore, repository, config, logger)
       const history = await cornerRepository.loadHistory();
       await cornerRepository.saveProfiles(buildAllTeamProfiles(history));
       await cornerRepository.saveBaselines(buildAllLeagueBaselines(history));
+      await refreshUpcomingCornerAnalyses(cornerRepository, config, logger);
     },
   })] : []),
 ];

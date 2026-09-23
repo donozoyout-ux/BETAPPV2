@@ -2,6 +2,7 @@ import type { MatchStatistics, NormalizedMatch } from '../domain/types.js';
 import type { CornerAnalysis, HistoricalCornerMatch, LeagueCornerBaseline, TeamCornerProfile } from '../corners/types.js';
 import type { CornerModelConfig } from '../corners/config.js';
 import type { DatabasePool } from './pool.js';
+import { isCompetitionConfigured } from '../matching/competition.js';
 
 function numberValue(value: string | number | null | undefined): number | null {
   if (value == null) return null;
@@ -70,10 +71,11 @@ export class CornerRepository {
         lineupMetadata == null ? null : JSON.stringify(lineupMetadata), refereeMetadata == null ? null : JSON.stringify(refereeMetadata)]);
   }
 
-  async loadHistory(): Promise<HistoricalCornerMatch[]> {
+  async loadHistory(finishedOnly = false): Promise<HistoricalCornerMatch[]> {
     const result = await this.pool.query(`SELECT h.*,l.name competition_name,ht.name home_team_name,at.name away_team_name
       FROM historical_match_stats h JOIN leagues l ON l.id=h.competition_id
-      JOIN teams ht ON ht.id=h.home_team_id JOIN teams at ON at.id=h.away_team_id ORDER BY h.kickoff_at`);
+      JOIN teams ht ON ht.id=h.home_team_id JOIN teams at ON at.id=h.away_team_id
+      JOIN matches m ON m.id=h.match_id WHERE ($1::boolean=false OR m.status='finished') ORDER BY h.kickoff_at`, [finishedOnly]);
     return result.rows.map((row) => ({
       matchId: row.match_id, competitionId: row.competition_id, season: row.season ?? 'unknown', kickoffAt: new Date(row.kickoff_at),
       homeTeamId: row.home_team_id, awayTeamId: row.away_team_id, homeGoals: numberValue(row.home_goals), awayGoals: numberValue(row.away_goals),
@@ -204,13 +206,22 @@ export class CornerRepository {
   async saveAnalysis(matchId: string, analysis: CornerAnalysis, config: CornerModelConfig, hash: string) {
     await this.pool.query(`INSERT INTO corner_model_versions(model_version,config_hash,config) VALUES($1,$2,$3::jsonb) ON CONFLICT DO NOTHING`,
       [config.modelVersion, hash, JSON.stringify(config)]);
-    await this.pool.query(
+    const inserted = await this.pool.query(
       `INSERT INTO corner_analyses(match_id,model_version,config_hash,expected_home_corners,expected_away_corners,expected_total_corners,
        probabilities,distribution,data_quality_score,data_quality_status,analysis_eligible,model_confidence,sample,calculation_details)
        VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12,$13::jsonb,$14::jsonb) ON CONFLICT DO NOTHING`,
       [matchId,config.modelVersion,hash,analysis.expectedHomeCorners,analysis.expectedAwayCorners,analysis.expectedTotalCorners,
         JSON.stringify(analysis.probabilities),analysis.distribution,analysis.dataQuality.score,analysis.dataQuality.status,
         analysis.dataQuality.analysisEligible,analysis.modelConfidence,JSON.stringify(analysis.sample),JSON.stringify(analysis.calculationDetails)]);
+    return (inserted.rowCount ?? 0) > 0;
+  }
+
+  async upcomingRange(from: Date, to: Date, competitions: readonly string[]) {
+    const result = await this.pool.query(`SELECT m.id,m.status,m.league_id competition_id,m.home_team_id,m.away_team_id,
+      m.kickoff_at,m.season,l.name competition FROM matches m JOIN leagues l ON l.id=m.league_id
+      WHERE m.status='scheduled' AND m.kickoff_at>$1 AND m.kickoff_at<=$2 AND m.kickoff_at>now()
+      ORDER BY m.kickoff_at,m.id`, [from,to]);
+    return result.rows.filter((row) => isCompetitionConfigured(String(row.competition), competitions));
   }
 
   async saveBacktest(report: unknown, config: CornerModelConfig, hash: string) {

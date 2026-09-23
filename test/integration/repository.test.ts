@@ -15,6 +15,8 @@ import { PredictionRepository } from '../../src/predictions/service.js';
 import type { AnalysisItem } from '../../src/odds-analysis/types.js';
 import { HistoricalRepository } from '../../src/db/historical-repository.js';
 import { OddsIntelligenceRepository } from '../../src/odds-neighbors/repository.js';
+import { refreshUpcomingCornerAnalyses } from '../../src/corners/refresh.js';
+import { createLogger } from '../../src/logger.js';
 
 describe('FootballRepository integration', () => {
   let container: Awaited<ReturnType<PostgreSqlContainer['start']>> | undefined;
@@ -56,6 +58,31 @@ describe('FootballRepository integration', () => {
     await container?.stop();
   });
 
+  it('links future odds and refreshes corner analyses with active scope and idempotency', async () => {
+    const kickoffAt = new Date('2099-12-20T18:00:00Z');
+    const entity = (name:string) => ({providerExternalId:name,name,shortName:null,country:null,logoUrl:null,sourceUpdatedAt:new Date(),raw:{}});
+    const target = {providerExternalId:'automation-club',league:entity('Brasileirao'),homeTeam:entity('Flamengo'),awayTeam:entity('RB Bragantino'),
+      kickoffAt,status:'scheduled' as const,round:null,season:'2099',homeScore:null,awayScore:null,sourceUpdatedAt:new Date(),raw:{}};
+    const clubId = await repository.upsertMatch('automation',target);
+    const nationalId = await repository.upsertMatch('automation',{...target,providerExternalId:'automation-national',league:entity('International Friendlies'),
+      homeTeam:entity('Türkiye'),awayTeam:entity('Czechia')});
+    const inactiveId = await repository.upsertMatch('automation',{...target,providerExternalId:'automation-inactive',league:entity('MLS'),
+      homeTeam:entity('Inactive Home'),awayTeam:entity('Inactive Away')});
+    const configured = ['BrasileiraoSerieA','InternationalFriendlies'];
+    const odds = new OddsRepository(pool,undefined,undefined,configured);
+    const fixture = {providerMatchId:'ng',kickoffAt,homeTeam:'CR Flamengo',awayTeam:'Bragantino SP',leagueName:'Brasileirao'};
+    expect(await odds.resolveMatchDetailed(fixture)).toMatchObject({status:'ALIAS',matchId:clubId});
+    expect(await odds.resolveMatchDetailed({...fixture,homeTeam:'Turkey',awayTeam:'Czech Republic'})).toMatchObject({status:'ALIAS',matchId:nationalId});
+    expect(await odds.resolveMatchDetailed({...fixture,homeTeam:'Inactive Home',awayTeam:'Inactive Away'})).toMatchObject({status:'INACTIVE_COMPETITION',matchId:null});
+    const corners = new CornerRepository(pool);
+    const config = {SUPPORTED_COMPETITIONS:configured,COLLECTOR_FUTURE_DAYS:3};
+    const logger = createLogger({LOG_LEVEL:'silent',NODE_ENV:'test'});
+    const from = new Date('2099-12-19');
+    expect(await refreshUpcomingCornerAnalyses(corners,config,logger,from)).toMatchObject({generated:2,failed:0});
+    expect(await refreshUpcomingCornerAnalyses(corners,config,logger,from)).toMatchObject({generated:0,alreadyExisting:2});
+    expect(Number((await pool.query('SELECT count(*) FROM corner_analyses WHERE match_id=$1',[inactiveId])).rows[0].count)).toBe(0);
+  });
+
   it('is idempotent and retains provider-independent IDs', async () => {
     const observedAt = new Date('2026-09-16T12:00:00Z');
     const raw = { source: 'fixture' };
@@ -81,7 +108,8 @@ describe('FootballRepository integration', () => {
       status: 'finished', home_score: 2, away_score: 1 });
     expect(detail?.statistics).toEqual([expect.objectContaining({ stat_key: 'corners', label: 'Corners', provider: 'sofascore' })]);
     expect(detail?.odds).toEqual([]);
-    const counts = await pool.query('SELECT (SELECT count(*) FROM matches) matches, (SELECT count(*) FROM teams) teams');
+    const counts = await pool.query(`SELECT (SELECT count(*) FROM matches WHERE id=$1) matches,
+      (SELECT count(*) FROM teams WHERE id IN (SELECT home_team_id FROM matches WHERE id=$1 UNION SELECT away_team_id FROM matches WHERE id=$1)) teams`, [firstId]);
     expect(Number(counts.rows[0].matches)).toBe(1);
     expect(Number(counts.rows[0].teams)).toBe(2);
   });

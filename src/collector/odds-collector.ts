@@ -39,25 +39,37 @@ export class OddsCollector {
     let snapshots = 0;
     let analyses = 0;
     let analysisFailures = 0;
+    const reasons: Record<string, number> = {};
+    let diagnosticLogs = 0;
     try {
       for (let day = 0; day <= this.config.NOWGOAL_FUTURE_DAYS && !this.stopped; day += 1) {
         const date = addDays(new Date(), day);
         const matches = await this.provider.getPrematchOddsForDate(date);
         for (const item of matches) {
-          const internalMatchId = await this.oddsRepository.resolveMatch(item.fixture);
-          if (!internalMatchId) { unmatched += 1; continue; }
+          const resolution = await this.oddsRepository.resolveMatchDetailed(item.fixture);
+          const cutoff = Math.min(item.fixture.kickoffAt.getTime(), resolution.kickoffAt?.getTime() ?? Infinity);
+          const reason = cutoff <= Date.now() ? 'KICKOFF_MISMATCH' : resolution.reason;
+          reasons[reason] = (reasons[reason] ?? 0) + 1;
+          const internalMatchId = cutoff > Date.now() ? resolution.matchId : null;
+          if (!internalMatchId) {
+            unmatched += 1;
+            if (diagnosticLogs++ < 10) this.logger.info({ ...item.fixture, reason,
+              nearestCandidates: resolution.nearestCandidates }, 'NowGoal fixture not linked');
+            continue;
+          }
           matched += 1;
-          const stored = await this.oddsRepository.appendManyAndAnalyze(internalMatchId, item.odds);
+          const stored = await this.oddsRepository.appendManyAndAnalyze(internalMatchId,
+            item.odds.filter((odds) => odds.capturedAt.getTime() < cutoff));
           snapshots += stored.inserted;
           if (stored.analysisGenerated) analyses += 1;
           if (stored.analysisFailed) analysisFailures += 1;
         }
       }
       const completed = { ...cursor, completedAt: new Date().toISOString(), matched, unmatched, snapshots, analyses, analysisFailures,
-        retries: this.provider.consumeRetryCount() };
+        retries: this.provider.consumeRetryCount(), reasons };
       await this.repository.markSucceeded(this.provider.name, scope, completed);
       await this.repository.markProviderFetch(this.provider.name);
-      this.logger.info({ provider: this.provider.name, matched, unmatched, snapshots, analyses, analysisFailures },
+      this.logger.info({ provider: this.provider.name, matched, unmatched, snapshots, analyses, analysisFailures, reasons },
         'Prematch odds cycle completed');
     } catch (error) {
       await this.repository.markFailed(this.provider.name, scope, error);

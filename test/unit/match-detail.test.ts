@@ -28,6 +28,22 @@ const page = (overallStatus: string, overrides: Partial<MatchAnalysisPageData> =
 });
 
 describe('match analysis detail renderer', () => {
+  it('shows finished NOT_GENERATED matches as unevaluated without zero gates or rejection', () => {
+    const html = renderMatchAnalysis(page('REJECTED', { match:{...match,status:'finished',home_score:2,away_score:1},
+      predictionDetail:{state:'NOT_GENERATED',runs:[],journal:null},
+      predictionGate:{overallStatus:'REJECTED',state:'NOT_GENERATED',candidate:null,gates:Array.from({length:14},(_,i)=>({
+        label:'Tahmin skoru',current:0,required:70,passed:i<3 })),summary:'Resmi tahmin zamanı geçti.'} }));
+    expect(html).toContain('MAÇ ÖNCESİ ANALİZ OLUŞMADI');
+    expect(html).toContain('DEĞERLENDİRİLMEDİ');
+    expect(html).not.toContain('REDDEDİLDİ');
+    expect(html).not.toContain('3 / 14 geçti');
+    expect(html).not.toContain('Mevcut: 0');
+  });
+  it('preserves scheduled waiting and evaluated rejection', () => {
+    expect(renderMatchAnalysis(page('WAITING',{predictionDetail:{state:'NOT_GENERATED'}}))).toContain('VERİ BEKLENİYOR');
+    expect(renderMatchAnalysis(page('REJECTED',{match:{...match,status:'finished'},predictionDetail:{state:'LOCKED_SKIP'}})))
+      .toContain('REDDEDİLDİ');
+  });
   it('renders the OFFICIAL state, real 1X2 odds and gate values without raw reason codes', () => {
     const html = renderMatchAnalysis(page('OFFICIAL'));
     expect(html).toContain('RESMİ TAHMİN');

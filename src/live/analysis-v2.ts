@@ -1,3 +1,4 @@
+import { liveAnalysisV3 } from './analysis-v3.js';
 import { analyzeLive, liveResponse, type LiveMatchState } from './analysis.js';
 import { eventConflicts, reconcile, STALE_MS } from './reconcile.js';
 import { type SourceData, type ProviderHealth, type LiveMatchEvent } from './types.js';
@@ -43,7 +44,7 @@ export function liveResponseV2(row: Record<string, unknown>, sources: SourceData
     sourceHealth, conflicts, reasons: [...baseline.reasons.filter(r => !r.includes('oran')), ...(conflicts.length ? ['Kaynak uyuşmazlığı; kaynak değerleri ayrı gösterilir.'] : []),
       liveOdds.length ? 'Gerçek canlı oran gözlemi mevcut; hareket için yeterli geçmiş yok.' : 'Gerçek canlı oran mevcut değil.'],
     oddsMovement: null, generatedAt: now, executionAuthority: false, aiPredictionAuthority: false };
-  return { ...v1, match: { ...v1.match, minute, addedTime, statistics: stats, odds: liveOdds, liveOddsAvailable: liveOdds.length > 0 },
+  const response = { ...v1, match: { ...v1.match, minute, addedTime, statistics: stats, odds: liveOdds, liveOddsAvailable: liveOdds.length > 0 },
     minute, addedTime, minuteSource: minuteSource?.snapshot.provider ?? null, events, statistics: stats, statisticSources,
     LIVE_ANALYSIS_V2: v2, sourceHealth, conflicts, sourceValues: sources.map(s => s.snapshot),
     sourceEvents: { fotmob: primary?.events ?? null, apiFootball: secondary?.events ?? null },
@@ -51,5 +52,6 @@ export function liveResponseV2(row: Record<string, unknown>, sources: SourceData
       && primary?.snapshot.homeScore != null && primary.snapshot.awayScore != null,
     liveOdds, liveOddsAvailable: liveOdds.length > 0,
     preMatchContext: { contextualOnly: true, prediction: null as unknown, gate: null as unknown } };
+  return { ...response, LIVE_ANALYSIS_V3: liveAnalysisV3(response, now) };
 }
 export type LiveResponseV2 = ReturnType<typeof liveResponseV2>;

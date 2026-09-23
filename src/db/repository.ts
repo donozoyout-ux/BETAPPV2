@@ -201,6 +201,13 @@ export class FootballRepository {
       const awayTeamId = await this.upsertTeam(client, provider, match.awayTeam);
       await this.lockEntity(client, provider, 'match', match.providerExternalId);
       let id = await this.mapping(client, provider, 'match', match.providerExternalId);
+      if (id) {
+        const existing = await client.query<{ status: string; source_updated_at: Date }>(
+          'SELECT status,source_updated_at FROM matches WHERE id=$1 FOR UPDATE', [id]);
+        const current = existing.rows[0];
+        if (current && ((current.status === 'finished' && match.status !== 'finished')
+          || current.source_updated_at > match.sourceUpdatedAt)) return id;
+      }
       let matchConfidence = 'EXACT';
       const values = [
         leagueId,
@@ -239,14 +246,14 @@ export class FootballRepository {
            match_confidence=excluded.match_confidence,last_seen_at=now()`,
           [provider, match.providerExternalId, id, match.sourceUpdatedAt, matchConfidence],
         );
-      } else {
-        await client.query(
-          `UPDATE matches SET league_id=$2,home_team_id=$3,away_team_id=$4,kickoff_at=$5,status=$6,
-           round=$7,season=$8,home_score=$9,away_score=$10,source_updated_at=$11,updated_at=now() WHERE id=$1`,
-          [id, ...values],
-        );
-        await this.touchMapping(client, provider, 'match', match.providerExternalId, match.sourceUpdatedAt);
       }
+      const updated = await client.query(
+        `UPDATE matches SET league_id=$2,home_team_id=$3,away_team_id=$4,kickoff_at=$5,status=$6,
+         round=$7,season=$8,home_score=$9,away_score=$10,source_updated_at=$11,updated_at=now()
+         WHERE id=$1 AND (status <> 'finished' OR $6 = 'finished')
+         AND (source_updated_at IS NULL OR source_updated_at <= $11) RETURNING id`, [id, ...values]);
+      if (!updated.rows.length) return id;
+      await this.touchMapping(client, provider, 'match', match.providerExternalId, match.sourceUpdatedAt);
       await this.savePayload(client, provider, 'match', match.providerExternalId, match.raw, match.sourceUpdatedAt);
       for (const [metric, value] of [['home_score', match.homeScore], ['away_score', match.awayScore]] as const) {
         if (value == null) continue;
@@ -280,7 +287,8 @@ export class FootballRepository {
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
            ON CONFLICT(match_id,provider,period,stat_key) DO UPDATE SET
              label=excluded.label,home_value=excluded.home_value,away_value=excluded.away_value,
-             source_updated_at=excluded.source_updated_at,updated_at=now()`,
+             source_updated_at=excluded.source_updated_at,updated_at=now()
+             WHERE match_statistics.source_updated_at <= excluded.source_updated_at`,
           [matchId, provider, stat.period, stat.key, stat.label, stat.homeValue, stat.awayValue, data.sourceUpdatedAt],
         );
         for (const [side, value] of [['home', stat.homeValue], ['away', stat.awayValue]] as const) {
@@ -485,7 +493,7 @@ export class FootballRepository {
         [timeZone],
       ),
       this.pool.query(
-        `SELECT m.id,m.kickoff_at,m.status,m.home_score,m.away_score,l.name league,
+        `SELECT m.id,m.kickoff_at,m.status,m.home_score,m.away_score,m.source_updated_at,l.name league,
           ht.name home_team,at.name away_team,
           count(DISTINCT os.id)::integer odds_snapshots,
           count(DISTINCT (os.market_type,os.market_name,os.line,os.selection))::integer odds_markets
@@ -557,10 +565,20 @@ export class FootballRepository {
        LIMIT $1`, [safeLimit])).rows;
   }
 
+  async liveMatches() {
+    const result = await this.pool.query(`SELECT m.*,l.name league,ht.name home_team,at.name away_team,
+      COALESCE((SELECT jsonb_agg(s) FROM match_statistics s
+        WHERE s.match_id=m.id AND s.provider='fotmob' AND s.period='ALL'), '[]'::jsonb) statistics
+      FROM matches m JOIN leagues l ON l.id=m.league_id
+      JOIN teams ht ON ht.id=m.home_team_id JOIN teams at ON at.id=m.away_team_id
+      WHERE m.status='live' ORDER BY m.kickoff_at,m.id`);
+    return result.rows;
+  }
+
   /** Read-only composition source for the server-rendered match analysis page. */
   async matchAnalysisDetail(matchId: string) {
     const [matchResult, statisticsResult, oddsResult] = await Promise.all([
-      this.pool.query(`SELECT m.id,m.kickoff_at,m.status,m.home_score,m.away_score,l.name league,
+      this.pool.query(`SELECT m.id,m.kickoff_at,m.status,m.home_score,m.away_score,m.source_updated_at,l.name league,
         ht.name home_team,at.name away_team
         FROM matches m JOIN leagues l ON l.id=m.league_id
         JOIN teams ht ON ht.id=m.home_team_id JOIN teams at ON at.id=m.away_team_id

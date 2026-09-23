@@ -1,3 +1,4 @@
+import { LiveRefresh } from './live/refresh.js';
 import { Collector } from './collector/collector.js';
 import { loadConfig } from './config.js';
 import { createPool } from './db/pool.js';
@@ -42,12 +43,15 @@ const oddsCollector = config.NOWGOAL_ENABLED
 const predictionRepository = new PredictionRepository(pool, config.SUPPORTED_COMPETITIONS);
 const predictionService = new PredictionService(predictionRepository);
 const collectors = [...footballCollectors, ...(oddsCollector ? [oddsCollector] : [])];
+const liveRefresh = config.FOTMOB_ENABLED ? new LiveRefresh(fotmob, repository, logger) : null;
+let liveTask: Promise<void> | undefined;
 let stopped = false;
 let wakeSleep: (() => void) | undefined;
 
 function shutdown(signal: string) {
   logger.info({ signal }, 'Worker shutdown requested');
   stopped = true;
+  liveRefresh?.stop();
   for (const collector of collectors) collector.stop();
   wakeSleep?.();
 }
@@ -134,6 +138,7 @@ async function waitForNextCycle(): Promise<void> {
 try {
   if (process.argv.includes('--once')) await runCycle();
   else if (config.COLLECTOR_ENABLED) {
+    liveTask = liveRefresh?.runForever();
     while (!stopped) {
       await runCycle();
       if (!stopped) await waitForNextCycle();
@@ -144,5 +149,7 @@ try {
   logger.fatal({ err: error }, 'Worker initialization failed');
   process.exitCode = 1;
 } finally {
+  liveRefresh?.stop();
+  await liveTask;
   await pool.end();
 }

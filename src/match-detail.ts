@@ -1,3 +1,4 @@
+import { liveSection } from './live/view.js';
 import { escapeHtml, formatDate, gateValue, objectValue, optionalOdds, shell,
   translateMarket, translateSelection } from './dashboard.js';
 
@@ -184,6 +185,7 @@ export function renderMatchAnalysis(data: MatchAnalysisPageData): string {
     <div class="sidebar-foot"><a class="system-pill" href="/"><span class="live-dot ${status === 'OFFICIAL' ? '' : 'wait'}"></span><span><strong style="display:block;color:var(--text)">${escapeHtml(statusLabels[status] ?? status)}</strong>Prediction Gate Inspector</span></a></div></aside>
     <div class="app-main"><header class="topbar"><div class="top-title"><strong>BETAPP Maç Analizi</strong><span>${escapeHtml(match.league)} · ${escapeHtml(formatDate(match.kickoff_at, { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }))}</span></div>
       <div class="top-actions"><a class="top-chip" href="/">← Genel Bakış</a></div></header><main class="content detail-content">
+      ${match.status === 'live' ? liveSection(match) : ''}
       <section class="match-hero" id="match-overview"><div class="match-meta"><span>${escapeHtml(match.league)}</span><span>${escapeHtml(formatDate(match.kickoff_at, { day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' }))}</span><span>${escapeHtml(match.status)}</span></div>
         <div class="scoreboard"><strong>${escapeHtml(match.home_team)}</strong><b>${score}</b><strong>${escapeHtml(match.away_team)}</strong></div>
         <div class="hero-gate"><span class="badge ${statusClasses[status] ?? 'neutral'}">${escapeHtml(statusLabels[status] ?? status)}</span><strong>${heroCopy}</strong><p>${escapeHtml(gate?.summary ?? 'Prediction V1 değerlendirmesi henüz oluşmadı.')}</p></div></section>

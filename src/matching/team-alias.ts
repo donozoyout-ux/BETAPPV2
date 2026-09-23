@@ -7,6 +7,14 @@ const replacements: Array<[RegExp, string]> = [
   [/\bparis\s+saint[- ]germain\b/g, 'psg'],
   [/\bfenerbahce\b/g, 'fenerbahce'],
   [/\bbayern\s+munchen\b/g, 'bayern munich'],
+  [/\bturkey\b/g, 'turkiye'],
+  [/\btuerkiye\b/g, 'turkiye'],
+  [/\bczech republic\b/g, 'czechia'],
+  [/\bkorea republic\b/g, 'south korea'],
+  [/\brepublic of korea\b/g, 'south korea'],
+  [/\busa\b/g, 'united states'],
+  [/\bu s a\b/g, 'united states'],
+  [/\binter miami cf\b/g, 'inter miami'],
 ];
 
 export function normalizeTeamAlias(name: string): string {
@@ -25,4 +33,22 @@ export function kickoffConfidence(existing: Date, incoming: Date): MatchConfiden
   if (minutes <= 30) return 'MEDIUM';
   if (minutes <= 120) return 'LOW';
   return 'UNMATCHED';
+}
+
+
+export function teamNameSimilarity(left: string, right: string): number {
+  const a = normalizeTeamAlias(left);
+  const b = normalizeTeamAlias(right);
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  if (a.includes(b) || b.includes(a)) {
+    const shorter = Math.min(a.length, b.length);
+    const longer = Math.max(a.length, b.length);
+    if (shorter >= 5) return Math.max(0.9, shorter / longer);
+  }
+  const at = new Set(a.split(' ').filter(Boolean));
+  const bt = new Set(b.split(' ').filter(Boolean));
+  const intersection = [...at].filter((token) => bt.has(token)).length;
+  const union = new Set([...at, ...bt]).size;
+  return union ? intersection / union : 0;
 }

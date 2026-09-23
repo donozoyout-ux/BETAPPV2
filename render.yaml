@@ -29,6 +29,10 @@ services:
         value: "5000"
       - key: BACKFILL_ENABLED
         value: "false"
+      - key: API_FOOTBALL_ENABLED
+        value: "false"
+      - key: API_FOOTBALL_KEY
+        sync: false
       - key: FOTMOB_ENABLED
         value: "true"
       - key: NOWGOAL_ENABLED
@@ -72,6 +76,10 @@ services:
         value: "true"
       - key: BACKFILL_ENABLED
         value: "false"
+      - key: API_FOOTBALL_ENABLED
+        value: "false"
+      - key: API_FOOTBALL_KEY
+        sync: false
       - key: FOTMOB_ENABLED
         value: "true"
       - key: NOWGOAL_ENABLED

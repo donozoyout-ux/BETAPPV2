@@ -82,6 +82,10 @@ describe('Live events V2', () => {
     expect(result.liveOddsAvailable).toBe(true);
     expect(result.LIVE_ANALYSIS_V1).toEqual({ ...liveResponse(row).LIVE_ANALYSIS_V1, generatedAt: result.LIVE_ANALYSIS_V1.generatedAt });
     expect(result.LIVE_ANALYSIS_V2).toMatchObject({ executionAuthority: false, aiPredictionAuthority: false });
+    expect(result.LIVE_ANALYSIS_V3).toMatchObject({
+      version: 'LIVE_ANALYSIS_V3', executionAuthority: false, aiPredictionAuthority: false,
+      shotAcceleration: { state: 'UNAVAILABLE' }, cornerAcceleration: { state: 'UNAVAILABLE' },
+    });
     expect(row).toEqual(before);
     expect(liveCard(result, true)).toContain('&lt;script&gt;');
     expect(liveCard(result, true)).not.toContain('<script>alert');
@@ -99,6 +103,7 @@ describe('Live events V2', () => {
       expect(result.sourceHealth.apiFootball.status).toBe('NOT_CONFIGURED');
       expect(result.LIVE_ANALYSIS_V1.version).toBe('LIVE_ANALYSIS_V1');
       expect(result.LIVE_ANALYSIS_V2.version).toBe('LIVE_ANALYSIS_V2');
+      expect(result.LIVE_ANALYSIS_V3.version).toBe('LIVE_ANALYSIS_V3');
       expect((await app.inject(`/api/live/${id}/events`)).statusCode).toBe(200);
     } finally { await app.close(); }
   });

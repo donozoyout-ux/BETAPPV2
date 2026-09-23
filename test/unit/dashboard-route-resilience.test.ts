@@ -6,6 +6,30 @@ import { createLogger } from '../../src/logger.js';
 const config = loadConfig({ DATABASE_URL: 'postgresql://localhost/betapp', LOG_LEVEL: 'silent' });
 
 describe('dashboard route resilience', () => {
+  it('single-flights concurrent dashboard loads and reuses the 60s snapshot', async () => {
+    let coreCalls = 0;
+    const repository = {
+      dashboardData: async () => {
+        coreCalls += 1;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        return { providers: [], matches: [] };
+      },
+      liveProviderHealth: async () => null,
+    };
+    const app = buildApp(config, repository as never, createLogger(config));
+    try {
+      const [a, b, d] = await Promise.all([app.inject('/'), app.inject('/api/dashboard'), app.inject('/')]);
+      expect(a.statusCode).toBe(200);
+      expect(b.statusCode).toBe(200);
+      expect(d.statusCode).toBe(200);
+      expect(coreCalls).toBe(1);
+      await app.inject('/api/dashboard');
+      expect(coreCalls).toBe(1);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('loads optional dashboard sources in bounded batches after core data', async () => {
     let concurrent = 0;
     let maximumConcurrent = 0;

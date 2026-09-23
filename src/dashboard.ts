@@ -16,6 +16,7 @@ type DashboardData = { matches: Array<Record<string, unknown>>; providers: Array
   oddsIntelligence?: Array<Record<string, unknown>>;
   predictionReviewCandidates?: Array<Record<string, unknown>>;
   predictionDiagnostics?: Record<string, unknown> | null;
+  apiFootballHealth?: Record<string, unknown> | null;
   supportedCompetitions?: string[] };
 type ValidationMetric = { count?: unknown; sample?: unknown; averagePredictedProbability?: unknown; actualHitRate?: unknown;
   absoluteCalibrationError?: unknown; mae?: unknown; brier?: unknown };
@@ -232,9 +233,13 @@ export function renderDashboard(data: DashboardData): string {
   const archivedOddsMatchCount = finiteNumber(archiveSummary.finished_matches_with_odds);
   const preKickoffSnapshotRaw = archiveSummary.pre_kickoff_snapshots;
   const preKickoffSnapshotCount = finiteNumber(preKickoffSnapshotRaw);
-  const healthyProviders = data.providers.filter((provider) => provider.status === 'healthy').length;
+  const apiFootball = data.apiFootballHealth
+    ? { provider: 'api-football', status: String(data.apiFootballHealth.status ?? 'unknown').toLowerCase(),
+        message: data.apiFootballHealth.detail ?? null }
+    : null;
+  const sources = apiFootball ? [...data.providers, apiFootball] : data.providers;
+  const healthyProviders = sources.filter((provider) => ['healthy','supported'].includes(String(provider.status).toLowerCase())).length;
   const percent = (value: unknown) => `${(finiteNumber(value) * 100).toFixed(1)}%`;
-  const sources = data.providers;
   const allSourcesHealthy = sources.length > 0 && healthyProviders === sources.length;
   const statusText = sources.length === 0 ? 'Durum bilinmiyor'
     : healthyProviders === sources.length ? 'Tüm kaynaklar sağlıklı'
@@ -294,15 +299,18 @@ export function renderDashboard(data: DashboardData): string {
   }).join('') : renderEmpty('↗', 'Nowgoal oranları bekleniyor', 'Maçlar FotMob ile eşleştikten sonra 1X2, Asya handikapı, gol ve korner oranları burada listelenecek.');
   const providerCards = sources.length ? sources.map((provider) => {
     const status = String(provider.status ?? 'unknown').toLowerCase();
-    const badgeClass = status === 'healthy' ? 'ok' : ['degraded','waiting'].includes(status) ? 'partial' : 'neutral';
-    const statusLabel = status === 'healthy' ? 'HEALTHY'
+    const badgeClass = ['healthy','supported'].includes(status) ? 'ok'
+      : ['degraded','waiting','rate_limited'].includes(status) ? 'partial' : status === 'blocked' ? 'bad' : 'neutral';
+    const statusLabel = status === 'healthy' ? 'HEALTHY' : status === 'supported' ? 'SUPPORTED'
+      : status === 'rate_limited' ? 'RATE LIMITED'
       : ['waiting','degraded'].includes(status) ? 'DEGRADED'
-      : status === 'blocked' ? 'BLOCKED' : 'UNKNOWN';
+      : status === 'blocked' ? 'BLOCKED' : status === 'not_configured' ? 'NOT CONFIGURED' : 'UNKNOWN';
     const name = String(provider.provider ?? 'Veri kaynağı');
     const lower = name.toLowerCase();
     const explanation = lower.includes('fotmob') ? 'Maç, fikstür ve istatistik verileri'
       : lower.includes('nowgoal') ? 'Oran ve oran değişimi verileri'
       : lower.includes('sofascore') ? 'Yedek veri kaynağı'
+      : lower.includes('api-football') ? 'Canlı dakika, olay ve ikinci kaynak doğrulaması'
       : 'Sistem veri kaynağı';
     return `<article class="source"><div class="source-top"><span class="source-name">${escapeHtml(name)}</span>
       <span class="badge ${badgeClass}">${escapeHtml(statusLabel)}</span></div>

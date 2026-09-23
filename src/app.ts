@@ -60,12 +60,6 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
     }
   };
 
-  type DashboardSources = Awaited<ReturnType<typeof loadDashboardSourcesUncached>>;
-  let dashboardCache: { value: DashboardSources; loadedAt: number } | null = null;
-  let dashboardRefresh: Promise<DashboardSources> | null = null;
-  const DASHBOARD_TTL_MS = 60_000;
-  const DASHBOARD_STALE_MS = 5 * 60_000;
-
   const loadDashboardSourcesUncached = async () => {
     const data = await repository.dashboardData('Europe/Istanbul');
 
@@ -99,6 +93,12 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
     return { data, today, previews, reviewCandidates, history, performance, selfAudit, segmentAudits,
       rootCauses, adaptiveProposals, oddsSimilarity, predictionDiagnostics, oddsIntelligenceData, apiFootballHealth };
   };
+
+  type DashboardSources = Awaited<ReturnType<typeof loadDashboardSourcesUncached>>;
+  let dashboardCache: { value: DashboardSources; loadedAt: number } | null = null;
+  let dashboardRefresh: Promise<DashboardSources> | null = null;
+  const DASHBOARD_TTL_MS = 60_000;
+  const DASHBOARD_STALE_MS = 5 * 60_000;
 
   const loadDashboardSources = async (): Promise<DashboardSources> => {
     const now = Date.now();

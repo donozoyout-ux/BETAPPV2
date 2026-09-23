@@ -1,0 +1,22 @@
+export type Provider = 'fotmob' | 'api-football';
+export type EventType = 'GOAL' | 'OWN_GOAL' | 'PENALTY_GOAL' | 'MISSED_PENALTY' | 'YELLOW_CARD' | 'RED_CARD' | 'SECOND_YELLOW' | 'SUBSTITUTION';
+export type LiveMatchEvent = {
+  provider: Provider; providerEventId: string | null; matchId: string; type: EventType;
+  minute: number | null; addedTime: number | null; teamSide: 'HOME' | 'AWAY' | 'UNKNOWN';
+  teamName: string | null; playerName: string | null; assistName: string | null; detail: string | null;
+  scoreAfter: { home: number; away: number } | null; occurredAt: string | null; observedAt: string; raw: unknown;
+};
+export type LiveOdd = { provider: 'api-football'; bookmaker: string | null; market: string;
+  line: string | null; selection: string; odds: number; observedAt: string };
+export type SourceSnapshot = { provider: Provider; externalId: string; status: string; phase: string;
+  homeScore: number | null; awayScore: number | null; minute: number | null; addedTime: number | null;
+  observedAt: string };
+export type SourceData = { snapshot: SourceSnapshot; events: LiveMatchEvent[] | null;
+  statistics: Array<Record<string, unknown>> | null; odds: LiveOdd[] | null; detailsAt: string | null };
+export type ProviderHealth = 'SUPPORTED' | 'NOT_CONFIGURED' | 'DEGRADED' | 'RATE_LIMITED' | 'UNAVAILABLE';
+export type Conflict = { type: 'SCORE_CONFLICT' | 'STATUS_CONFLICT' | 'MINUTE_CONFLICT' | 'EVENT_CONFLICT';
+  fotmob: unknown; apiFootball: unknown; resolution: string };
+export const obj = (x: unknown): Record<string, unknown> => x && typeof x === 'object' && !Array.isArray(x) ? x as Record<string, unknown> : {};
+export const arr = (x: unknown): Record<string, unknown>[] => Array.isArray(x) ? x.map(obj) : [];
+export const str = (x: unknown): string | null => typeof x === 'string' && x.trim() ? x : null;
+export const num = (x: unknown): number | null => (typeof x === 'number' || typeof x === 'string') && String(x).trim() !== '' && Number.isFinite(Number(x)) && Number(x) >= 0 ? Number(x) : null;

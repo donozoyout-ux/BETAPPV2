@@ -1,3 +1,4 @@
+import { guardPrimary, LiveRepository } from '../live/repository.js';
 import { createHash } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import type { MatchStatistics, NormalizedLeague, NormalizedMatch, NormalizedTeam } from '../domain/types.js';
@@ -247,6 +248,7 @@ export class FootballRepository {
           [provider, match.providerExternalId, id, match.sourceUpdatedAt, matchConfidence],
         );
       }
+      if (!await guardPrimary(client, id, provider, match)) return id;
       const updated = await client.query(
         `UPDATE matches SET league_id=$2,home_team_id=$3,away_team_id=$4,kickoff_at=$5,status=$6,
          round=$7,season=$8,home_score=$9,away_score=$10,source_updated_at=$11,updated_at=now()
@@ -564,6 +566,9 @@ export class FootballRepository {
        ORDER BY m.kickoff_at,home.name,os.market_type,os.line NULLS FIRST,os.provider,os.selection
        LIMIT $1`, [safeLimit])).rows;
   }
+
+  async liveSources(id: string) { return new LiveRepository(this.pool).read(id); }
+  async liveProviderHealth() { return new LiveRepository(this.pool).readHealth(); }
 
   async liveMatches() {
     const result = await this.pool.query(`SELECT m.*,l.name league,ht.name home_team,at.name away_team,

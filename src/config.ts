@@ -44,6 +44,8 @@ const schema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   COLLECTOR_ENABLED: booleanFromString.default(true),
   BACKFILL_ENABLED: booleanFromString.default(false),
+  API_FOOTBALL_ENABLED: booleanFromString.default(false),
+  API_FOOTBALL_KEY: z.string().default(''),
   FOTMOB_ENABLED: booleanFromString.default(true),
   NOWGOAL_ENABLED: booleanFromString.default(true),
   NOWGOAL_FUTURE_DAYS: z.coerce.number().int().min(0).max(14).default(3),

@@ -176,7 +176,7 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
     reply.type('application/javascript').send(liveRecommendationsPollScript));
   app.get('/api/live/recommendations', async (_request, reply) => {
     reply.header('Cache-Control', 'no-store');
-    const today = predictions ? await predictions.today() : [];
+    const today = predictions ? await predictions.today() as Array<Record<string, unknown>> : [];
     const official = today.filter((item) => String(item.decision) === 'PREDICT');
     const health = repository.liveProviderHealth ? await repository.liveProviderHealth().catch(() => null) : null;
     const configured = config.API_FOOTBALL_ENABLED && Boolean(config.API_FOOTBALL_KEY.trim());

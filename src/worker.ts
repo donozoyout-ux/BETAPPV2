@@ -1,3 +1,7 @@
+import { LiveRepository } from './live/repository.js';
+import { SecondaryLiveRefresh } from './live/secondary-refresh.js';
+import { ApiFootballProvider } from './providers/api-football.js';
+import { fotmobEvents, fotmobClock, fotmobPhase } from './live/events.js';
 import { LiveRefresh } from './live/refresh.js';
 import { Collector } from './collector/collector.js';
 import { loadConfig } from './config.js';
@@ -43,7 +47,20 @@ const oddsCollector = config.NOWGOAL_ENABLED
 const predictionRepository = new PredictionRepository(pool, config.SUPPORTED_COMPETITIONS);
 const predictionService = new PredictionService(predictionRepository);
 const collectors = [...footballCollectors, ...(oddsCollector ? [oddsCollector] : [])];
-const liveRefresh = config.FOTMOB_ENABLED ? new LiveRefresh(fotmob, repository, logger) : null;
+const liveRepository = new LiveRepository(pool);
+const secondaryRefresh = new SecondaryLiveRefresh(new ApiFootballProvider(config), liveRepository, config, logger);
+const liveRefresh = config.FOTMOB_ENABLED ? new LiveRefresh(fotmob, repository, logger, async (match, id, stats) => {
+  const payload = await fotmob.details(match.providerExternalId);
+  const observedAt = stats.sourceUpdatedAt.toISOString();
+  await liveRepository.save(id, {
+    snapshot: { provider: 'fotmob', externalId: match.providerExternalId, status: match.status,
+      phase: fotmobPhase(payload.header?.status),
+      homeScore: match.homeScore, awayScore: match.awayScore, ...fotmobClock(payload.header?.status),
+      observedAt: match.sourceUpdatedAt.toISOString() },
+    events: fotmobEvents(payload, id, observedAt), statistics: null, odds: null, detailsAt: observedAt,
+  });
+}) : null;
+let secondaryTask: Promise<void> | undefined;
 let liveTask: Promise<void> | undefined;
 let stopped = false;
 let wakeSleep: (() => void) | undefined;
@@ -52,6 +69,7 @@ function shutdown(signal: string) {
   logger.info({ signal }, 'Worker shutdown requested');
   stopped = true;
   liveRefresh?.stop();
+  secondaryRefresh.stop();
   for (const collector of collectors) collector.stop();
   wakeSleep?.();
 }
@@ -136,9 +154,10 @@ async function waitForNextCycle(): Promise<void> {
 }
 
 try {
-  if (process.argv.includes('--once')) await runCycle();
+  if (process.argv.includes('--once')) { await runCycle(); await secondaryRefresh.runCycle(); }
   else if (config.COLLECTOR_ENABLED) {
     liveTask = liveRefresh?.runForever();
+    secondaryTask = secondaryRefresh.runForever();
     while (!stopped) {
       await runCycle();
       if (!stopped) await waitForNextCycle();
@@ -150,6 +169,8 @@ try {
   process.exitCode = 1;
 } finally {
   liveRefresh?.stop();
+  secondaryRefresh.stop();
   await liveTask;
+  await secondaryTask;
   await pool.end();
 }

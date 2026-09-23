@@ -1,0 +1,463 @@
+{
+  "header": {
+    "teams": [
+      {
+        "name": "Azerbaijan",
+        "id": 8566,
+        "score": 1,
+        "imageUrl": "https://images.fotmob.com/image_resources/logo/teamlogo/8566_small.png",
+        "pageUrl": "/teams/8566/overview/azerbaijan",
+        "fifaRank": 126
+      },
+      {
+        "name": "Tajikistan",
+        "id": 5898,
+        "score": 0,
+        "imageUrl": "https://images.fotmob.com/image_resources/logo/teamlogo/5898_small.png",
+        "pageUrl": "/teams/5898/overview/tajikistan",
+        "fifaRank": 101
+      }
+    ],
+    "status": {
+      "utcTime": "2026-09-23T16:00:00.000Z",
+      "numberOfHomeRedCards": 0,
+      "numberOfAwayRedCards": 0,
+      "halfs": {
+        "firstHalfStarted": "23.09.2026 18:04:17",
+        "firstHalfEnded": "23.09.2026 18:51:44",
+        "secondHalfStarted": "23.09.2026 19:05:16",
+        "secondHalfEnded": "",
+        "firstExtraHalfStarted": "",
+        "secondExtraHalfStarted": "",
+        "gameEnded": ""
+      },
+      "finished": false,
+      "started": true,
+      "cancelled": false,
+      "ongoing": true,
+      "scoreStr": "1 - 0",
+      "liveTime": {
+        "short": "68‎’‎",
+        "shortKey": "",
+        "long": "67:27",
+        "longKey": "",
+        "maxTime": 90,
+        "basePeriod": 90,
+        "penalties": null,
+        "addedTime": 0
+      }
+    },
+    "events": {
+      "homeTeamGoals": {
+        "Baklov": [
+          {
+            "reactKey": "1447770958Goal593311undefinedtrue",
+            "timeStr": 58,
+            "type": "Goal",
+            "time": 58,
+            "overloadTime": null,
+            "eventId": 14477709,
+            "player": {
+              "id": 593311,
+              "name": "Oleg Baklov",
+              "profileUrl": "/players/593311/oleg-baklov"
+            },
+            "homeScore": 0,
+            "awayScore": 0,
+            "profileUrl": "/players/593311/oleg-baklov",
+            "overloadTimeStr": false,
+            "isHome": true,
+            "ownGoal": true,
+            "goalDescription": "Own goal",
+            "goalDescriptionKey": "owngoal",
+            "suffix": "OG",
+            "suffixKey": "own_goal_short",
+            "isPenaltyShootoutEvent": false,
+            "nameStr": "Oleg Baklov",
+            "firstName": "Oleg",
+            "lastName": "Baklov",
+            "fullName": "Oleg Baklov",
+            "playerId": 593311,
+            "newScore": [
+              1,
+              0
+            ],
+            "penShootoutScore": null,
+            "shotmapEvent": null,
+            "assistStr": null,
+            "assistProfileUrl": null
+          }
+        ]
+      },
+      "awayTeamGoals": {},
+      "homeTeamRedCards": {},
+      "awayTeamRedCards": {}
+    }
+  },
+  "general": {
+    "matchId": "6140728",
+    "matchName": "Azerbaijan-vs-Tajikistan_Wed, Sep 23, 2026, 16:00 UTC",
+    "matchRound": null,
+    "teamColors": {
+      "darkMode": {
+        "home": "#007AC6",
+        "away": "#EC151F"
+      },
+      "lightMode": {
+        "home": "#007AC6",
+        "away": "#EC151f"
+      },
+      "fontDarkMode": {
+        "home": "rgba(255, 255, 255, 1.0)",
+        "away": "rgba(255, 255, 255, 1.0)"
+      },
+      "fontLightMode": {
+        "home": "rgba(255, 255, 255, 1.0)",
+        "away": "rgba(255, 255, 255, 1.0)"
+      }
+    },
+    "leagueId": 914609,
+    "leagueName": "Friendlies",
+    "leagueRoundName": null,
+    "parentLeagueId": 114,
+    "countryCode": "INT",
+    "homeTeam": {
+      "name": "Azerbaijan",
+      "id": 8566
+    },
+    "awayTeam": {
+      "name": "Tajikistan",
+      "id": 5898
+    },
+    "coverageLevel": "lower",
+    "matchTimeUTC": "Wed, Sep 23, 2026, 16:00 UTC",
+    "matchTimeUTCDate": "2026-09-23T16:00:00.000Z",
+    "started": true,
+    "finished": false,
+    "gender": "male"
+  },
+  "events": {
+    "ongoing": true,
+    "events": [
+      {
+        "reactKey": "undefined63SubstitutionNaN1042552true",
+        "timeStr": 63,
+        "type": "Substitution",
+        "time": 63,
+        "overloadTime": 0,
+        "player": {
+          "id": null,
+          "profileUrl": ""
+        },
+        "homeScore": 1,
+        "awayScore": 0,
+        "profileUrl": "",
+        "overloadTimeStr": false,
+        "isHome": true,
+        "injuredPlayerOut": false,
+        "swap": [
+          {
+            "name": "Ayxan Hüseynov",
+            "id": "1042552",
+            "profileUrl": "/players/1042552/ayxan-huseynov"
+          },
+          {
+            "name": "Aleksey Isaev",
+            "id": "688887",
+            "profileUrl": "/players/688887/aleksey-isaev"
+          }
+        ]
+      },
+      {
+        "reactKey": "undefined63SubstitutionNaN1701120true",
+        "timeStr": 63,
+        "type": "Substitution",
+        "time": 63,
+        "overloadTime": 0,
+        "player": {
+          "id": null,
+          "profileUrl": ""
+        },
+        "homeScore": 1,
+        "awayScore": 0,
+        "profileUrl": "",
+        "overloadTimeStr": false,
+        "isHome": true,
+        "injuredPlayerOut": false,
+        "swap": [
+          {
+            "name": "Edqar Adilxanov",
+            "id": "1701120",
+            "profileUrl": "/players/1701120/edqar-adilxanov"
+          },
+          {
+            "name": "Tellur Mütallimov",
+            "id": "763300",
+            "profileUrl": "/players/763300/tellur-mutallimov"
+          }
+        ]
+      },
+      {
+        "reactKey": "undefined59SubstitutionNaN547892false",
+        "timeStr": 59,
+        "type": "Substitution",
+        "time": 59,
+        "overloadTime": 0,
+        "player": {
+          "id": null,
+          "profileUrl": ""
+        },
+        "homeScore": 1,
+        "awayScore": 0,
+        "profileUrl": "",
+        "overloadTimeStr": false,
+        "isHome": false,
+        "injuredPlayerOut": false,
+        "swap": [
+          {
+            "name": "Amirbek Dzhuraboev",
+            "id": "547892",
+            "profileUrl": "/players/547892/amirbek-dzhuraboev"
+          },
+          {
+            "name": "Alisher Dzhalilov",
+            "id": "247672",
+            "profileUrl": "/players/247672/alisher-dzhalilov"
+          }
+        ]
+      },
+      {
+        "reactKey": "undefined59SubstitutionNaN2145071false",
+        "timeStr": 59,
+        "type": "Substitution",
+        "time": 59,
+        "overloadTime": 0,
+        "player": {
+          "id": null,
+          "profileUrl": ""
+        },
+        "homeScore": 1,
+        "awayScore": 0,
+        "profileUrl": "",
+        "overloadTimeStr": false,
+        "isHome": false,
+        "injuredPlayerOut": false,
+        "swap": [
+          {
+            "name": "Furqon Rahimzoda",
+            "id": "2145071",
+            "profileUrl": "/players/2145071/furqon-rahimzoda"
+          },
+          {
+            "name": "Salokhiddin Irgashev",
+            "id": "1543556",
+            "profileUrl": "/players/1543556/salokhiddin-irgashev"
+          }
+        ]
+      },
+      {
+        "reactKey": "1447770958Goal593311undefinedtrue",
+        "timeStr": 58,
+        "type": "Goal",
+        "time": 58,
+        "overloadTime": null,
+        "eventId": 14477709,
+        "player": {
+          "id": 593311,
+          "name": "Oleg Baklov",
+          "profileUrl": "/players/593311/oleg-baklov"
+        },
+        "homeScore": 0,
+        "awayScore": 0,
+        "profileUrl": "/players/593311/oleg-baklov",
+        "overloadTimeStr": false,
+        "isHome": true,
+        "ownGoal": true,
+        "goalDescription": "Own goal",
+        "goalDescriptionKey": "owngoal",
+        "suffix": "OG",
+        "suffixKey": "own_goal_short",
+        "isPenaltyShootoutEvent": false,
+        "nameStr": "Oleg Baklov",
+        "firstName": "Oleg",
+        "lastName": "Baklov",
+        "fullName": "Oleg Baklov",
+        "playerId": 593311,
+        "newScore": [
+          1,
+          0
+        ],
+        "penShootoutScore": null,
+        "shotmapEvent": null,
+        "assistStr": null,
+        "assistProfileUrl": null
+      },
+      {
+        "reactKey": "1447771057Card1600675undefinedfalse",
+        "timeStr": 57,
+        "type": "Card",
+        "time": 57,
+        "overloadTime": null,
+        "eventId": 14477710,
+        "player": {
+          "id": 1600675,
+          "name": "Alisher Shukurov",
+          "profileUrl": "/players/1600675/alisher-shukurov"
+        },
+        "homeScore": 0,
+        "awayScore": 0,
+        "profileUrl": "/players/1600675/alisher-shukurov",
+        "overloadTimeStr": false,
+        "isHome": false,
+        "nameStr": "Alisher Shukurov",
+        "firstName": "Alisher",
+        "lastName": "Shukurov",
+        "fullName": "Alisher Shukurov",
+        "playerId": 1600675,
+        "card": "Yellow",
+        "cardDescription": null,
+        "cardReason": null
+      },
+      {
+        "reactKey": "undefined46SubstitutionNaN1090800true",
+        "timeStr": 46,
+        "type": "Substitution",
+        "time": 46,
+        "overloadTime": 0,
+        "player": {
+          "id": null,
+          "profileUrl": ""
+        },
+        "homeScore": 0,
+        "awayScore": 0,
+        "profileUrl": "",
+        "overloadTimeStr": false,
+        "isHome": true,
+        "injuredPlayerOut": false,
+        "swap": [
+          {
+            "name": "Murad Xaçayev",
+            "id": "1090800",
+            "profileUrl": "/players/1090800/murad-xacayev"
+          },
+          {
+            "name": "Rəhman Daşdəmirov",
+            "id": "1441450",
+            "profileUrl": "/players/1441450/rhman-dasdmirov"
+          }
+        ]
+      },
+      {
+        "reactKey": "undefined46SubstitutionNaN939042false",
+        "timeStr": 46,
+        "type": "Substitution",
+        "time": 46,
+        "overloadTime": 0,
+        "player": {
+          "id": null,
+          "profileUrl": ""
+        },
+        "homeScore": 0,
+        "awayScore": 0,
+        "profileUrl": "",
+        "overloadTimeStr": false,
+        "isHome": false,
+        "injuredPlayerOut": false,
+        "swap": [
+          {
+            "name": "Sheriddin Boboev",
+            "id": "939042",
+            "profileUrl": "/players/939042/sheriddin-boboev"
+          },
+          {
+            "name": "Rustam Soirov",
+            "id": "1109163",
+            "profileUrl": "/players/1109163/rustam-soirov"
+          }
+        ]
+      },
+      {
+        "reactKey": "undefined46SubstitutionNaN749737true",
+        "timeStr": 46,
+        "type": "Substitution",
+        "time": 46,
+        "overloadTime": 0,
+        "player": {
+          "id": null,
+          "profileUrl": ""
+        },
+        "homeScore": 0,
+        "awayScore": 0,
+        "profileUrl": "",
+        "overloadTimeStr": false,
+        "isHome": true,
+        "injuredPlayerOut": false,
+        "swap": [
+          {
+            "name": "Renat Dadashov",
+            "id": "749737",
+            "profileUrl": "/players/749737/renat-dadashov"
+          },
+          {
+            "name": "Elvin Bədəlov",
+            "id": "557588",
+            "profileUrl": "/players/557588/elvin-bdlov"
+          }
+        ]
+      },
+      {
+        "reactKey": "undefined46SubstitutionNaN464251true",
+        "timeStr": 46,
+        "type": "Substitution",
+        "time": 46,
+        "overloadTime": 0,
+        "player": {
+          "id": null,
+          "profileUrl": ""
+        },
+        "homeScore": 0,
+        "awayScore": 0,
+        "profileUrl": "",
+        "overloadTimeStr": false,
+        "isHome": true,
+        "injuredPlayerOut": false,
+        "swap": [
+          {
+            "name": "Mahir Emreli",
+            "id": "464251",
+            "profileUrl": "/players/464251/mahir-emreli"
+          },
+          {
+            "name": "Rahim Sadıxov",
+            "id": "809188",
+            "profileUrl": "/players/809188/rahim-sadxov"
+          }
+        ]
+      },
+      {
+        "reactKey": "undefined45HalfNaNundefinedundefined",
+        "timeStr": 45,
+        "type": "Half",
+        "time": 45,
+        "overloadTime": null,
+        "player": {
+          "id": null,
+          "profileUrl": ""
+        },
+        "homeScore": 0,
+        "awayScore": 0,
+        "halfStrShort": "HT",
+        "halfStrKey": "halftime_short"
+      }
+    ],
+    "eventTypes": [
+      "Half",
+      "Substitution",
+      "Card",
+      "Goal",
+      "Yellow",
+      "Injuries"
+    ],
+    "penaltyShootoutEvents": null
+  }
+}

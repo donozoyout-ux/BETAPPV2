@@ -1,4 +1,5 @@
-import { liveResponse } from './live/analysis.js';
+import { liveResponseV2 } from './live/analysis-v2.js';
+import type { ProviderHealth } from './live/types.js';
 import { liveCard, livePollScript } from './live/view.js';
 import helmet from '@fastify/helmet';
 import Fastify from 'fastify';
@@ -90,11 +91,33 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
       rootCauses, adaptiveProposals, oddsSimilarity, predictionDiagnostics, oddsIntelligenceData };
   };
 
+  const enrichLive = async (row: Record<string, unknown>) => {
+    const [sources, health] = await Promise.all([
+      repository.liveSources ? repository.liveSources(String(row.id)) : [],
+      repository.liveProviderHealth ? repository.liveProviderHealth() : null,
+    ]);
+    const configured = config.API_FOOTBALL_ENABLED && Boolean(config.API_FOOTBALL_KEY.trim());
+    const status: ProviderHealth = configured ? (health?.status as ProviderHealth ?? 'UNAVAILABLE') : 'NOT_CONFIGURED';
+    const result = liveResponseV2(row, sources, status);
+    const [prediction, gate] = await Promise.all([
+      predictions ? predictions.detail(String(row.id)).catch(() => null) : null,
+      predictions ? predictions.gates(String(row.id)).catch(() => null) : null,
+    ]);
+    return { ...result, preMatchContext: { contextualOnly: true, prediction, gate } };
+  };
+  app.get<{ Params: { matchId: string } }>('/api/live/:matchId/events', async (request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(request.params.matchId)) return reply.code(404).send({ error: 'match_not_found' });
+    const row = await repository.matchAnalysisDetail(request.params.matchId);
+    if (!row || !competitionAllowed(row)) return reply.code(404).send({ error: 'match_not_found' });
+    const result = await enrichLive(row);
+    return { matchId: request.params.matchId, events: result.events, sourceEvents: result.sourceEvents, conflicts: result.conflicts, sourceHealth: result.sourceHealth };
+  });
   app.get('/live-poll.js', async (_request, reply) => reply.type('application/javascript').send(livePollScript));
   app.get('/api/live', async (_request, reply) => {
     reply.header('Cache-Control', 'no-store');
-    const matches = activeRows(await repository.liveMatches()).map(liveResponse);
-    return { matches, html: matches.map(liveCard).join('') || 'Şu anda takip edilen canlı maç yok.' };
+    const matches = await Promise.all(activeRows(await repository.liveMatches()).map(enrichLive));
+    return { matches, html: matches.map(item => liveCard(item)).join('') || 'Şu anda takip edilen canlı maç yok.' };
   });
   app.get<{ Params: { matchId: string } }>('/api/live/:matchId', async (request, reply) => {
     reply.header('Cache-Control', 'no-store');
@@ -103,12 +126,8 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
     }
     const row = await repository.matchAnalysisDetail(request.params.matchId);
     if (!row || !competitionAllowed(row)) return reply.code(404).send({ error: 'match_not_found' });
-    const result = liveResponse(row);
-    const [prediction, gate] = await Promise.all([
-      predictions ? predictions.detail(request.params.matchId).catch(() => null) : null,
-      predictions ? predictions.gates(request.params.matchId).catch(() => null) : null,
-    ]);
-    return { ...result, preMatchContext: { contextualOnly: true, prediction, gate }, html: liveCard(result) };
+    const result = await enrichLive(row);
+    return { ...result, html: liveCard(result, true) };
   });
 
   app.get('/health', async (_request, reply) => {
@@ -118,6 +137,8 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
     const status = database.status === 'ok' ? 'ok' : 'degraded';
     if (status !== 'ok') logger.error({ database }, 'Health check failed');
     return reply.code(status === 'ok' ? 200 : 503).send({ app: 'UP', status, database, ...operations,
+      apiFootball: !config.API_FOOTBALL_ENABLED || !config.API_FOOTBALL_KEY.trim() ? { status: 'NOT_CONFIGURED' }
+        : repository.liveProviderHealth ? await repository.liveProviderHealth() : { status: 'UNAVAILABLE' },
       timestamp: new Date().toISOString() });
   });
 

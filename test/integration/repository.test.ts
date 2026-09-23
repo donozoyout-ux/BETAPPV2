@@ -1,3 +1,5 @@
+import { LiveRepository } from '../../src/live/repository.js';
+import type { SourceData } from '../../src/live/types.js';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { migrationStatus, runMigrations } from '../../src/db/migrator.js';
@@ -177,7 +179,7 @@ describe('FootballRepository integration', () => {
   it('validates migrations, checkpoint, profiles, replay, rollback and advisory locks', async () => {
     const migrations = await migrationStatus(pool);
     expect(migrations.pendingMigrations).toEqual([]);
-    expect(migrations.schemaVersion).toBe('012_odds_neighbor_engine_v2.sql');
+    expect(migrations.schemaVersion).toBe('013_live_events_v2.sql');
     const health = await repository.databaseHealth();
     expect(health.status).toBe('ok');
     await repository.markStarted('fotmob', 'integration-checkpoint', { index: 0 });
@@ -500,6 +502,33 @@ describe('FootballRepository integration', () => {
       .toMatchObject({ sampleSize: 1, positiveCount: 1 });
     expect(intelligence?.executionAuthority).toBe(false);
     expect(Number((await pool.query('SELECT count(*) FROM prediction_journal')).rows[0]!.count)).toBe(beforeJournal);
+  });
+
+  it('persists and deduplicates live events, freezes fresh conflicts and keeps finished terminal', async () => {
+    const now = new Date();
+    const team = (name: string) => ({ providerExternalId: `v2-${name}`, name, shortName: null, country: null, logoUrl: null, sourceUpdatedAt: now, raw: {} });
+    const match = { providerExternalId: 'v2-live-fixture',
+      league: { providerExternalId: '9806', name: 'UEFA Nations League A', country: null, logoUrl: null, sourceUpdatedAt: now, raw: {} },
+      homeTeam: team('V2 Home'), awayTeam: team('V2 Away'), kickoffAt: now, status: 'live' as const,
+      round: null, season: null, homeScore: 1, awayScore: 0, sourceUpdatedAt: now, raw: {} };
+    const id = await repository.upsertMatch('fotmob', match);
+    const live = new LiveRepository(pool);
+    const data: SourceData = { snapshot: { provider: 'api-football', externalId: 'v2-secondary', status: 'live',
+      phase: 'SECOND_HALF', homeScore: 2, awayScore: 0, minute: 67, addedTime: null, observedAt: now.toISOString() },
+      events: [{ provider: 'api-football', providerEventId: null, matchId: id, type: 'GOAL', minute: 67, addedTime: null,
+        teamSide: 'HOME', teamName: 'V2 Home', playerName: 'Scorer', assistName: null, detail: 'Normal Goal',
+        scoreAfter: null, occurredAt: null, observedAt: now.toISOString(), raw: {} }], statistics: null, odds: null, detailsAt: now.toISOString() };
+    await live.save(id, data); await live.save(id, data);
+    expect(Number((await pool.query('SELECT count(*) FROM live_match_events WHERE match_id=$1', [id])).rows[0].count)).toBe(1);
+    expect((await repository.matchAnalysisDetail(id))?.home_score).toBe(1);
+    await repository.upsertMatch('fotmob', { ...match, homeScore: 3, sourceUpdatedAt: new Date(now.getTime()+1000) });
+    expect((await repository.matchAnalysisDetail(id))?.home_score).toBe(1);
+    // Both sources now agree on final state; then a new secondary live observation cannot regress it.
+    await live.save(id, { ...data, snapshot: { ...data.snapshot, status: 'finished', homeScore: 3, observedAt: new Date(now.getTime()+2000).toISOString() } });
+    await repository.upsertMatch('fotmob', { ...match, status: 'finished', homeScore: 3, sourceUpdatedAt: new Date(now.getTime()+3000) });
+    await live.save(id, { ...data, snapshot: { ...data.snapshot, observedAt: new Date(now.getTime()+4000).toISOString() } });
+    expect(await repository.matchAnalysisDetail(id)).toMatchObject({ status: 'finished', home_score: 3 });
+    expect((await live.read(id))).toHaveLength(2);
   });
 
 });

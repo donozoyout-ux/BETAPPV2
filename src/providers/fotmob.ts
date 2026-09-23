@@ -117,7 +117,7 @@ export class FotMobProvider implements FootballDataProvider, QualifiableProvider
     }));
   }
 
-  private async details(matchId: string): Promise<DetailsPayload> {
+  async details(matchId: string): Promise<DetailsPayload> {
     const cached = this.detailsCache.get(matchId);
     if (cached && cached.expiresAt > Date.now()) return cached.payload;
     const payload = await this.http.getJson<DetailsPayload>(`/matchDetails?matchId=${encodeURIComponent(matchId)}`);

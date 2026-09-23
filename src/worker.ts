@@ -16,6 +16,7 @@ import { NowgoalProvider } from './providers/nowgoal.js';
 import { OddsRepository } from './db/odds-repository.js';
 import { OddsCollector } from './collector/odds-collector.js';
 import { PredictionRepository, PredictionService } from './predictions/service.js';
+import { ControlAuditService } from './control-audit.js';
 
 const config = loadConfig();
 const logger = createLogger(config, 'betapp-worker');
@@ -46,6 +47,7 @@ const oddsCollector = config.NOWGOAL_ENABLED
   : null;
 const predictionRepository = new PredictionRepository(pool, config.SUPPORTED_COMPETITIONS);
 const predictionService = new PredictionService(predictionRepository);
+const controlAudit = new ControlAuditService(pool, config);
 const collectors = [...footballCollectors, ...(oddsCollector ? [oddsCollector] : [])];
 const liveRepository = new LiveRepository(pool);
 const secondaryRefresh = new SecondaryLiveRefresh(new ApiFootballProvider(config), liveRepository, config, logger);
@@ -138,6 +140,14 @@ async function runCycle(): Promise<void> {
   if (!stopped) {
     try { await predictionService.refreshPreviewsAndLocks(); }
     catch (error) { logger.error({ err: error }, 'Prediction preview/lock cycle failed; continuing'); }
+  }
+  if (!stopped) {
+    try {
+      const audit = await controlAudit.run();
+      logger.info({ status: audit.status, version: audit.version }, 'Control audit completed');
+    } catch (error) {
+      logger.error({ err: error }, 'Control audit failed; continuing');
+    }
   }
 }
 

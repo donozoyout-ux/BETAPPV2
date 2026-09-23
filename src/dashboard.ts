@@ -1,4 +1,6 @@
 import { liveSection } from './live/view.js';
+import { liveRecommendationsSection } from './live/recommendation-view.js';
+import { controlAuditSection } from './control-audit-view.js';
 import { translatePredictionGateReason } from './predictions/gate-inspector.js';
 
 type DashboardData = { matches: Array<Record<string, unknown>>; providers: Array<Record<string, unknown>>;
@@ -800,6 +802,8 @@ export function renderDashboard(data: DashboardData): string {
       </header>
       <main class="content">
       ${liveSection()}
+      ${liveRecommendationsSection()}
+      ${controlAuditSection()}
         <section class="command-hero" id="overview">
           <article class="hero-main"><p class="eyebrow">OPERASYON ÖZETİ</p><h1>${todayMatches.length
               ? `Bugün ${todayMatches.length} maç<br>takip ediliyor.`

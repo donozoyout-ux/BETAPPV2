@@ -1,6 +1,10 @@
 import { liveResponseV2 } from './live/analysis-v2.js';
 import type { ProviderHealth } from './live/types.js';
 import { liveCard, livePollScript } from './live/view.js';
+import { buildLiveRecommendation } from './live/recommendation.js';
+import { liveRecommendationCard, liveRecommendationsPollScript } from './live/recommendation-view.js';
+import { controlAuditCard, controlAuditPollScript } from './control-audit-view.js';
+import type { ControlAuditService } from './control-audit.js';
 import helmet from '@fastify/helmet';
 import Fastify from 'fastify';
 import type { AppConfig } from './config.js';
@@ -33,7 +37,8 @@ function attachOddsEvidence(rows: Array<Record<string, unknown>>, analyses: Odds
 }
 
 export function buildApp(config: AppConfig, repository: FootballRepository, logger: Logger,
-  oddsAnalysis?: OddsAnalysisRepository, predictions?: PredictionRepository, oddsIntelligence?: OddsIntelligenceRepository) {
+  oddsAnalysis?: OddsAnalysisRepository, predictions?: PredictionRepository, oddsIntelligence?: OddsIntelligenceRepository,
+  controlAudit?: ControlAuditService) {
   const app = Fastify({ loggerInstance: logger });
   void app.register(helmet, { contentSecurityPolicy: false });
 
@@ -166,6 +171,67 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
     const result = await enrichLive(row);
     return { ...result, html: liveCard(result, true) };
   });
+
+  app.get('/live-recommendations-poll.js', async (_request, reply) =>
+    reply.type('application/javascript').send(liveRecommendationsPollScript));
+  app.get('/api/live/recommendations', async (_request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    const today = predictions ? await predictions.today() as Array<Record<string, unknown>> : [];
+    const official = today.filter((item) => String(item.decision) === 'PREDICT');
+    const health = repository.liveProviderHealth ? await repository.liveProviderHealth().catch(() => null) : null;
+    const configured = config.API_FOOTBALL_ENABLED && Boolean(config.API_FOOTBALL_KEY.trim());
+    const apiStatus: ProviderHealth = configured ? (health?.status as ProviderHealth ?? 'UNAVAILABLE') : 'NOT_CONFIGURED';
+    const items: Array<Record<string, unknown>> = [];
+    for (const prediction of official) {
+      const matchId = String(prediction.match_id ?? prediction.matchId ?? '');
+      if (!matchId) continue;
+      const row = await repository.matchAnalysisDetail(matchId);
+      if (!row || !competitionAllowed(row)) continue;
+      const sources = repository.liveSources ? await repository.liveSources(matchId) : [];
+      const live = liveResponseV2(row, sources, apiStatus);
+      const recommendation = buildLiveRecommendation(prediction, live);
+      items.push({
+        prediction: {
+          matchId,
+          league: prediction.league ?? row.league,
+          homeTeam: prediction.home_team ?? row.home_team,
+          awayTeam: prediction.away_team ?? row.away_team,
+          marketType: prediction.market_type ?? null,
+          marketName: prediction.market_name ?? null,
+          line: prediction.line ?? null,
+          selection: prediction.selection ?? null,
+          predictionScore: prediction.prediction_score ?? null,
+          referenceOdds: prediction.reference_odds ?? null,
+          lockedAt: prediction.locked_at ?? null,
+          outcome: prediction.outcome ?? null,
+        },
+        live,
+        recommendation,
+      });
+    }
+    const typedItems = items as unknown as Array<Parameters<typeof liveRecommendationCard>[0]>;
+    return {
+      version: 'LIVE_RECOMMENDATION_V1',
+      items,
+      hasLive: items.some((item) => String((item.live as { match?: { status?: unknown } }).match?.status) === 'live'),
+      html: typedItems.map(liveRecommendationCard).join('') || '<article class="card"><strong>Bugün resmi öneri yok.</strong><p>Prediction V1 bugün PREDICT kilitlediğinde burada canlı izlemeye alınacak.</p></article>',
+      changesPredictionV1: false,
+      executionAuthority: false,
+      aiPredictionAuthority: false,
+    };
+  });
+
+  app.get('/control-audit-poll.js', async (_request, reply) =>
+    reply.type('application/javascript').send(controlAuditPollScript));
+  app.get('/api/control-audit', async (_request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    const latest = controlAudit ? await controlAudit.latest() : null;
+    return { audit: latest, html: controlAuditCard(latest) };
+  });
+  app.get<{ Querystring: { limit?: string } }>('/api/control-audit/history', async (request) => ({
+    version: 'CONTROL_AUDIT_V1',
+    history: controlAudit ? await controlAudit.history(Number(request.query.limit ?? 20)) : [],
+  }));
 
   app.get('/health', async (_request, reply) => {
     const [database, operations] = await Promise.all([repository.databaseHealth(), repository.operationalHealth().catch(() => ({

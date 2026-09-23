@@ -6,6 +6,7 @@ import { OddsAnalysisRepository } from './db/odds-analysis-repository.js';
 import { createLogger } from './logger.js';
 import { PredictionRepository } from './predictions/service.js';
 import { OddsIntelligenceRepository } from './odds-neighbors/repository.js';
+import { ControlAuditService } from './control-audit.js';
 
 const config = loadConfig();
 const logger = createLogger(config, 'betapp-web');
@@ -17,7 +18,8 @@ const repository = new FootballRepository(pool);
 const oddsAnalysis = new OddsAnalysisRepository(pool);
 const predictions = new PredictionRepository(pool, config.SUPPORTED_COMPETITIONS);
 const oddsIntelligence = new OddsIntelligenceRepository(pool);
-const app = buildApp(config, repository, logger, oddsAnalysis, predictions, oddsIntelligence);
+const controlAudit = new ControlAuditService(pool, config);
+const app = buildApp(config, repository, logger, oddsAnalysis, predictions, oddsIntelligence, controlAudit);
 
 async function shutdown(signal: string) {
   logger.info({ signal }, 'Server shutdown requested');

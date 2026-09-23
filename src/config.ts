@@ -3,8 +3,9 @@ import { z } from 'zod';
 const booleanFromString = z.enum(['true', 'false']).transform((value) => value === 'true');
 const legacyDefaultCompetitionKeys = ['PremierLeague','LaLiga','Bundesliga','SerieA','Ligue1','SuperLig',
   'ChampionsLeague','EuropaLeague','ConferenceLeague'] as const;
-const internationalCompetitionKeys = ['WorldCup','EURO','UefaNationsLeagueA','UefaNationsLeagueB',
-  'UefaNationsLeagueC','UefaNationsLeagueD','WorldCupQualificationUEFA','InternationalFriendlies'] as const;
+const internationalCompetitionKeys = ['WorldCup','EURO','EUROQualification',
+  'UefaNationsLeagueA','UefaNationsLeagueB','UefaNationsLeagueC','UefaNationsLeagueD',
+  'WorldCupQualificationUEFA','CopaAmerica','WorldCupQualificationCONMEBOL','InternationalFriendlies'] as const;
 const supportedCompetitionKeys = [...legacyDefaultCompetitionKeys,'BrasileiraoSerieA',...internationalCompetitionKeys] as const;
 const acceptedCompetitionInputKeys = [...supportedCompetitionKeys,'MLS'] as const;
 const defaultCompetitionKeys = [...legacyDefaultCompetitionKeys,'BrasileiraoSerieA',...internationalCompetitionKeys] as const;

@@ -60,7 +60,13 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
     }
   };
 
-  const loadDashboardSources = async () => {
+  type DashboardSources = Awaited<ReturnType<typeof loadDashboardSourcesUncached>>;
+  let dashboardCache: { value: DashboardSources; loadedAt: number } | null = null;
+  let dashboardRefresh: Promise<DashboardSources> | null = null;
+  const DASHBOARD_TTL_MS = 60_000;
+  const DASHBOARD_STALE_MS = 5 * 60_000;
+
+  const loadDashboardSourcesUncached = async () => {
     const data = await repository.dashboardData('Europe/Istanbul');
 
     const [today, previews, reviewCandidates] = await Promise.all([
@@ -87,8 +93,28 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
       oddsIntelligence ? optionalDashboardSource('oddsIntelligence.upcoming', () => oddsIntelligence.upcoming(4), []) : [],
     ]);
 
+    const apiFootballHealth = repository.liveProviderHealth
+      ? await optionalDashboardSource('liveProviderHealth', () => repository.liveProviderHealth(), null)
+      : null;
     return { data, today, previews, reviewCandidates, history, performance, selfAudit, segmentAudits,
-      rootCauses, adaptiveProposals, oddsSimilarity, predictionDiagnostics, oddsIntelligenceData };
+      rootCauses, adaptiveProposals, oddsSimilarity, predictionDiagnostics, oddsIntelligenceData, apiFootballHealth };
+  };
+
+  const loadDashboardSources = async (): Promise<DashboardSources> => {
+    const now = Date.now();
+    if (dashboardCache && now - dashboardCache.loadedAt < DASHBOARD_TTL_MS) return dashboardCache.value;
+    if (dashboardRefresh) return dashboardRefresh;
+    dashboardRefresh = loadDashboardSourcesUncached().then((value) => {
+      dashboardCache = { value, loadedAt: Date.now() };
+      return value;
+    }).catch((error) => {
+      if (dashboardCache && now - dashboardCache.loadedAt < DASHBOARD_STALE_MS) {
+        logger.warn({ err: error }, 'Dashboard refresh failed; serving stale snapshot');
+        return dashboardCache.value;
+      }
+      throw error;
+    }).finally(() => { dashboardRefresh = null; });
+    return dashboardRefresh;
   };
 
   const enrichLive = async (row: Record<string, unknown>) => {
@@ -144,12 +170,13 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
 
   app.get('/api/dashboard', async () => {
     const { data, today, previews, reviewCandidates, history, performance, selfAudit, segmentAudits,
-      rootCauses, adaptiveProposals, oddsSimilarity, predictionDiagnostics, oddsIntelligenceData } = await loadDashboardSources();
+      rootCauses, adaptiveProposals, oddsSimilarity, predictionDiagnostics, oddsIntelligenceData, apiFootballHealth } = await loadDashboardSources();
     const activeOddsIntelligence = activeIntelligence(oddsIntelligenceData);
     return { ...data,
       matches: activeRows(data.matches ?? []), recentFinishedMatches: activeRows(data.recentFinishedMatches ?? []),
       odds: activeRows(data.odds ?? []), oddsAnalyses: activeRows(data.oddsAnalyses ?? []),
       supportedCompetitions: config.SUPPORTED_COMPETITIONS,
+      apiFootballHealth,
       predictions: attachOddsEvidence(activeRows(today), activeOddsIntelligence),
       predictionPreviews: attachOddsEvidence(activeRows(previews), activeOddsIntelligence),
       predictionReviewCandidates: attachOddsEvidence(activeRows(reviewCandidates), activeOddsIntelligence), predictionHistory: history,
@@ -226,12 +253,13 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
     ? predictions.detail(request.params.matchId) : { matchId: request.params.matchId, state: 'NOT_GENERATED', journal: null, runs: [] });
   app.get('/', async (_request, reply) => {
     const { data, today, previews, reviewCandidates, history, performance, selfAudit, segmentAudits,
-      rootCauses, adaptiveProposals, oddsSimilarity, predictionDiagnostics, oddsIntelligenceData } = await loadDashboardSources();
+      rootCauses, adaptiveProposals, oddsSimilarity, predictionDiagnostics, oddsIntelligenceData, apiFootballHealth } = await loadDashboardSources();
     const activeOddsIntelligence = activeIntelligence(oddsIntelligenceData);
     return reply.type('text/html; charset=utf-8').send(renderDashboard({ ...data,
       matches: activeRows(data.matches ?? []), recentFinishedMatches: activeRows(data.recentFinishedMatches ?? []),
       odds: activeRows(data.odds ?? []), oddsAnalyses: activeRows(data.oddsAnalyses ?? []),
       supportedCompetitions: config.SUPPORTED_COMPETITIONS,
+      apiFootballHealth,
       predictions: attachOddsEvidence(activeRows(today), activeOddsIntelligence),
       predictionPreviews: attachOddsEvidence(activeRows(previews), activeOddsIntelligence),
       predictionReviewCandidates: attachOddsEvidence(activeRows(reviewCandidates), activeOddsIntelligence), predictionHistory: history,

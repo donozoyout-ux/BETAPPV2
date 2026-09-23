@@ -100,21 +100,32 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
   const DASHBOARD_TTL_MS = 60_000;
   const DASHBOARD_STALE_MS = 5 * 60_000;
 
-  const loadDashboardSources = async (): Promise<DashboardSources> => {
-    const now = Date.now();
-    if (dashboardCache && now - dashboardCache.loadedAt < DASHBOARD_TTL_MS) return dashboardCache.value;
+  const refreshDashboardSnapshot = (): Promise<DashboardSources> => {
     if (dashboardRefresh) return dashboardRefresh;
     dashboardRefresh = loadDashboardSourcesUncached().then((value) => {
       dashboardCache = { value, loadedAt: Date.now() };
       return value;
-    }).catch((error) => {
-      if (dashboardCache && now - dashboardCache.loadedAt < DASHBOARD_STALE_MS) {
-        logger.warn({ err: error }, 'Dashboard refresh failed; serving stale snapshot');
+    }).finally(() => { dashboardRefresh = null; });
+    return dashboardRefresh;
+  };
+
+  const loadDashboardSources = async (): Promise<DashboardSources> => {
+    const now = Date.now();
+    if (dashboardCache && now - dashboardCache.loadedAt < DASHBOARD_TTL_MS) return dashboardCache.value;
+    if (dashboardCache && now - dashboardCache.loadedAt < DASHBOARD_STALE_MS) {
+      void refreshDashboardSnapshot().catch((error) =>
+        logger.warn({ err: error }, 'Dashboard background refresh failed; stale snapshot retained'));
+      return dashboardCache.value;
+    }
+    try {
+      return await refreshDashboardSnapshot();
+    } catch (error) {
+      if (dashboardCache) {
+        logger.warn({ err: error }, 'Dashboard refresh failed; serving last snapshot');
         return dashboardCache.value;
       }
       throw error;
-    }).finally(() => { dashboardRefresh = null; });
-    return dashboardRefresh;
+    }
   };
 
   const enrichLive = async (row: Record<string, unknown>) => {

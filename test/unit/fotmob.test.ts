@@ -23,6 +23,28 @@ describe('FotMobProvider', () => {
     expect(result[0]).toMatchObject({ providerExternalId: '1', status: 'scheduled', round: null, homeScore: null });
   });
 
+  it('collects configured national-team competitions and ignores unconfigured leagues', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ leagues: [
+      { id: 9806, primaryId: 9806, name: 'UEFA Nations League A', matches: [{ id: 100,
+        home: { id: 1, name: 'Türkiye' }, away: { id: 2, name: 'France' },
+        status: { utcTime: '2026-09-25T18:45:00Z', finished: false } }] },
+      { id: 10607, primaryId: 10607, name: 'EURO Qualification', matches: [{ id: 101,
+        home: { id: 3, name: 'Italy' }, away: { id: 4, name: 'Spain' },
+        status: { utcTime: '2026-09-25T20:45:00Z', finished: false } }] },
+      { id: 44, primaryId: 44, name: 'Copa America', matches: [{ id: 102,
+        home: { id: 5, name: 'Argentina' }, away: { id: 6, name: 'Brazil' },
+        status: { utcTime: '2026-09-26T00:00:00Z', finished: false } }] },
+      { id: 999, primaryId: 999, name: 'Other International', matches: [{ id: 103,
+        home: { id: 7, name: 'A' }, away: { id: 8, name: 'B' },
+        status: { utcTime: '2026-09-26T00:00:00Z', finished: false } }] },
+    ] }), { status: 200 })));
+    const provider = new FotMobProvider(config, createLogger(config));
+    const result = await provider.getFixtures({ date: new Date('2026-09-25') });
+    expect(result.map((item) => item.league.name)).toEqual([
+      'UEFA Nations League A', 'EURO Qualification', 'Copa America',
+    ]);
+  });
+
   it('parses completed match statistics and ignores missing groups', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ content: { stats: { Periods: { All: { stats: [

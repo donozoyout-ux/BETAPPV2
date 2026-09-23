@@ -12,8 +12,8 @@ describe('configured club and international competition support', () => {
     expect(config.SUPPORTED_COMPETITIONS).not.toContain('MLS');
     expect(config.SUPPORTED_COMPETITIONS).toContain('BrasileiraoSerieA');
     expect(config.SUPPORTED_COMPETITIONS).toEqual(expect.arrayContaining([
-      'WorldCup','EURO','UefaNationsLeagueA','UefaNationsLeagueB','UefaNationsLeagueC','UefaNationsLeagueD',
-      'WorldCupQualificationUEFA','InternationalFriendlies',
+      'WorldCup','EURO','EUROQualification','UefaNationsLeagueA','UefaNationsLeagueB','UefaNationsLeagueC','UefaNationsLeagueD',
+      'WorldCupQualificationUEFA','CopaAmerica','WorldCupQualificationCONMEBOL','InternationalFriendlies',
     ]));
     expect(fotmobCompetitions).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 268, key: 'BrasileiraoSerieA', name: 'Brasileirão Série A' }),
@@ -31,8 +31,8 @@ describe('configured club and international competition support', () => {
     expect(upgraded.SUPPORTED_COMPETITIONS).toEqual([
       'PremierLeague','LaLiga','Bundesliga','SerieA','Ligue1','SuperLig',
       'ChampionsLeague','EuropaLeague','ConferenceLeague','BrasileiraoSerieA',
-      'WorldCup','EURO','UefaNationsLeagueA','UefaNationsLeagueB','UefaNationsLeagueC','UefaNationsLeagueD',
-      'WorldCupQualificationUEFA','InternationalFriendlies',
+      'WorldCup','EURO','EUROQualification','UefaNationsLeagueA','UefaNationsLeagueB','UefaNationsLeagueC','UefaNationsLeagueD',
+      'WorldCupQualificationUEFA','CopaAmerica','WorldCupQualificationCONMEBOL','InternationalFriendlies',
     ]);
 
     const custom = loadConfig({

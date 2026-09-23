@@ -45,7 +45,11 @@ export class OddsCollector {
         const date = addDays(new Date(), day);
         const matches = await this.provider.getPrematchOddsForDate(date);
         for (const item of matches) {
-          const resolution = await this.oddsRepository.resolveMatchDetailed(item.fixture);
+          const compatible = this.oddsRepository as Pick<OddsRepository, 'resolveMatch'> &
+            Partial<Pick<OddsRepository, 'resolveMatchDetailed'>>;
+          const resolution = typeof compatible.resolveMatchDetailed === 'function'
+            ? await compatible.resolveMatchDetailed(item.fixture)
+            : { matchId: await compatible.resolveMatch(item.fixture), reason: 'LEGACY' };
           matchReasons[resolution.reason] = (matchReasons[resolution.reason] ?? 0) + 1;
           if (!resolution.matchId) { unmatched += 1; continue; }
           matched += 1;

@@ -94,6 +94,18 @@ services:
         value: "600000"
       - key: PUBLIC_CSV_CURRENT_REFRESH_MS
         value: "43200000"
+      - key: OPENFOOTBALL_IMPORT_ENABLED
+        value: "true"
+      - key: OPENFOOTBALL_BASE_URL
+        value: https://raw.githubusercontent.com/openfootball/football.json/master
+      - key: OPENFOOTBALL_IMPORT_SEASONS
+        value: 2026-27,2025-26,2024-25
+      - key: OPENFOOTBALL_BATCH_SIZE
+        value: "150"
+      - key: OPENFOOTBALL_INTERVAL_MS
+        value: "600000"
+      - key: OPENFOOTBALL_CURRENT_REFRESH_MS
+        value: "86400000"
       - key: API_FOOTBALL_ENABLED
         value: "false"
       - key: API_FOOTBALL_KEY

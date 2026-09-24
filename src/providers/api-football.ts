@@ -14,7 +14,7 @@ export function apiFixture(value: unknown, observedAt: string): ApiFixture | nul
   let league = leagueNames[Number(l.id)] ?? str(l.name);
   if (Number(l.id) === 5) {
     const group = str(l.round)?.match(/League ([ABCD])\b/i)?.[1]?.toUpperCase();
-    league = group ? `UEFA Nations League ${group}` : undefined;
+    league = group ? `UEFA Nations League ${group}` : null;
   }
   if (!league || num(f.id) == null || !str(f.date) || !Number.isFinite(Date.parse(String(f.date))) || !str(h.name) || !str(a.name) || num(h.id) == null || num(a.id) == null) return null;
   const code = String(status.short);

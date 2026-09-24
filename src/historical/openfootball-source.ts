@@ -1,3 +1,9 @@
+export function currentOpenFootballSeason(now=new Date()) {
+  const year=now.getUTCFullYear();
+  const start=now.getUTCMonth()+1>=7 ? year : year-1;
+  return `${start}-${String(start+1).slice(-2)}`;
+}
+
 export type OpenFootballLeagueSource = {
   configKey: string;
   file: string;

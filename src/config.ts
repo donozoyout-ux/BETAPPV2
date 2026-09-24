@@ -76,7 +76,7 @@ const schema = z.object({
   PUBLIC_CSV_IMPORT_BATCH_SIZE: z.coerce.number().int().min(10).max(500).default(100),
   PUBLIC_CSV_IMPORT_INTERVAL_MS: z.coerce.number().int().min(300_000).default(600_000),
   PUBLIC_CSV_CURRENT_REFRESH_MS: z.coerce.number().int().min(21_600_000).default(43_200_000),
-  OPENFOOTBALL_IMPORT_ENABLED: booleanFromString.default(true),
+  OPENFOOTBALL_IMPORT_ENABLED: booleanFromString.default(false),
   OPENFOOTBALL_BASE_URL: z.string().url().default('https://raw.githubusercontent.com/openfootball/football.json/master'),
   OPENFOOTBALL_IMPORT_SEASONS: openFootballSeasonList,
   OPENFOOTBALL_BATCH_SIZE: z.coerce.number().int().min(10).max(500).default(150),

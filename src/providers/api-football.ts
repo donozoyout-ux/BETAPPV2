@@ -1,4 +1,7 @@
 import type { AppConfig } from '../config.js';
+import type { MatchOdds, NormalizedOdds, OddsFixture } from '../domain/odds.js';
+import { isCompetitionConfigured } from '../matching/competition.js';
+import { normalizeTeamAlias } from '../matching/team-alias.js';
 import { arr, obj, num, str, type EventType, type LiveMatchEvent, type LiveOdd, type ProviderHealth, type SourceSnapshot } from '../live/types.js';
 const leagueNames: Record<number, string> = { 39: 'Premier League', 140: 'La Liga', 78: 'Bundesliga', 135: 'Serie A',
   61: 'Ligue 1', 203: 'Süper Lig', 2: 'UEFA Champions League', 3: 'UEFA Europa League', 848: 'UEFA Conference League',
@@ -8,7 +11,7 @@ export type ApiFixture = { snapshot: SourceSnapshot; league: string; kickoffAt: 
   homeId: number; awayId: number };
 export function apiFixture(value: unknown, observedAt: string): ApiFixture | null {
   const r = obj(value), f = obj(r.fixture), l = obj(r.league), t = obj(r.teams), h = obj(t.home), a = obj(t.away), status = obj(f.status);
-  let league = leagueNames[Number(l.id)];
+  let league = leagueNames[Number(l.id)] ?? str(l.name);
   if (Number(l.id) === 5) {
     const group = str(l.round)?.match(/League ([ABCD])\b/i)?.[1]?.toUpperCase();
     league = group ? `UEFA Nations League ${group}` : undefined;
@@ -65,6 +68,74 @@ export function apiLiveOdds(rows: unknown, fixture: ApiFixture, observedAt: stri
     }));
   });
 }
+
+function apiPrematchSelection(betName: string, value: string, fixture: ApiFixture): {
+  marketType: string; marketName: string; line: number | null; selection: string;
+} | null {
+  const bet = betName.trim().toLowerCase();
+  const raw = value.trim();
+  const normalized = normalizeTeamAlias(raw);
+  if (['match winner','1x2','winner'].includes(bet)) {
+    if (/^draw$/i.test(raw)) return { marketType: 'MATCH_RESULT', marketName: '1X2', line: null, selection: 'DRAW' };
+    if (/^home$/i.test(raw) || normalized === normalizeTeamAlias(fixture.homeTeam)) {
+      return { marketType: 'MATCH_RESULT', marketName: '1X2', line: null, selection: 'HOME' };
+    }
+    if (/^away$/i.test(raw) || normalized === normalizeTeamAlias(fixture.awayTeam)) {
+      return { marketType: 'MATCH_RESULT', marketName: '1X2', line: null, selection: 'AWAY' };
+    }
+    return null;
+  }
+  if (/goals.*over.*under|over.*under.*goals/i.test(bet)) {
+    const match = raw.match(/^(Over|Under)\s+(-?\d+(?:\.\d+)?)$/i);
+    if (!match) return null;
+    return { marketType: 'TOTAL_GOALS', marketName: 'Total Goals', line: Number(match[2]),
+      selection: match[1]!.toUpperCase() };
+  }
+  if (/asian handicap|handicap result/i.test(bet)) {
+    const side = normalized === normalizeTeamAlias(fixture.homeTeam) || /^home$/i.test(raw) ? 'HOME'
+      : normalized === normalizeTeamAlias(fixture.awayTeam) || /^away$/i.test(raw) ? 'AWAY' : null;
+    const lineMatch = raw.match(/(?:^|\s)([+-]?\d+(?:\.\d+)?)$/);
+    if (!side || !lineMatch) return null;
+    return { marketType: 'ASIAN_HANDICAP', marketName: 'Asian Handicap', line: Number(lineMatch[1]), selection: side };
+  }
+  if (/corner.*over.*under|over.*under.*corner/i.test(bet)) {
+    const match = raw.match(/^(Over|Under)\s+(-?\d+(?:\.\d+)?)$/i);
+    if (!match) return null;
+    return { marketType: 'TOTAL_CORNERS', marketName: 'Total Corners', line: Number(match[2]),
+      selection: match[1]!.toUpperCase() };
+  }
+  return null;
+}
+
+export function apiPrematchOdds(rows: unknown, fixture: ApiFixture, capturedAt = new Date()): NormalizedOdds[] {
+  if (fixture.snapshot.status !== 'scheduled' || capturedAt >= new Date(fixture.kickoffAt)) return [];
+  return arr(rows).flatMap((row) => {
+    if (String(obj(row.fixture).id) !== fixture.snapshot.externalId) return [];
+    return arr(row.bookmakers).flatMap((bookmaker) => {
+      const bookmakerName = str(bookmaker.name);
+      if (!bookmakerName) return [];
+      return arr(bookmaker.bets).flatMap((bet) => {
+        const betName = str(bet.name);
+        if (!betName) return [];
+        return arr(bet.values).flatMap((value) => {
+          const odd = num(value.odd);
+          const rawValue = str(value.value);
+          if (odd == null || odd <= 1 || !rawValue) return [];
+          const market = apiPrematchSelection(betName, rawValue, fixture);
+          if (!market || market.line != null && !Number.isFinite(market.line)) return [];
+          return [{
+            provider: `api-football:${bookmakerName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')}`,
+            providerMatchId: fixture.snapshot.externalId,
+            ...market,
+            oddsDecimal: odd,
+            capturedAt,
+          } satisfies NormalizedOdds];
+        });
+      });
+    });
+  });
+}
+
 export class ApiFootballProvider {
   health: ProviderHealth;
   private blockedUntil = 0;
@@ -114,9 +185,34 @@ export class ApiFootballProvider {
       throw error;
     } finally { release(); }
   }
+  private supportedFixture(fixture: ApiFixture) {
+    return isCompetitionConfigured(fixture.league, this.config.SUPPORTED_COMPETITIONS);
+  }
+
   async fixtures() {
     const rows = await this.request('/fixtures?live=all');
     const now = new Date().toISOString();
-    return rows.map(r => apiFixture(r, now)).filter((f): f is ApiFixture => f != null);
+    return rows.map(r => apiFixture(r, now)).filter((f): f is ApiFixture => f != null && this.supportedFixture(f));
+  }
+
+  async fixturesForDate(date: Date) {
+    if (!this.configured) return [];
+    const day = date.toISOString().slice(0, 10);
+    const rows = await this.request(`/fixtures?date=${encodeURIComponent(day)}`);
+    const now = new Date().toISOString();
+    return rows.map(r => apiFixture(r, now)).filter((f): f is ApiFixture =>
+      f != null && f.snapshot.status === 'scheduled' && this.supportedFixture(f));
+  }
+
+  async prematchOdds(fixture: ApiFixture): Promise<MatchOdds> {
+    const capturedAt = new Date();
+    if (!this.configured || fixture.snapshot.status !== 'scheduled' || capturedAt >= new Date(fixture.kickoffAt)) {
+      return { fixture: { providerMatchId: fixture.snapshot.externalId, kickoffAt: new Date(fixture.kickoffAt),
+        homeTeam: fixture.homeTeam, awayTeam: fixture.awayTeam, leagueName: fixture.league }, odds: [] };
+    }
+    const rows = await this.request(`/odds?fixture=${encodeURIComponent(fixture.snapshot.externalId)}`);
+    const oddsFixture: OddsFixture = { providerMatchId: fixture.snapshot.externalId, kickoffAt: new Date(fixture.kickoffAt),
+      homeTeam: fixture.homeTeam, awayTeam: fixture.awayTeam, leagueName: fixture.league };
+    return { fixture: oddsFixture, odds: apiPrematchOdds(rows, fixture, capturedAt) };
   }
 }

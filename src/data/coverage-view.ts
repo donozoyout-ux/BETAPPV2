@@ -25,7 +25,16 @@ export function dataPoolCard(data: DataCoverage): string {
     <div class="scroll"><table><thead><tr><th>Lig / Turnuva</th><th>Durum</th><th>Faz</th><th>Kaydedilen</th><th>İstatistik</th><th>Hata</th></tr></thead><tbody>
     ${data.backfills.length ? data.backfills.slice(0,20).map(r => `<tr><td>${esc(r.competition)}</td><td>${esc(r.status)}</td><td>${esc(r.phase)}</td><td>${esc(r.fixturesPersisted)}</td><td>${esc(r.statisticsSucceeded)}</td><td>${esc(r.statisticsFailed)}</td></tr>`).join('')
       : '<tr><td colspan="6">Henüz competition backfill raporu yok.</td></tr>'}</tbody></table></div>
-    <h3>Açık CSV veri yükleme</h3>
+    <h3>OpenFootball CC0 veri yükleme</h3>
+    <p>Otomatik açık veri kaynağı: OpenFootball/football.json (CC0). Yalnız explicit kickoff saati ve FT skoru olan bitmiş maçlar içe alınır.</p>
+    <div class="scroll"><table><thead><tr><th>Lig</th><th>Sezon</th><th>Durum</th><th>Bitmiş</th><th>İçe aktarılan</th><th>Yeni</th><th>Duplicate</th><th>Unsafe time</th><th>Hata</th></tr></thead><tbody>
+    ${data.openFootballImports.length ? data.openFootballImports.map(r => `<tr><td>${esc(r.competition)}</td><td>${esc(r.season)}</td>
+      <td>${esc(r.status)}</td><td>${esc(r.finished_rows)}/${esc(r.total_matches)}</td><td>${esc(r.imported_rows)}</td>
+      <td>${esc(r.matches_inserted)}</td><td>${esc(r.duplicates_prevented)}</td><td>${esc(r.skipped_unsafe_time)}</td>
+      <td>${esc(r.last_error)}</td></tr>`).join('')
+      : '<tr><td colspan="9">Henüz OpenFootball importu başlamadı.</td></tr>'}</tbody></table></div>
+    <h3>Football-Data arşivi (otomatik çekim kapalı)</h3>
+    <p>Mevcut arşiv korunur ve shadow araştırmada kullanılabilir; yeni otomatik indirme kaynak kullanım politikası nedeniyle kapalıdır.</p>
     <div class="scroll"><table><thead><tr><th>Kaynak</th><th>Lig</th><th>Sezon</th><th>Durum</th><th>İçe aktarılan</th><th>İstatistik</th><th>Odds quote</th><th>Hata</th></tr></thead><tbody>
     ${data.publicCsvImports.length ? data.publicCsvImports.map(r => `<tr><td>Football-Data</td><td>${esc(r.competition)}</td><td>${esc(r.season)}</td>
       <td>${esc(r.status)}</td><td>${esc(r.imported_rows)}/${esc(r.valid_rows)}</td><td>${esc(r.statistics_rows)}</td>

@@ -9,6 +9,11 @@ export type BookmakerMarket = {
   hasDistinctCompleteStates: boolean; movements: BookmakerSelectionMovement[];
 };
 
+export function canonicalBookmakerProvider(value: string): string {
+  const bookmaker = value.includes(':') ? value.slice(value.lastIndexOf(':') + 1) : value;
+  return bookmaker.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+}
+
 export function canonicalSelection(value: string): string {
   const normalized = value.trim().toLocaleUpperCase('tr-TR').replaceAll(/[^A-ZÇĞİÖŞÜ0-9]+/g, '_');
   if (['1', 'HOME', 'EV', 'EV_SAHIBI', 'EV_SAHİBİ'].includes(normalized)) return 'HOME';
@@ -52,7 +57,8 @@ function buildStates(rows: OddsSnapshot[], selections: string[]): CompleteState[
 export function buildBookmakerMarkets(snapshots: OddsSnapshot[]): BookmakerMarket[] {
   const groups = new Map<string, OddsSnapshot[]>();
   for (const snapshot of snapshots) {
-    const normalized = { ...snapshot, selection: canonicalSelection(snapshot.selection) };
+    const normalized = { ...snapshot, provider: canonicalBookmakerProvider(snapshot.provider),
+      selection: canonicalSelection(snapshot.selection) };
     const key = marketKey(normalized);
     groups.set(key, [...(groups.get(key) ?? []), normalized]);
   }

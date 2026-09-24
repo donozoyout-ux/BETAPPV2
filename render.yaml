@@ -86,6 +86,14 @@ services:
         value: "false"
       - key: API_FOOTBALL_KEY
         sync: false
+      - key: API_FOOTBALL_PREMATCH_ODDS_ENABLED
+        value: "true"
+      - key: API_FOOTBALL_PREMATCH_INTERVAL_MS
+        value: "10800000"
+      - key: API_FOOTBALL_PREMATCH_FUTURE_DAYS
+        value: "1"
+      - key: API_FOOTBALL_PREMATCH_MAX_FIXTURES
+        value: "4"
       - key: FOTMOB_ENABLED
         value: "true"
       - key: NOWGOAL_ENABLED

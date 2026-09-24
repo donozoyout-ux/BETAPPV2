@@ -3,18 +3,24 @@ const esc = (value: unknown) => String(value ?? '—').replace(/[&<>"']/g, c => 
 export function dataPoolCard(data: DataCoverage): string {
   const s = data.summary;
   return `<div class="grid">${[['Toplam maç',s.totalMatches],['Bitmiş maç',s.totalFinishedMatches],['İstatistikli maç',s.totalStatsCovered],
-    ['Gerçek oran geçmişi olan maç',s.totalOddsCovered],['Prediction historical examples',s.totalHistoricalExamples]].map(([label,value]) => `<article class="card"><strong>${esc(label)}</strong><p>${esc(value)}</p></article>`).join('')}</div>
-    <div class="scroll"><table><thead><tr><th>Lig / Turnuva</th><th>Tür</th><th>Bitmiş / Hedef</th><th>İstatistik / Hedef</th><th>Veri durumu</th><th>Oran</th><th>Historical örnek</th><th>Tarih aralığı</th></tr></thead><tbody>
+    ['Gerçek oran geçmişi olan maç',s.totalOddsCovered],['3+ bookmaker maç',s.totalThreeBookmakerCovered],
+    ['Odds snapshot',s.totalOddsSnapshots],['Prediction historical examples',s.totalHistoricalExamples]].map(([label,value]) => `<article class="card"><strong>${esc(label)}</strong><p>${esc(value)}</p></article>`).join('')}</div>
+    <div class="grid"><article class="card"><strong>Önümüzdeki 7 gün</strong><p>${esc(s.upcomingMatches7d)} maç</p></article>
+    <article class="card"><strong>Odds covered</strong><p>${esc(s.upcomingOddsCovered7d)} / ${esc(s.upcomingMatches7d)}</p></article>
+    <article class="card"><strong>3+ bookmaker</strong><p>${esc(s.upcomingThreeBookmakerCovered7d)} / ${esc(s.upcomingMatches7d)}</p></article></div>
+    <div class="scroll"><table><thead><tr><th>Lig / Turnuva</th><th>Tür</th><th>Bitmiş / Hedef</th><th>İstatistik / Hedef</th><th>Veri durumu</th><th>Oran</th><th>3+ BM</th><th>7g Odds</th><th>Snapshot</th><th>Historical örnek</th><th>Tarih aralığı</th></tr></thead><tbody>
     ${data.competitions.map(c => `<tr><td>${esc(c.competition)}</td><td>${c.type === 'CLUB' ? 'Kulüp' : 'Milli takım'}</td>
       <td>${c.finishedMatches} / ${c.target.targetFinishedMatches}</td><td>${c.matchesWithStats} / ${c.target.targetMatchesWithStats}</td>
       <td>${c.target.needsBackfill ? `EKSİK · ${esc(c.target.deficitScore)}` : 'HEDEF TAMAM'}</td>
-      <td>${c.matchesWithOdds}</td><td>${c.predictionHistoricalExamples}</td><td>${esc(c.earliestMatch)} — ${esc(c.latestMatch)}</td></tr>`).join('')}</tbody></table></div>
+      <td>${c.matchesWithOdds}</td><td>${c.matchesWithThreeBookmakers}</td>
+      <td>${c.upcomingMatchesWithOdds7d}/${c.upcomingMatches7d}</td><td>${c.oddsSnapshots}</td>
+      <td>${c.predictionHistoricalExamples}</td><td>${esc(c.earliestMatch)} — ${esc(c.latestMatch)}</td></tr>`).join('')}</tbody></table></div>
     <p><strong>DATA_TARGET_V1:</strong> Kulüp liglerinde ${esc(data.targetPolicy.clubFinishedMatches)} bitmiş maç, milli takım turnuvalarında ${esc(data.targetPolicy.internationalFinishedMatches)} bitmiş maç; istatistik hedefi %${esc(Math.round(data.targetPolicy.statisticsCoverageRatio * 100))}. Maksimum ${esc(data.targetPolicy.maxSeasonCycles)} sezon/cycle.</p>
     <h3>Otomatik veri yükleme</h3>
     <div class="scroll"><table><thead><tr><th>Lig / Turnuva</th><th>Durum</th><th>Faz</th><th>Kaydedilen</th><th>İstatistik</th><th>Hata</th></tr></thead><tbody>
     ${data.backfills.length ? data.backfills.slice(0,20).map(r => `<tr><td>${esc(r.competition)}</td><td>${esc(r.status)}</td><td>${esc(r.phase)}</td><td>${esc(r.fixturesPersisted)}</td><td>${esc(r.statisticsSucceeded)}</td><td>${esc(r.statisticsFailed)}</td></tr>`).join('')
       : '<tr><td colspan="6">Henüz competition backfill raporu yok.</td></tr>'}</tbody></table></div>
-    <p>Son ölçüm: ${esc(data.generatedAt)} · En az 5 dakika önbellek. Oran kapsamı yalnız gerçek maç öncesi kayıtlardır.</p>`;
+    <p>Son ölçüm: ${esc(data.generatedAt)} · En az 5 dakika önbellek. Oran kapsamı yalnız kickoff öncesinde gerçekten kaydedilmiş snapshot'lardır; live odds ve sentetik oranlar dahil değildir.</p>`;
 }
 export function dataPoolSection() {
   return '<section class="section" id="data-pool"><h2>VERİ HAVUZU</h2><p id="data-pool-error" role="status"></p><div id="data-pool-content">Veri kapsamı yükleniyor…</div></section><script src="/data-coverage.js" defer></script>';

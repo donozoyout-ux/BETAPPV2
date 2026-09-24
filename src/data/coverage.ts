@@ -10,7 +10,10 @@ export function coverageRows(rows: Array<Record<string, unknown>>, configured: r
     const dates = (key: string) => matches.map(r => r[key]).filter(Boolean).map(d => new Date(String(d)).toISOString()).sort();
     return { competition: String(c.name), configKey: c.key, providerId: c.id, type: competitionKind(c.name),
       matches: sum('matches'), finishedMatches: sum('finished_matches'), matchesWithStats: sum('stats'),
-      matchesWithOdds: sum('odds'), matchesWithCorners: sum('corners'), predictionHistoricalExamples: sum('examples'),
+      matchesWithOdds: sum('odds'), matchesWithThreeBookmakers: sum('odds_three'), oddsSnapshots: sum('odds_snapshots'),
+      upcomingMatches7d: sum('upcoming_matches'), upcomingMatchesWithOdds7d: sum('upcoming_odds'),
+      upcomingMatchesWithThreeBookmakers7d: sum('upcoming_odds_three'),
+      matchesWithCorners: sum('corners'), predictionHistoricalExamples: sum('examples'),
       earliestMatch: dates('earliest')[0] ?? null, latestMatch: dates('latest').at(-1) ?? null };
   });
 }
@@ -32,8 +35,11 @@ export class DataCoverageService {
         bool_or(period='ALL' AND stat_key IN('corners','corner_kicks') AND home_value IS NOT NULL AND away_value IS NOT NULL) corners
       FROM match_statistics GROUP BY match_id
     ), odds AS (
-      SELECT DISTINCT o.match_id FROM odds_snapshots o JOIN matches m ON m.id=o.match_id
-      WHERE o.captured_at < m.kickoff_at AND o.odds_decimal > 1
+      SELECT o.match_id,count(*)::int snapshots,
+        count(DISTINCT regexp_replace(lower(o.provider),'^[^:]+:',''))::int bookmakers
+      FROM odds_snapshots o JOIN matches om ON om.id=o.match_id
+      WHERE o.captured_at < om.kickoff_at AND o.odds_decimal > 1
+      GROUP BY o.match_id
     ), examples AS (SELECT competition_id,count(*)::int count FROM prediction_historical_examples GROUP BY competition_id)
     SELECT l.name competition,count(m.id)::int matches,
       count(m.id) FILTER(WHERE m.status='finished')::int finished_matches,
@@ -43,6 +49,13 @@ export class DataCoverageService {
         OR h.home_fouls IS NOT NULL OR h.away_fouls IS NOT NULL OR h.home_yellow_cards IS NOT NULL OR h.away_yellow_cards IS NOT NULL
         OR h.home_red_cards IS NOT NULL OR h.away_red_cards IS NOT NULL OR h.home_xg IS NOT NULL OR h.away_xg IS NOT NULL)::int stats,
       count(m.id) FILTER(WHERE o.match_id IS NOT NULL)::int odds,
+      count(m.id) FILTER(WHERE o.bookmakers>=3)::int odds_three,
+      COALESCE(sum(o.snapshots),0)::int odds_snapshots,
+      count(m.id) FILTER(WHERE m.status='scheduled' AND m.kickoff_at>=now() AND m.kickoff_at<now()+interval '7 days')::int upcoming_matches,
+      count(m.id) FILTER(WHERE m.status='scheduled' AND m.kickoff_at>=now() AND m.kickoff_at<now()+interval '7 days'
+        AND o.match_id IS NOT NULL)::int upcoming_odds,
+      count(m.id) FILTER(WHERE m.status='scheduled' AND m.kickoff_at>=now() AND m.kickoff_at<now()+interval '7 days'
+        AND o.bookmakers>=3)::int upcoming_odds_three,
       count(m.id) FILTER(WHERE s.corners OR (h.home_corners IS NOT NULL AND h.away_corners IS NOT NULL))::int corners,
       COALESCE(e.count,0)::int examples,min(m.kickoff_at) earliest,max(m.kickoff_at) latest
     FROM leagues l LEFT JOIN matches m ON m.league_id=l.id LEFT JOIN stats s ON s.match_id=m.id
@@ -51,9 +64,15 @@ export class DataCoverageService {
     const reports = await this.pool.query<{ report: ExpansionReport }>(`SELECT cursor->'report' report FROM collector_checkpoints
       WHERE provider='fotmob' AND scope LIKE 'competition-expansion:%' AND cursor ? 'report' ORDER BY updated_at DESC`);
     const competitions = enrichCoverageTargets(coverageRows(result.rows, this.configured));
-    const sum = (key: 'matches' | 'finishedMatches' | 'predictionHistoricalExamples' | 'matchesWithOdds' | 'matchesWithStats') => competitions.reduce((total,c) => total+c[key], 0);
+    const sum = (key: 'matches' | 'finishedMatches' | 'predictionHistoricalExamples' | 'matchesWithOdds' | 'matchesWithStats'
+      | 'matchesWithThreeBookmakers' | 'oddsSnapshots' | 'upcomingMatches7d' | 'upcomingMatchesWithOdds7d'
+      | 'upcomingMatchesWithThreeBookmakers7d') => competitions.reduce((total,c) => total+c[key], 0);
     return { competitions, summary: { totalMatches: sum('matches'), totalFinishedMatches: sum('finishedMatches'),
-      totalHistoricalExamples: sum('predictionHistoricalExamples'), totalOddsCovered: sum('matchesWithOdds'), totalStatsCovered: sum('matchesWithStats') },
+      totalHistoricalExamples: sum('predictionHistoricalExamples'), totalOddsCovered: sum('matchesWithOdds'),
+      totalThreeBookmakerCovered: sum('matchesWithThreeBookmakers'), totalOddsSnapshots: sum('oddsSnapshots'),
+      upcomingMatches7d: sum('upcomingMatches7d'), upcomingOddsCovered7d: sum('upcomingMatchesWithOdds7d'),
+      upcomingThreeBookmakerCovered7d: sum('upcomingMatchesWithThreeBookmakers7d'),
+      totalStatsCovered: sum('matchesWithStats') },
       backfills: reports.rows.map(r => r.report).filter(r => competitions.some(c => c.providerId === r.providerId)),
       targetPolicy: DATA_TARGET_V1,
       generatedAt: new Date().toISOString(), cacheSeconds: 300 };

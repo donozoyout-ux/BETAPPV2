@@ -118,6 +118,34 @@ export class OddsRepository {
     }
   }
 
+  async collectionStates(provider: string, matchIds: string[]) {
+    if (!matchIds.length) return new Map<string, { lastAttemptAt: Date | null; lastSuccessAt: Date | null; snapshotsInserted: number }>();
+    const result = await this.pool.query(`SELECT match_id,last_attempt_at,last_success_at,snapshots_inserted
+      FROM odds_collection_state WHERE provider=$1 AND match_id=ANY($2::uuid[])`, [provider, matchIds]);
+    return new Map(result.rows.map((row) => [String(row.match_id), {
+      lastAttemptAt: row.last_attempt_at ? new Date(row.last_attempt_at) : null,
+      lastSuccessAt: row.last_success_at ? new Date(row.last_success_at) : null,
+      snapshotsInserted: Number(row.snapshots_inserted ?? 0),
+    }]));
+  }
+
+  async markCollectionState(input: {
+    provider: string; matchId: string; providerMatchId: string | null;
+    status: 'SUCCESS' | 'NO_ODDS' | 'ERROR'; inserted: number; capturedAt?: Date | null; error?: unknown;
+  }) {
+    const error = input.error == null ? null : (input.error instanceof Error ? input.error.message : String(input.error)).slice(0, 1000);
+    await this.pool.query(`INSERT INTO odds_collection_state(provider,match_id,provider_match_id,last_attempt_at,last_success_at,
+      last_snapshot_at,attempts,snapshots_inserted,last_status,last_error)
+      VALUES($1,$2,$3,now(),CASE WHEN $4='SUCCESS' THEN now() ELSE NULL END,$5,1,$6,$4,$7)
+      ON CONFLICT(provider,match_id) DO UPDATE SET provider_match_id=excluded.provider_match_id,last_attempt_at=now(),
+        last_success_at=CASE WHEN excluded.last_status='SUCCESS' THEN now() ELSE odds_collection_state.last_success_at END,
+        last_snapshot_at=COALESCE(excluded.last_snapshot_at,odds_collection_state.last_snapshot_at),
+        attempts=odds_collection_state.attempts+1,
+        snapshots_inserted=odds_collection_state.snapshots_inserted+excluded.snapshots_inserted,
+        last_status=excluded.last_status,last_error=excluded.last_error`,
+    [input.provider,input.matchId,input.providerMatchId,input.status,input.capturedAt ?? null,input.inserted,error]);
+  }
+
   async summary(matchId: string) {
     return (await this.pool.query('SELECT * FROM odds_summary WHERE match_id=$1', [matchId])).rows;
   }

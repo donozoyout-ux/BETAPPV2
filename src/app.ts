@@ -277,6 +277,7 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
         intervalMs: config.OPENFOOTBALL_INTERVAL_MS,
         currentSeasonRefreshMs: config.OPENFOOTBALL_CURRENT_REFRESH_MS,
         resultPolicy: 'FINISHED_WITH_EXPLICIT_TIME_ONLY',
+        internationalScope: ['WorldCup:2026','WorldCup:2022','EURO:2024'],
       },
       timestamp: new Date().toISOString() });
   });

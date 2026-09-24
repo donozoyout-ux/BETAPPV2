@@ -15,6 +15,7 @@ import { buildAllLeagueBaselines, buildAllTeamProfiles } from './corners/profile
 import { NowgoalProvider } from './providers/nowgoal.js';
 import { OddsRepository } from './db/odds-repository.js';
 import { OddsCollector } from './collector/odds-collector.js';
+import { ApiFootballPrematchOddsCollector } from './collector/api-football-odds-collector.js';
 import { PredictionRepository, PredictionService } from './predictions/service.js';
 import { ControlAuditService } from './control-audit.js';
 import { CompetitionAutoBackfill } from './historical/competition-auto-backfill.js';
@@ -52,7 +53,11 @@ const controlAudit = new ControlAuditService(pool, config);
 const competitionAutoBackfill = new CompetitionAutoBackfill(pool, config, fotmob, logger);
 const collectors = [...footballCollectors, ...(oddsCollector ? [oddsCollector] : [])];
 const liveRepository = new LiveRepository(pool);
-const secondaryRefresh = new SecondaryLiveRefresh(new ApiFootballProvider(config), liveRepository, config, logger);
+const apiFootball = new ApiFootballProvider(config);
+const secondaryRefresh = new SecondaryLiveRefresh(apiFootball, liveRepository, config, logger);
+const apiFootballOddsCollector = new ApiFootballPrematchOddsCollector(
+  apiFootball, oddsRepository, repository, config, logger,
+);
 const liveRefresh = config.FOTMOB_ENABLED ? new LiveRefresh(fotmob, repository, logger, async (match, id, stats) => {
   const payload = await fotmob.details(match.providerExternalId);
   const observedAt = stats.sourceUpdatedAt.toISOString();
@@ -67,6 +72,7 @@ const liveRefresh = config.FOTMOB_ENABLED ? new LiveRefresh(fotmob, repository, 
 let secondaryTask: Promise<void> | undefined;
 let liveTask: Promise<void> | undefined;
 let competitionBackfillTask: Promise<void> | undefined;
+let apiFootballOddsTask: Promise<void> | undefined;
 let stopped = false;
 let wakeSleep: (() => void) | undefined;
 
@@ -76,6 +82,7 @@ function shutdown(signal: string) {
   liveRefresh?.stop();
   secondaryRefresh.stop();
   competitionAutoBackfill.stop();
+  apiFootballOddsCollector.stop();
   for (const collector of collectors) collector.stop();
   wakeSleep?.();
 }
@@ -171,12 +178,14 @@ try {
   if (process.argv.includes('--once')) {
     await runCycle();
     await secondaryRefresh.runCycle();
+    if (apiFootballOddsCollector.enabled()) await apiFootballOddsCollector.runCycle();
     if (competitionAutoBackfill.enabled()) await competitionAutoBackfill.runNext();
   }
   else if (config.COLLECTOR_ENABLED) {
     liveTask = liveRefresh?.runForever();
     secondaryTask = secondaryRefresh.runForever();
     competitionBackfillTask = competitionAutoBackfill.runForever();
+    apiFootballOddsTask = apiFootballOddsCollector.runForever();
     while (!stopped) {
       await runCycle();
       if (!stopped) await waitForNextCycle();
@@ -190,8 +199,10 @@ try {
   liveRefresh?.stop();
   secondaryRefresh.stop();
   competitionAutoBackfill.stop();
+  apiFootballOddsCollector.stop();
   await liveTask;
   await secondaryTask;
   await competitionBackfillTask;
+  await apiFootballOddsTask;
   await pool.end();
 }

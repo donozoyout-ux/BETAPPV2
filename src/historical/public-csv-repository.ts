@@ -43,6 +43,12 @@ export class PublicCsvImportRepository {
     return result.rows[0] ?? null;
   }
 
+  async resetForChangedContent(sourceKey: string) {
+    await this.pool.query(`UPDATE historical_csv_imports SET status='PENDING',content_hash=NULL,total_rows=0,valid_rows=0,
+      imported_rows=0,matches_inserted=0,matches_updated=0,duplicates_prevented=0,statistics_rows=0,odds_rows=0,
+      cursor_row=0,last_error=NULL,started_at=NULL,completed_at=NULL,updated_at=now() WHERE source_key=$1`,[sourceKey]);
+  }
+
   async markRunning(dataset: PublicCsvDataset, contentHash: string, totalRows: number, validRows: number) {
     await this.pool.query(`INSERT INTO historical_csv_imports(source_key,source_name,competition,season,source_url,content_hash,
       status,total_rows,valid_rows,started_at,updated_at)

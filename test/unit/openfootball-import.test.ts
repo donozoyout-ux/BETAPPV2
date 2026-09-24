@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { loadConfig } from '../../src/config.js';
 import { openFootballKickoff, parseOpenFootballDataset } from '../../src/historical/openfootball-parser.js';
-import { currentOpenFootballSeason, openFootballDatasets } from '../../src/historical/openfootball-source.js';
+import { currentOpenFootballSeason, openFootballDatasets, openFootballInternationalDatasets } from '../../src/historical/openfootball-source.js';
 
 describe('OpenFootball CC0 historical import', () => {
   it('uses only verified configured league-season files', () => {
@@ -16,6 +16,29 @@ describe('OpenFootball CC0 historical import', () => {
     ]);
     expect(currentOpenFootballSeason(new Date('2026-09-24T12:00:00Z'))).toBe('2026-27');
     expect(currentOpenFootballSeason(new Date('2027-03-01T12:00:00Z'))).toBe('2026-27');
+  });
+
+
+  it('adds only the verified safe international datasets when configured', () => {
+    const rows=openFootballInternationalDatasets(['WorldCup','EURO']);
+    expect(rows.map((row)=>row.sourceKey)).toEqual([
+      'openfootball:worldcup:2026',
+      'openfootball:worldcup:2022',
+      'openfootball:euro:2024',
+    ]);
+    expect(openFootballInternationalDatasets(['PremierLeague'])).toEqual([]);
+  });
+
+  it('parses explicit World Cup UTC offsets without guessing a host timezone', () => {
+    const dataset=openFootballInternationalDatasets(['WorldCup'])[0]!;
+    const payload={name:'World Cup 2026',matches:[
+      {round:'Matchday 1',date:'2026-06-11',time:'13:00 UTC-6',team1:'Mexico',team2:'South Africa',score:{ft:[2,0],ht:[1,0]}},
+    ]};
+    const parsed=parseOpenFootballDataset(payload,dataset,new Date('2026-09-24T12:00:00Z'));
+    expect(parsed.matches[0]!.match).toMatchObject({
+      status:'finished',season:'2026',homeTeam:{name:'Mexico'},awayTeam:{name:'South Africa'},homeScore:2,awayScore:0,
+    });
+    expect(parsed.matches[0]!.match.kickoffAt.toISOString()).toBe('2026-06-11T19:00:00.000Z');
   });
 
   it('imports only finished rows with an explicit kickoff time', () => {
@@ -40,7 +63,10 @@ describe('OpenFootball CC0 historical import', () => {
       .toBe('2025-08-08T17:30:00.000Z');
     expect(openFootballKickoff('2026-08-21','20:00','Europe/London')?.toISOString())
       .toBe('2026-08-21T19:00:00.000Z');
+    expect(openFootballKickoff('2026-08-21','13:00 UTC-6',null)?.toISOString())
+      .toBe('2026-08-21T19:00:00.000Z');
     expect(openFootballKickoff('2026-08-21',null,'Europe/London')).toBeNull();
+    expect(openFootballKickoff('2026-08-21','13:00',null)).toBeNull();
   });
 
   it('enables OpenFootball and keeps Football-Data automation disabled on the Render worker', () => {

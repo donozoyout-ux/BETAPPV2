@@ -5,7 +5,8 @@ import type { HistoricalRepository } from '../db/historical-repository.js';
 import type { Logger } from '../logger.js';
 import { parseOpenFootballDataset } from './openfootball-parser.js';
 import { OpenFootballImportRepository } from './openfootball-repository.js';
-import { currentOpenFootballSeason, openFootballDatasets, type OpenFootballDataset } from './openfootball-source.js';
+import { currentOpenFootballSeason, openFootballDatasets, openFootballInternationalDatasets,
+  type OpenFootballDataset } from './openfootball-source.js';
 
 const FAILURE_COOLDOWN_MS=6*60*60_000;
 
@@ -23,8 +24,11 @@ export class OpenFootballHistoricalImporter {
   stop(){ this.stopped=true; this.wake?.(); }
 
   private datasets(){
-    return openFootballDatasets(this.config.OPENFOOTBALL_BASE_URL,this.config.OPENFOOTBALL_IMPORT_SEASONS,
-      this.config.SUPPORTED_COMPETITIONS);
+    return [
+      ...openFootballDatasets(this.config.OPENFOOTBALL_BASE_URL,this.config.OPENFOOTBALL_IMPORT_SEASONS,
+        this.config.SUPPORTED_COMPETITIONS),
+      ...openFootballInternationalDatasets(this.config.SUPPORTED_COMPETITIONS),
+    ];
   }
 
   private async fetchDataset(dataset:OpenFootballDataset){

@@ -15,13 +15,24 @@ function zoneOffsetMs(date: Date, timeZone: string): number {
   return Date.UTC(get('year'),get('month')-1,get('day'),get('hour'),get('minute'),get('second'))-date.getTime();
 }
 
-export function openFootballKickoff(dateValue: unknown, timeValue: unknown, timeZone: string): Date | null {
+export function openFootballKickoff(dateValue: unknown, timeValue: unknown, timeZone: string | null): Date | null {
   const date=String(dateValue ?? '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  const time=String(timeValue ?? '').match(/^(\d{1,2}):(\d{2})$/);
+  const rawTime=String(timeValue ?? '').trim();
+  const explicit=rawTime.match(/^(\d{1,2}):(\d{2})\s+UTC([+-]\d{1,2})(?::(\d{2}))?$/i);
+  const local=rawTime.match(/^(\d{1,2}):(\d{2})$/);
+  const time=explicit ?? local;
   if (!date || !time) return null;
   const year=Number(date[1]),month=Number(date[2]),day=Number(date[3]),hour=Number(time[1]),minute=Number(time[2]);
   if (month<1||month>12||day<1||day>31||hour>23||minute>59) return null;
   const wall=Date.UTC(year,month-1,day,hour,minute,0);
+  if (explicit) {
+    const offsetHours=Number(explicit[3]);
+    const sign=offsetHours<0?-1:1;
+    const offsetMinutes=offsetHours*60+sign*Number(explicit[4] ?? 0);
+    const result=new Date(wall-offsetMinutes*60_000);
+    return Number.isNaN(result.getTime()) ? null : result;
+  }
+  if (!timeZone) return null;
   let utc=wall;
   for (let iteration=0;iteration<3;iteration+=1) utc=wall-zoneOffsetMs(new Date(utc),timeZone);
   const result=new Date(utc);
@@ -62,15 +73,15 @@ export function parseOpenFootballDataset(payload: unknown, dataset: OpenFootball
     const externalId='of-'+createHash('sha256').update([
       dataset.sourceKey,String(row.date),String(row.time),normalizeTeamAlias(home),normalizeTeamAlias(away)
     ].join('|')).digest('hex').slice(0,32);
-    const raw={source:'openfootball/football.json',sourceKey:dataset.sourceKey,rowNumber:index+1,row};
+    const raw={source:'openfootball',sourceKey:dataset.sourceKey,sourceUrl:dataset.url,rowNumber:index+1,row};
     const match:NormalizedMatch={
       providerExternalId:externalId,
-      league:{providerExternalId:`openfootball:${dataset.file}`,name:dataset.competition,country:dataset.country,
-        logoUrl:null,sourceUpdatedAt:fetchedAt,raw:{source:'openfootball/football.json',file:dataset.file}},
-      homeTeam:{providerExternalId:`openfootball:${dataset.country}:${normalizeTeamAlias(home)}`,name:home,shortName:null,
-        country:dataset.country,logoUrl:null,sourceUpdatedAt:fetchedAt,raw:{source:'openfootball/football.json'}},
-      awayTeam:{providerExternalId:`openfootball:${dataset.country}:${normalizeTeamAlias(away)}`,name:away,shortName:null,
-        country:dataset.country,logoUrl:null,sourceUpdatedAt:fetchedAt,raw:{source:'openfootball/football.json'}},
+      league:{providerExternalId:`openfootball:${dataset.configKey}`,name:dataset.competition,country:dataset.country,
+        logoUrl:null,sourceUpdatedAt:fetchedAt,raw:{source:'openfootball',file:dataset.file,sourceUrl:dataset.url}},
+      homeTeam:{providerExternalId:`openfootball:${dataset.configKey}:${normalizeTeamAlias(home)}`,name:home,shortName:null,
+        country:dataset.country,logoUrl:null,sourceUpdatedAt:fetchedAt,raw:{source:'openfootball',sourceUrl:dataset.url}},
+      awayTeam:{providerExternalId:`openfootball:${dataset.configKey}:${normalizeTeamAlias(away)}`,name:away,shortName:null,
+        country:dataset.country,logoUrl:null,sourceUpdatedAt:fetchedAt,raw:{source:'openfootball',sourceUrl:dataset.url}},
       kickoffAt:kickoff,status:'finished',round:row.round==null?null:String(row.round),season:seasonLabel(dataset.season),
       homeScore:ft[0],awayScore:ft[1],sourceUpdatedAt:fetchedAt,raw,
     };

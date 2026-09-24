@@ -87,11 +87,13 @@ services:
       - key: PUBLIC_CSV_IMPORT_BASE_URL
         value: https://football-data.co.uk
       - key: PUBLIC_CSV_IMPORT_SEASONS
-        value: 2526,2425
+        value: 2627,2526,2425
       - key: PUBLIC_CSV_IMPORT_BATCH_SIZE
         value: "100"
       - key: PUBLIC_CSV_IMPORT_INTERVAL_MS
         value: "600000"
+      - key: PUBLIC_CSV_CURRENT_REFRESH_MS
+        value: "43200000"
       - key: API_FOOTBALL_ENABLED
         value: "false"
       - key: API_FOOTBALL_KEY

@@ -6,30 +6,23 @@ import { CornerRepository } from '../db/corner-repository.js';
 import { PredictionRepository } from '../predictions/service.js';
 import { buildAllLeagueBaselines, buildAllTeamProfiles } from '../corners/profiles.js';
 import { auditDataset } from '../data/audit.js';
+import { DataCoverageService } from '../data/coverage.js';
+import { DATA_TARGET_V1, coverageTarget } from '../data/coverage-target.js';
 import { FotMobProvider, fotmobCompetitions } from '../providers/fotmob.js';
 import { runCompetitionBackfill } from './competition-backfill.js';
-import type { ExpansionReport } from './competition-scope.js';
+import { selectedCycleCount, type ExpansionReport } from './competition-scope.js';
 import type { Logger } from '../logger.js';
 
-export const priorityAutoBackfillKeys = [
-  'Eredivisie','BelgianProLeague','DanishSuperliga','Allsvenskan','GreekSuperLeague',
-  'WorldCup','EURO','EUROQualification',
-  'UefaNationsLeagueA','UefaNationsLeagueB','UefaNationsLeagueC','UefaNationsLeagueD',
-  'WorldCupQualificationUEFA','CopaAmerica','WorldCupQualificationCONMEBOL','InternationalFriendlies',
-] as const;
+const FAILURE_RETRY_COOLDOWN_MS = 6 * 60 * 60_000;
 
 export function autoBackfillTargets(config: AppConfig) {
   const allowed = new Set(config.SUPPORTED_COMPETITIONS);
-  const wanted = new Set(priorityAutoBackfillKeys);
-  return fotmobCompetitions.filter((competition) => allowed.has(competition.key) && wanted.has(competition.key as typeof priorityAutoBackfillKeys[number]));
+  return fotmobCompetitions.filter((competition) => allowed.has(competition.key));
 }
 
-function reportNeedsRun(report: ExpansionReport | null) {
-  if (!report) return true;
-  if (report.phase !== 'COMPLETE') return true;
-  if (report.status === 'FAILED') return true;
-  if (report.status === 'PARTIAL' && report.failures.length > 0) return true;
-  return false;
+function recentFailure(report: ExpansionReport | null, now = Date.now()) {
+  if (!report?.completedAt || !report.failures.length) return false;
+  return now - new Date(report.completedAt).getTime() < FAILURE_RETRY_COOLDOWN_MS;
 }
 
 export class CompetitionAutoBackfill {
@@ -37,7 +30,7 @@ export class CompetitionAutoBackfill {
   private readonly historical: HistoricalRepository;
   private readonly corners: CornerRepository;
   private readonly predictions: PredictionRepository;
-  private readonly attempted = new Set<number>();
+  private readonly coverage: DataCoverageService;
   private stopped = false;
   private wakeSleep: (() => void) | undefined;
   private running = false;
@@ -48,6 +41,7 @@ export class CompetitionAutoBackfill {
     this.historical = new HistoricalRepository(pool);
     this.corners = new CornerRepository(pool);
     this.predictions = new PredictionRepository(pool, config.SUPPORTED_COMPETITIONS);
+    this.coverage = new DataCoverageService(pool, config.SUPPORTED_COMPETITIONS);
   }
 
   enabled() {
@@ -71,32 +65,57 @@ export class CompetitionAutoBackfill {
     });
   }
 
+  private async rankedCandidates() {
+    const coverage = await this.coverage.get();
+    const rows = new Map(coverage.competitions.map((row) => [row.providerId, row]));
+    const candidates = [];
+    for (const competition of autoBackfillTargets(this.config)) {
+      const row = rows.get(competition.id);
+      if (!row) continue;
+      const target = coverageTarget(row);
+      if (!target.needsBackfill) continue;
+      const previous = await this.historical.expansionReport(competition.id);
+      const cycles = selectedCycleCount(competition.name, previous?.selectedSeasons ?? []);
+      const completed = previous?.phase === 'COMPLETE' && previous.failures.length === 0;
+      if (completed && cycles >= DATA_TARGET_V1.maxSeasonCycles) continue;
+      if (recentFailure(previous)) continue;
+      const desiredCycles = Math.min(DATA_TARGET_V1.maxSeasonCycles, Math.max(1, cycles + 1));
+      candidates.push({
+        competition,
+        row,
+        target,
+        previous,
+        cycles,
+        desiredCycles,
+        score: target.deficitScore + (row.finishedMatches === 0 ? 10 : 0),
+      });
+    }
+    return candidates.sort((a, b) => b.score - a.score
+      || a.row.finishedMatches - b.row.finishedMatches
+      || a.competition.id - b.competition.id);
+  }
+
   async runNext() {
     if (!this.enabled()) return { state: 'DISABLED' as const };
     if (this.running) return { state: 'IN_PROGRESS' as const };
     this.running = true;
     try {
-    for (const competition of autoBackfillTargets(this.config)) {
-      if (this.attempted.has(competition.id)) continue;
-      const previous = await this.historical.expansionReport(competition.id);
-      if (!reportNeedsRun(previous)) {
-        this.attempted.add(competition.id);
-        continue;
-      }
+      const candidate = (await this.rankedCandidates())[0];
+      if (!candidate) return { state: 'TARGETS_MET_OR_CAPPED' as const, targetVersion: DATA_TARGET_V1 };
 
-      this.attempted.add(competition.id);
+      const { competition, target, cycles, desiredCycles } = candidate;
       const lock = await this.pool.connect();
       try {
         const acquired = Boolean((await lock.query(
           "SELECT pg_try_advisory_lock(hashtext('competition-expansion-v1')) locked",
         )).rows[0]?.locked);
         if (!acquired) {
-          this.logger.info({ competition: competition.key }, 'Competition auto backfill skipped; advisory lock busy');
+          this.logger.info({ competition: competition.key }, 'Competition target backfill skipped; advisory lock busy');
           return { state: 'LOCK_BUSY' as const, competition: competition.key };
         }
         try {
           const report = await runCompetitionBackfill(competition, {
-            seasons: this.config.COMPETITION_BACKFILL_AUTO_SEASONS,
+            seasons: desiredCycles,
             resume: true,
             dryRun: false,
           }, {
@@ -117,20 +136,28 @@ export class CompetitionAutoBackfill {
           this.logger.info({
             competition: competition.key,
             status: report.status,
+            targetBefore: target,
+            cyclesBefore: cycles,
+            requestedCycles: desiredCycles,
             fixturesPersisted: report.fixturesPersisted,
             statisticsSucceeded: report.statisticsSucceeded,
             statisticsUnavailable: report.statisticsUnavailable,
             statisticsFailed: report.statisticsFailed,
-          }, 'Competition auto backfill completed');
-          return { state: 'RAN' as const, competition: competition.key, report };
+          }, 'Coverage-priority competition backfill completed');
+          return {
+            state: 'RAN' as const,
+            competition: competition.key,
+            targetBefore: target,
+            cyclesBefore: cycles,
+            requestedCycles: desiredCycles,
+            report,
+          };
         } finally {
           await lock.query("SELECT pg_advisory_unlock(hashtext('competition-expansion-v1'))").catch(() => undefined);
         }
       } finally {
         lock.release();
       }
-    }
-      return { state: 'COMPLETE' as const };
     } finally {
       this.running = false;
     }
@@ -141,10 +168,10 @@ export class CompetitionAutoBackfill {
     while (!this.stopped) {
       try {
         const result = await this.runNext();
-        this.logger.info({ result }, 'Competition auto backfill background cycle completed');
-        if (result.state === 'COMPLETE') return;
+        this.logger.info({ result }, 'Competition target backfill background cycle completed');
+        if (result.state === 'TARGETS_MET_OR_CAPPED') return;
       } catch (error) {
-        this.logger.error({ err: error }, 'Competition auto backfill background cycle failed');
+        this.logger.error({ err: error }, 'Competition target backfill background cycle failed');
       }
       if (!this.stopped) await this.wait();
     }

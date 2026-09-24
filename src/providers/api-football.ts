@@ -235,7 +235,9 @@ export class ApiFootballProvider {
       return { fixture: { providerMatchId: fixture.snapshot.externalId, kickoffAt: new Date(fixture.kickoffAt),
         homeTeam: fixture.homeTeam, awayTeam: fixture.awayTeam, leagueName: fixture.league }, odds: [] };
     }
-    const rows = await this.requestAllPages(`/odds?fixture=${encodeURIComponent(fixture.snapshot.externalId)}`, 10);
+    // Pre-match odds are paginated by bookmaker. One page is enough for safe bookmaker-depth evidence
+    // and keeps the shared live/prematch API queue within a conservative quota budget.
+    const rows = (await this.requestPage(`/odds?fixture=${encodeURIComponent(fixture.snapshot.externalId)}`)).rows;
     const oddsFixture: OddsFixture = { providerMatchId: fixture.snapshot.externalId, kickoffAt: new Date(fixture.kickoffAt),
       homeTeam: fixture.homeTeam, awayTeam: fixture.awayTeam, leagueName: fixture.league };
     return { fixture: oddsFixture, odds: apiPrematchOdds(rows, fixture, capturedAt) };

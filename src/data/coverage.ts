@@ -81,7 +81,7 @@ export class DataCoverageService {
     LEFT JOIN stage_examples se ON se.competition_id=l.id
     LEFT JOIN examples e ON e.competition_id=l.id
     GROUP BY l.id,l.name,e.count,se.matches,se.examples,se.research_eligible ORDER BY l.name`);
-    const [reports,csvImports,csvStageRefreshes,shadowSafety,shadowResearch] = await Promise.all([
+    const [reports,csvImports,csvStageRefreshes,shadowSafety,shadowResearch,openFootballImports] = await Promise.all([
       this.pool.query<{ report: ExpansionReport }>(`SELECT cursor->'report' report FROM collector_checkpoints
         WHERE provider='fotmob' AND scope LIKE 'competition-expansion:%' AND cursor ? 'report' ORDER BY updated_at DESC`),
       this.pool.query(`SELECT source_key,competition,season,status,total_rows,valid_rows,imported_rows,statistics_rows,odds_rows,
@@ -101,6 +101,10 @@ export class DataCoverageService {
         avg(probability_delta_pp)::numeric average_probability_delta_pp
         FROM prediction_stage_historical_examples WHERE research_eligible=true
         GROUP BY market_type,movement_class ORDER BY examples DESC,market_type,movement_class`),
+      this.pool.query(`SELECT source_key,competition,season,status,total_matches,finished_rows,imported_rows,
+        matches_inserted,matches_updated,duplicates_prevented,result_rows,skipped_unfinished,skipped_unsafe_time,
+        cursor_row,last_error,started_at,completed_at,updated_at FROM openfootball_imports
+        ORDER BY season DESC,competition`),
     ]);
     const competitions = enrichCoverageTargets(coverageRows(result.rows, this.configured));
     const sum = (key: 'matches' | 'finishedMatches' | 'predictionHistoricalExamples' | 'matchesWithOdds' | 'matchesWithStats'
@@ -123,6 +127,7 @@ export class DataCoverageService {
       publicCsvImports: csvImports.rows,
       publicCsvStageRefreshes: csvStageRefreshes.rows,
       shadowSafety: shadowSafety.rows[0] ?? { total:0, invalid_official:0, invalid_timing_known:0 },
+      openFootballImports: openFootballImports.rows,
       shadowResearch: shadowResearch.rows.map((row) => ({
         marketType:String(row.market_type),movementClass:String(row.movement_class),
         examples:Number(row.examples ?? 0),binaryExamples:Number(row.binary_examples ?? 0),

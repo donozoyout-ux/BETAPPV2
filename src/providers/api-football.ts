@@ -92,13 +92,15 @@ function apiPrematchSelection(betName: string, value: string, fixture: ApiFixtur
       selection: match[1]!.toUpperCase() };
   }
   if (/asian handicap|handicap result/i.test(bet)) {
-    const side = normalized === normalizeTeamAlias(fixture.homeTeam) || /^home$/i.test(raw) ? 'HOME'
-      : normalized === normalizeTeamAlias(fixture.awayTeam) || /^away$/i.test(raw) ? 'AWAY' : null;
     const lineMatch = raw.match(/(?:^|\s)([+-]?\d+(?:\.\d+)?)$/);
+    const sideValue = lineMatch ? raw.slice(0, lineMatch.index).trim() : raw;
+    const sideNormalized = normalizeTeamAlias(sideValue);
+    const side = sideNormalized === normalizeTeamAlias(fixture.homeTeam) || /^home$/i.test(sideValue) ? 'HOME'
+      : sideNormalized === normalizeTeamAlias(fixture.awayTeam) || /^away$/i.test(sideValue) ? 'AWAY' : null;
     if (!side || !lineMatch) return null;
     return { marketType: 'ASIAN_HANDICAP', marketName: 'Asian Handicap', line: Number(lineMatch[1]), selection: side };
   }
-  if (/corner.*over.*under|over.*under.*corner/i.test(bet)) {
+  if (/corner/i.test(bet)) {
     const match = raw.match(/^(Over|Under)\s+(-?\d+(?:\.\d+)?)$/i);
     if (!match) return null;
     return { marketType: 'TOTAL_CORNERS', marketName: 'Total Corners', line: Number(match[2]),

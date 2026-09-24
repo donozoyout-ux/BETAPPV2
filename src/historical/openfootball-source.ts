@@ -8,8 +8,8 @@ export type OpenFootballLeagueSource = {
   configKey: string;
   file: string;
   competition: string;
-  country: string;
-  timeZone: string;
+  country: string | null;
+  timeZone: string | null;
   availableSeasons: readonly string[];
 };
 
@@ -39,6 +39,23 @@ export type OpenFootballDataset = OpenFootballLeagueSource & {
   season: string;
   url: string;
 };
+
+const openFootballInternationalSources: OpenFootballDataset[] = [
+  { configKey:'WorldCup',file:'worldcup.json',competition:'FIFA World Cup',country:null,timeZone:null,
+    availableSeasons:['2026'],season:'2026',sourceKey:'openfootball:worldcup:2026',
+    url:'https://raw.githubusercontent.com/openfootball/worldcup.json/master/2026/worldcup.json' },
+  { configKey:'WorldCup',file:'worldcup.json',competition:'FIFA World Cup',country:null,timeZone:'Asia/Qatar',
+    availableSeasons:['2022'],season:'2022',sourceKey:'openfootball:worldcup:2022',
+    url:'https://raw.githubusercontent.com/openfootball/worldcup.json/master/2022/worldcup.json' },
+  { configKey:'EURO',file:'euro.json',competition:'EURO',country:null,timeZone:'Europe/Berlin',
+    availableSeasons:['2024'],season:'2024',sourceKey:'openfootball:euro:2024',
+    url:'https://raw.githubusercontent.com/openfootball/euro.json/master/2024/euro.json' },
+];
+
+export function openFootballInternationalDatasets(configured: readonly string[]): OpenFootballDataset[] {
+  const allowed=new Set(configured);
+  return openFootballInternationalSources.filter((source)=>allowed.has(source.configKey));
+}
 
 export function openFootballDatasets(baseUrl: string, seasons: readonly string[], configured: readonly string[]): OpenFootballDataset[] {
   const allowed=new Set(configured);

@@ -98,7 +98,9 @@ function apiPrematchSelection(betName: string, value: string, fixture: ApiFixtur
     const side = sideNormalized === normalizeTeamAlias(fixture.homeTeam) || /^home$/i.test(sideValue) ? 'HOME'
       : sideNormalized === normalizeTeamAlias(fixture.awayTeam) || /^away$/i.test(sideValue) ? 'AWAY' : null;
     if (!side || !lineMatch) return null;
-    return { marketType: 'ASIAN_HANDICAP', marketName: 'Asian Handicap', line: Number(lineMatch[1]), selection: side };
+    const rawLine = Number(lineMatch[1]);
+    return { marketType: 'ASIAN_HANDICAP', marketName: 'Asian Handicap',
+      line: side === 'AWAY' ? -rawLine : rawLine, selection: side };
   }
   if (/corner/i.test(bet)) {
     const match = raw.match(/^(Over|Under)\s+(-?\d+(?:\.\d+)?)$/i);

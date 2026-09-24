@@ -6,7 +6,7 @@ import type { PredictionRepository } from '../predictions/service.js';
 import type { Logger } from '../logger.js';
 import { parseFootballDataDataset } from './public-csv-parser.js';
 import { PublicCsvImportRepository } from './public-csv-repository.js';
-import { publicCsvDatasets, type PublicCsvDataset } from './public-csv-source.js';
+import { currentFootballDataSeasonCode, publicCsvDatasets, type PublicCsvDataset } from './public-csv-source.js';
 
 const FAILURE_COOLDOWN_MS = 6 * 60 * 60_000;
 
@@ -56,18 +56,28 @@ export class PublicCsvHistoricalImporter {
     };
   }
 
-  private async nextDataset() {
+  private async nextDataset(now = new Date()) {
     const datasets = this.datasets();
     await this.imports.ensureDatasets(datasets);
+    const currentSeason = currentFootballDataSeasonCode(now);
     let waitingRetry = false;
+    let rollingIdle = false;
     for (const dataset of datasets) {
       const state = await this.imports.state(dataset.sourceKey);
-      if (state?.status === 'COMPLETED') continue;
       const cooldownUntil = this.cooldowns.get(dataset.sourceKey) ?? 0;
-      if (cooldownUntil > Date.now()) { waitingRetry = true; continue; }
-      return { dataset, state };
+      if (cooldownUntil > now.getTime()) { waitingRetry = true; continue; }
+      if (state?.status === 'COMPLETED') {
+        if (dataset.seasonCode !== currentSeason) continue;
+        rollingIdle = true;
+        const checkedAt = state.updated_at ? new Date(state.updated_at).getTime() : 0;
+        if (now.getTime() - checkedAt < this.config.PUBLIC_CSV_CURRENT_REFRESH_MS) continue;
+        return { dataset, state, rolling: true };
+      }
+      return { dataset, state, rolling: false };
     }
-    return waitingRetry ? { dataset: null, state: null, waitingRetry: true } : null;
+    return waitingRetry || rollingIdle
+      ? { dataset: null, state: null, waitingRetry, rollingIdle }
+      : null;
   }
 
   async runCycle() {
@@ -77,14 +87,21 @@ export class PublicCsvHistoricalImporter {
     try {
       const candidate = await this.nextDataset();
       if (!candidate) return { state: 'COMPLETE' as const };
-      if (!candidate.dataset) return { state: 'WAITING_RETRY' as const };
+      if (!candidate.dataset) return candidate.waitingRetry
+        ? { state: 'WAITING_RETRY' as const }
+        : { state: 'IDLE' as const };
       const { dataset } = candidate;
 
       try {
         const fetchedAt = new Date();
         const fetched = await this.fetchCsv(dataset);
         let state = candidate.state;
-        if (state?.content_hash && state.content_hash !== fetched.contentHash && state.status !== 'COMPLETED') {
+        if (state?.status === 'COMPLETED' && state.content_hash === fetched.contentHash) {
+          await this.imports.markChecked(dataset.sourceKey);
+          this.cooldowns.delete(dataset.sourceKey);
+          return { state: 'NO_CHANGE' as const, sourceKey: dataset.sourceKey, season: dataset.seasonLabel };
+        }
+        if (state?.content_hash && state.content_hash !== fetched.contentHash) {
           await this.imports.resetForChangedContent(dataset.sourceKey);
           state = await this.imports.state(dataset.sourceKey);
         }

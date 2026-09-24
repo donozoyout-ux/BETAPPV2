@@ -20,7 +20,7 @@ describe('public CSV import configuration', () => {
     const yaml=readFileSync('render.yaml','utf8');
     const worker=yaml.split('name: betapp-v2-collector')[1] ?? '';
     const web=yaml.split('name: betapp-v2-web')[1]?.split('name: betapp-v2-collector')[0] ?? '';
-    expect(worker).toContain('key: PUBLIC_CSV_IMPORT_ENABLED\n        value: "true"');
+    expect(worker).toContain('key: PUBLIC_CSV_IMPORT_ENABLED\n        value: "false"');
     expect(worker).toContain('key: PUBLIC_CSV_IMPORT_SEASONS\n        value: 2627,2526,2425');
     expect(worker).toContain('key: PUBLIC_CSV_IMPORT_BATCH_SIZE\n        value: "100"');
     expect(worker).toContain('key: PUBLIC_CSV_IMPORT_INTERVAL_MS\n        value: "600000"');

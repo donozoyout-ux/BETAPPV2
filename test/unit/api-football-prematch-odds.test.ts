@@ -27,6 +27,8 @@ describe('API-Football prematch odds normalization', () => {
       .toEqual(['AWAY','DRAW','HOME']);
     expect(odds.find((item) => item.marketType === 'ASIAN_HANDICAP' && item.selection === 'HOME'))
       .toMatchObject({ line:-0.5, provider:'api-football:pinnacle' });
+    expect(odds.find((item) => item.marketType === 'ASIAN_HANDICAP' && item.selection === 'AWAY'))
+      .toMatchObject({ line:-0.5, provider:'api-football:pinnacle' });
     expect(odds.every((item) => item.capturedAt.getTime() === capturedAt.getTime())).toBe(true);
   });
 

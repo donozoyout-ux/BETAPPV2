@@ -15,7 +15,8 @@ function fakePool(values: { invalid?: number; stale?: number; pending?: number; 
     if (sql.includes('invalid_official')) return { rows: [{ total: 0, invalid_official: 0, invalid_timing_known: 0 }] };
     if (sql.includes('FROM prediction_stage_historical_examples')) return { rows: [] };
     if (sql.includes('WITH stats AS') || sql.includes("scope LIKE 'competition-expansion:%'")
-      || sql.includes('FROM historical_csv_imports') || sql.includes('FROM prediction_stage_historical_refreshes')) return { rows: [] };
+      || sql.includes('FROM historical_csv_imports') || sql.includes('FROM prediction_stage_historical_refreshes')
+      || sql.includes('FROM openfootball_imports')) return { rows: [] };
     if (sql.includes('INSERT INTO control_audit_runs')) return { rows: [{
       id: 1, version: 'CONTROL_AUDIT_V1', status: values.invalid ? 'FAIL' : 'PASS',
       checked_at: new Date(), checks: [], summary: {},

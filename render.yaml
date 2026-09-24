@@ -80,6 +80,8 @@ services:
         value: "true"
       - key: COMPETITION_BACKFILL_AUTO_SEASONS
         value: "1"
+      - key: COMPETITION_BACKFILL_AUTO_INTERVAL_MS
+        value: "900000"
       - key: API_FOOTBALL_ENABLED
         value: "false"
       - key: API_FOOTBALL_KEY

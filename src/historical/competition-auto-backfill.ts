@@ -69,6 +69,7 @@ export class CompetitionAutoBackfill {
     const coverage = await this.coverage.get();
     const rows = new Map(coverage.competitions.map((row) => [row.providerId, row]));
     const candidates = [];
+    let waitingRetries = 0;
     for (const competition of autoBackfillTargets(this.config)) {
       const row = rows.get(competition.id);
       if (!row) continue;
@@ -78,8 +79,9 @@ export class CompetitionAutoBackfill {
       const cycles = selectedCycleCount(competition.name, previous?.selectedSeasons ?? []);
       const completed = previous?.phase === 'COMPLETE' && previous.failures.length === 0;
       if (completed && cycles >= DATA_TARGET_V1.maxSeasonCycles) continue;
-      if (recentFailure(previous)) continue;
-      const desiredCycles = Math.min(DATA_TARGET_V1.maxSeasonCycles, Math.max(1, cycles + 1));
+      if (recentFailure(previous)) { waitingRetries++; continue; }
+      const desiredCycles = Math.min(DATA_TARGET_V1.maxSeasonCycles,
+        Math.max(this.config.COMPETITION_BACKFILL_AUTO_SEASONS, cycles + 1));
       candidates.push({
         competition,
         row,
@@ -90,9 +92,12 @@ export class CompetitionAutoBackfill {
         score: target.deficitScore + (row.finishedMatches === 0 ? 10 : 0),
       });
     }
-    return candidates.sort((a, b) => b.score - a.score
-      || a.row.finishedMatches - b.row.finishedMatches
-      || a.competition.id - b.competition.id);
+    return {
+      candidates: candidates.sort((a, b) => b.score - a.score
+        || a.row.finishedMatches - b.row.finishedMatches
+        || a.competition.id - b.competition.id),
+      waitingRetries,
+    };
   }
 
   async runNext() {
@@ -100,8 +105,11 @@ export class CompetitionAutoBackfill {
     if (this.running) return { state: 'IN_PROGRESS' as const };
     this.running = true;
     try {
-      const candidate = (await this.rankedCandidates())[0];
-      if (!candidate) return { state: 'TARGETS_MET_OR_CAPPED' as const, targetVersion: DATA_TARGET_V1 };
+      const ranked = await this.rankedCandidates();
+      const candidate = ranked.candidates[0];
+      if (!candidate) return ranked.waitingRetries > 0
+        ? { state: 'WAITING_RETRY' as const, waitingRetries: ranked.waitingRetries }
+        : { state: 'TARGETS_MET_OR_CAPPED' as const, targetVersion: DATA_TARGET_V1 };
 
       const { competition, target, cycles, desiredCycles } = candidate;
       const lock = await this.pool.connect();

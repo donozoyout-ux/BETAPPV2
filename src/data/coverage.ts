@@ -2,6 +2,7 @@ import type { DatabasePool } from '../db/pool.js';
 import { fotmobCompetitions } from '../providers/fotmob.js';
 import { competitionKey, competitionKind } from '../matching/competition.js';
 import type { ExpansionReport } from '../historical/competition-scope.js';
+import { DATA_TARGET_V1, enrichCoverageTargets } from './coverage-target.js';
 export function coverageRows(rows: Array<Record<string, unknown>>, configured: readonly string[]) {
   return fotmobCompetitions.filter(c => configured.includes(c.key)).map(c => {
     const matches = rows.filter(row => competitionKey(String(row.competition)) === competitionKey(c.name));
@@ -49,11 +50,12 @@ export class DataCoverageService {
     LEFT JOIN examples e ON e.competition_id=l.id GROUP BY l.id,l.name,e.count ORDER BY l.name`);
     const reports = await this.pool.query<{ report: ExpansionReport }>(`SELECT cursor->'report' report FROM collector_checkpoints
       WHERE provider='fotmob' AND scope LIKE 'competition-expansion:%' AND cursor ? 'report' ORDER BY updated_at DESC`);
-    const competitions = coverageRows(result.rows, this.configured);
+    const competitions = enrichCoverageTargets(coverageRows(result.rows, this.configured));
     const sum = (key: 'matches' | 'finishedMatches' | 'predictionHistoricalExamples' | 'matchesWithOdds' | 'matchesWithStats') => competitions.reduce((total,c) => total+c[key], 0);
     return { competitions, summary: { totalMatches: sum('matches'), totalFinishedMatches: sum('finishedMatches'),
       totalHistoricalExamples: sum('predictionHistoricalExamples'), totalOddsCovered: sum('matchesWithOdds'), totalStatsCovered: sum('matchesWithStats') },
       backfills: reports.rows.map(r => r.report).filter(r => competitions.some(c => c.providerId === r.providerId)),
+      targetPolicy: DATA_TARGET_V1,
       generatedAt: new Date().toISOString(), cacheSeconds: 300 };
   }
 }

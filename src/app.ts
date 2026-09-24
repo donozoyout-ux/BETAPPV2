@@ -254,7 +254,8 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
         enabled: config.BACKFILL_ENABLED && config.COMPETITION_BACKFILL_AUTO_ENABLED && config.FOTMOB_ENABLED,
         seasons: config.COMPETITION_BACKFILL_AUTO_SEASONS,
         intervalMs: config.COMPETITION_BACKFILL_AUTO_INTERVAL_MS,
-        scope: 'DOMESTIC_EXPANSION_PLUS_ALL_INTERNATIONAL',
+        scope: 'ALL_CONFIGURED_BY_DATA_DEFICIT',
+        targetPolicy: 'DATA_TARGET_V1',
       },
       timestamp: new Date().toISOString() });
   });

@@ -1,15 +1,16 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { loadConfig } from '../../src/config.js';
-import { autoBackfillTargets, priorityAutoBackfillKeys } from '../../src/historical/competition-auto-backfill.js';
+import { autoBackfillTargets } from '../../src/historical/competition-auto-backfill.js';
 
 describe('automatic competition backfill', () => {
-  it('targets only the priority domestic and national competitions', () => {
+  it('targets every configured FotMob competition so real coverage decides priority', () => {
     const config = loadConfig({ DATABASE_URL: 'postgresql://localhost/test' });
     const keys = autoBackfillTargets(config).map((item) => item.key);
-    expect(keys).toEqual(expect.arrayContaining([...priorityAutoBackfillKeys]));
-    expect(keys).not.toContain('PremierLeague');
     expect(keys).toEqual(expect.arrayContaining([
+      'PremierLeague','LaLiga','Bundesliga','SerieA','Ligue1','SuperLig',
+      'ChampionsLeague','EuropaLeague','ConferenceLeague','BrasileiraoSerieA',
+      'Eredivisie','BelgianProLeague','DanishSuperliga','Allsvenskan','GreekSuperLeague',
       'WorldCup','EURO','EUROQualification',
       'UefaNationsLeagueA','UefaNationsLeagueB','UefaNationsLeagueC','UefaNationsLeagueD',
       'WorldCupQualificationUEFA','CopaAmerica','WorldCupQualificationCONMEBOL','InternationalFriendlies',

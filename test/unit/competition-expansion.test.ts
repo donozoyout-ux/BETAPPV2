@@ -4,7 +4,7 @@ import { loadConfig } from '../../src/config.js';
 import { competitionKey } from '../../src/matching/competition.js';
 import { nationalTeamAliases } from '../../src/matching/team-alias.js';
 import { fotmobCompetitions } from '../../src/providers/fotmob.js';
-import { discoverScope, parseExpansionArgs, blankReport } from '../../src/historical/competition-scope.js';
+import { discoverScope, parseExpansionArgs, blankReport, selectedCycleCount } from '../../src/historical/competition-scope.js';
 import { runCompetitionBackfill } from '../../src/historical/competition-backfill.js';
 import type { ExpansionReport } from '../../src/historical/competition-scope.js';
 import type { NormalizedMatch } from '../../src/domain/types.js';
@@ -64,6 +64,16 @@ describe('competition expansion', () => {
     const h = harness(); h.deps.provider.getAvailableSeasons.mockResolvedValue(['2022/2023','2023','2018/2019','2019']);
     const scope = await discoverScope(h.deps.provider,{id:10607,key:'EUROQualification',name:'EURO Qualification'},2,h.deps.pause);
     expect([...scope.selected.keys()]).toEqual(['2022/2023','2023','2018/2019','2019']);
+    expect(selectedCycleCount('EURO Qualification',[...scope.selected.keys()])).toBe(2);
+  });
+  it('expands a completed one-cycle import to a second cycle when coverage still needs data', async () => {
+    const h = harness();
+    const first = await runCompetitionBackfill(competition,{seasons:1,resume:true,dryRun:false},h.deps as never);
+    expect(first.selectedSeasons).toEqual(['2026']);
+    expect(first.phase).toBe('COMPLETE');
+    const second = await runCompetitionBackfill(competition,{seasons:2,resume:true,dryRun:false},h.deps as never);
+    expect(second.selectedSeasons).toEqual(['2026','2025']);
+    expect(h.deps.provider.getSeasonFixtures).toHaveBeenCalledWith(57,'2025');
   });
   it('dry-run does no database writes or detail import', async () => {
     const h = harness(); const r = await runCompetitionBackfill(competition,{seasons:2,resume:false,dryRun:true},h.deps as never);

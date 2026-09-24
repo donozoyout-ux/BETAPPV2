@@ -2,6 +2,15 @@ import { competitionKind } from '../matching/competition.js';
 import type { NormalizedMatch } from '../domain/types.js';
 import type { FotMobProvider } from '../providers/fotmob.js';
 export type ExpansionCompetition = { id: number; key: string; name: string };
+
+export function seasonCycleKey(competitionName: string, season: string): string {
+  if (competitionKind(competitionName) !== 'INTERNATIONAL') return season;
+  return season.match(/(?:19|20)\d{2}/g)?.at(-1) ?? season;
+}
+
+export function selectedCycleCount(competitionName: string, seasons: readonly string[]): number {
+  return new Set(seasons.map((season) => seasonCycleKey(competitionName, season))).size;
+}
 export const expansionKeys = ['Eredivisie','BelgianProLeague','DanishSuperliga','Allsvenskan','GreekSuperLeague',
   'WorldCup','EURO','EUROQualification','UefaNationsLeagueA','UefaNationsLeagueB','UefaNationsLeagueC','UefaNationsLeagueD',
   'WorldCupQualificationUEFA','CopaAmerica','WorldCupQualificationCONMEBOL','InternationalFriendlies'];
@@ -26,7 +35,7 @@ export async function discoverScope(provider: Pick<FotMobProvider, 'getAvailable
   if (!Number.isInteger(count) || count < 1 || count > 2) throw new Error('--seasons must be 1 or 2; expansion never imports all seasons');
   const availableSeasons = [...new Set(await provider.getAvailableSeasons(c.id))];
   const selected = new Map<string, NormalizedMatch[]>();
-  const cycle = (s: string) => competitionKind(c.name) === 'INTERNATIONAL' ? s.match(/(?:19|20)\d{2}/g)?.at(-1) ?? s : s;
+  const cycle = (s: string) => seasonCycleKey(c.name, s);
   if (pinned?.length) {
     if (new Set(pinned.map(cycle)).size > count || pinned.some(s => !availableSeasons.includes(s))) throw new Error('Checkpoint seasons are not in the discovered provider catalog/scope');
     for (const season of pinned) { await pause(); selected.set(season, await provider.getSeasonFixtures(c.id, season)); }

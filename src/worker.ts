@@ -19,6 +19,9 @@ import { ApiFootballPrematchOddsCollector } from './collector/api-football-odds-
 import { PredictionRepository, PredictionService } from './predictions/service.js';
 import { ControlAuditService } from './control-audit.js';
 import { CompetitionAutoBackfill } from './historical/competition-auto-backfill.js';
+import { HistoricalRepository } from './db/historical-repository.js';
+import { PublicCsvImportRepository } from './historical/public-csv-repository.js';
+import { PublicCsvHistoricalImporter } from './historical/public-csv-importer.js';
 
 const config = loadConfig();
 const logger = createLogger(config, 'betapp-worker');
@@ -51,6 +54,11 @@ const predictionRepository = new PredictionRepository(pool, config.SUPPORTED_COM
 const predictionService = new PredictionService(predictionRepository);
 const controlAudit = new ControlAuditService(pool, config);
 const competitionAutoBackfill = new CompetitionAutoBackfill(pool, config, fotmob, logger);
+const historicalRepository = new HistoricalRepository(pool);
+const publicCsvImportRepository = new PublicCsvImportRepository(pool);
+const publicCsvImporter = new PublicCsvHistoricalImporter(
+  config, repository, historicalRepository, publicCsvImportRepository, predictionRepository, logger,
+);
 const collectors = [...footballCollectors, ...(oddsCollector ? [oddsCollector] : [])];
 const liveRepository = new LiveRepository(pool);
 const apiFootball = new ApiFootballProvider(config);
@@ -73,6 +81,7 @@ let secondaryTask: Promise<void> | undefined;
 let liveTask: Promise<void> | undefined;
 let competitionBackfillTask: Promise<void> | undefined;
 let apiFootballOddsTask: Promise<void> | undefined;
+let publicCsvImportTask: Promise<void> | undefined;
 let stopped = false;
 let wakeSleep: (() => void) | undefined;
 
@@ -83,6 +92,7 @@ function shutdown(signal: string) {
   secondaryRefresh.stop();
   competitionAutoBackfill.stop();
   apiFootballOddsCollector.stop();
+  publicCsvImporter.stop();
   for (const collector of collectors) collector.stop();
   wakeSleep?.();
 }
@@ -180,12 +190,14 @@ try {
     await secondaryRefresh.runCycle();
     if (apiFootballOddsCollector.enabled()) await apiFootballOddsCollector.runCycle();
     if (competitionAutoBackfill.enabled()) await competitionAutoBackfill.runNext();
+    if (publicCsvImporter.enabled()) await publicCsvImporter.runCycle();
   }
   else if (config.COLLECTOR_ENABLED) {
     liveTask = liveRefresh?.runForever();
     secondaryTask = secondaryRefresh.runForever();
     competitionBackfillTask = competitionAutoBackfill.runForever();
     apiFootballOddsTask = apiFootballOddsCollector.runForever();
+    publicCsvImportTask = publicCsvImporter.runForever();
     while (!stopped) {
       await runCycle();
       if (!stopped) await waitForNextCycle();
@@ -200,9 +212,11 @@ try {
   secondaryRefresh.stop();
   competitionAutoBackfill.stop();
   apiFootballOddsCollector.stop();
+  publicCsvImporter.stop();
   await liveTask;
   await secondaryTask;
   await competitionBackfillTask;
   await apiFootballOddsTask;
+  await publicCsvImportTask;
   await pool.end();
 }

@@ -8,7 +8,7 @@ import type { HistoricalNeighborInput, MatchOutcomeData, OddsIntelligence, OddsR
 
 type Row = Record<string, unknown>;
 function snapshot(row: Record<string, unknown>): OddsSnapshot { return { matchId: String(row.match_id), provider: String(row.provider), marketType: String(row.market_type), marketName: String(row.market_name), line: row.line == null ? null : Number(row.line), selection: String(row.selection), oddsDecimal: Number(row.odds_decimal), capturedAt: new Date(String(row.captured_at)) }; }
-function outcome(row: Row): MatchOutcomeData { return { matchId: String(row.match_id), competitionId: String(row.competition_id), kickoffAt: new Date(String(row.kickoff_at)), league: String(row.league), homeTeam: String(row.home_team), awayTeam: String(row.away_team),
+function outcome(row: Row): MatchOutcomeData { return { matchId: String(row.match_id), competitionId: row.competition_id == null ? '' : String(row.competition_id), country: row.country == null ? null : String(row.country), kickoffAt: new Date(String(row.kickoff_at)), league: String(row.league), homeTeam: String(row.home_team), awayTeam: String(row.away_team),
   homeScore: row.home_score == null ? null : Number(row.home_score), awayScore: row.away_score == null ? null : Number(row.away_score), firstHalfHomeScore: null, firstHalfAwayScore: null,
   homeCorners: row.home_corners == null ? null : Number(row.home_corners), awayCorners: row.away_corners == null ? null : Number(row.away_corners),
   homeYellowCards: row.home_yellow_cards == null ? null : Number(row.home_yellow_cards), awayYellowCards: row.away_yellow_cards == null ? null : Number(row.away_yellow_cards),
@@ -35,7 +35,7 @@ export class OddsIntelligenceRepository {
   constructor(private readonly pool: DatabasePool) {}
 
   private async targets(matchId: string | null, limit: number, now: Date): Promise<Array<{ data: MatchOutcomeData; snapshots: OddsSnapshot[] }>> {
-    const result = await this.pool.query(`SELECT m.id match_id,m.league_id competition_id,m.kickoff_at,l.name league,ht.name home_team,at.name away_team,
+    const result = await this.pool.query(`SELECT m.id match_id,m.league_id competition_id,m.kickoff_at,l.name league,l.country country,ht.name home_team,at.name away_team,
       m.home_score,m.away_score,NULL::numeric home_corners,NULL::numeric away_corners,NULL::numeric home_yellow_cards,NULL::numeric away_yellow_cards,
       NULL::numeric home_red_cards,NULL::numeric away_red_cards,
       COALESCE(jsonb_agg(jsonb_build_object('match_id',os.match_id,'provider',os.provider,'market_type',os.market_type,'market_name',os.market_name,
@@ -44,7 +44,7 @@ export class OddsIntelligenceRepository {
       FROM matches m JOIN leagues l ON l.id=m.league_id JOIN teams ht ON ht.id=m.home_team_id JOIN teams at ON at.id=m.away_team_id
       JOIN odds_snapshots os ON os.match_id=m.id
       WHERE ($1::uuid IS NULL OR m.id=$1) AND m.status='scheduled' AND m.kickoff_at>$2
-      GROUP BY m.id,l.name,ht.name,at.name ORDER BY m.kickoff_at LIMIT $3`, [matchId, now, limit]);
+      GROUP BY m.id,l.name,l.country,ht.name,at.name ORDER BY m.kickoff_at LIMIT $3`, [matchId, now, limit]);
     return result.rows.map((row) => ({ data: outcome(row), snapshots: (row.snapshots as Row[]).map(snapshot) }));
   }
 
@@ -53,7 +53,7 @@ export class OddsIntelligenceRepository {
     const result = await this.pool.query(`WITH requested AS (
       SELECT * FROM unnest($1::uuid[],$2::timestamptz[],$3::text[],$4::text[],$5::numeric[],$6::text[])
       AS r(target_id,target_kickoff,market_type,market_name,line,selection)
-    ) SELECT r.target_id,m.id match_id,m.league_id competition_id,m.kickoff_at,l.name league,ht.name home_team,at.name away_team,m.home_score,m.away_score,
+    ) SELECT r.target_id,m.id match_id,m.league_id competition_id,m.kickoff_at,l.name league,l.country country,ht.name home_team,at.name away_team,m.home_score,m.away_score,
       h.home_corners,h.away_corners,h.home_yellow_cards,h.away_yellow_cards,h.home_red_cards,h.away_red_cards,
       COALESCE(jsonb_agg(jsonb_build_object('match_id',os.match_id,'provider',os.provider,'market_type',os.market_type,'market_name',os.market_name,
         'line',os.line,'selection',os.selection,'odds_decimal',os.odds_decimal,'captured_at',os.captured_at) ORDER BY os.captured_at,os.id),'[]'::jsonb) snapshots
@@ -64,7 +64,7 @@ export class OddsIntelligenceRepository {
       WHERE EXISTS(SELECT 1 FROM odds_snapshots evidence WHERE evidence.match_id=m.id AND evidence.market_type=r.market_type
         AND evidence.market_name=r.market_name AND evidence.line IS NOT DISTINCT FROM r.line AND evidence.selection=r.selection
         AND evidence.captured_at<m.kickoff_at)
-      GROUP BY r.target_id,m.id,l.name,ht.name,at.name,h.home_corners,h.away_corners,h.home_yellow_cards,h.away_yellow_cards,h.home_red_cards,h.away_red_cards`,
+      GROUP BY r.target_id,m.id,l.name,l.country,ht.name,at.name,h.home_corners,h.away_corners,h.home_yellow_cards,h.away_yellow_cards,h.home_red_cards,h.away_red_cards`,
     [targets.map((item) => item.data.matchId), targets.map((item) => item.data.kickoffAt), targets.map((item) => item.route.marketType),
       targets.map((item) => item.route.marketName), targets.map((item) => item.route.line), targets.map((item) => item.route.selection)]);
     const grouped = new Map<string, HistoricalNeighborInput[]>();
@@ -106,7 +106,7 @@ export class OddsIntelligenceRepository {
       (SELECT count(*)::bigint FROM matches m JOIN odds_snapshots os ON os.match_id=m.id
         WHERE m.status='finished' AND os.captured_at>=m.kickoff_at) excluded_post_kickoff_snapshots`);
 
-    const result = await this.pool.query(`SELECT m.id match_id,m.league_id competition_id,m.kickoff_at,m.season,l.name league,
+    const result = await this.pool.query(`SELECT m.id match_id,m.league_id competition_id,m.kickoff_at,m.season,l.name league,l.country country,
       ht.name home_team,at.name away_team,m.home_score,m.away_score,
       NULL::numeric home_corners,NULL::numeric away_corners,NULL::numeric home_yellow_cards,NULL::numeric away_yellow_cards,
       NULL::numeric home_red_cards,NULL::numeric away_red_cards,
@@ -116,7 +116,7 @@ export class OddsIntelligenceRepository {
       FROM matches m JOIN leagues l ON l.id=m.league_id JOIN teams ht ON ht.id=m.home_team_id JOIN teams at ON at.id=m.away_team_id
       JOIN odds_snapshots os ON os.match_id=m.id AND os.captured_at<m.kickoff_at
       WHERE m.status='finished'
-      GROUP BY m.id,l.name,ht.name,at.name
+      GROUP BY m.id,l.name,l.country,ht.name,at.name
       ORDER BY m.kickoff_at,m.id
       LIMIT $1`, [safeLimit]);
 
@@ -225,13 +225,13 @@ export class OddsIntelligenceRepository {
   }
 
   async backtest() {
-    const result = await this.pool.query(`SELECT m.id match_id,m.league_id competition_id,m.kickoff_at,l.name league,ht.name home_team,at.name away_team,
+    const result = await this.pool.query(`SELECT m.id match_id,m.league_id competition_id,m.kickoff_at,l.name league,l.country country,ht.name home_team,at.name away_team,
       m.home_score,m.away_score,h.home_corners,h.away_corners,h.home_yellow_cards,h.away_yellow_cards,h.home_red_cards,h.away_red_cards,
       COALESCE(jsonb_agg(jsonb_build_object('match_id',os.match_id,'provider',os.provider,'market_type',os.market_type,'market_name',os.market_name,
         'line',os.line,'selection',os.selection,'odds_decimal',os.odds_decimal,'captured_at',os.captured_at) ORDER BY os.captured_at,os.id),'[]'::jsonb) snapshots
       FROM matches m JOIN leagues l ON l.id=m.league_id JOIN teams ht ON ht.id=m.home_team_id JOIN teams at ON at.id=m.away_team_id
       LEFT JOIN historical_match_stats h ON h.match_id=m.id JOIN odds_snapshots os ON os.match_id=m.id
-      WHERE m.status='finished' GROUP BY m.id,l.name,ht.name,at.name,h.home_corners,h.away_corners,h.home_yellow_cards,h.away_yellow_cards,h.home_red_cards,h.away_red_cards
+      WHERE m.status='finished' GROUP BY m.id,l.name,l.country,ht.name,at.name,h.home_corners,h.away_corners,h.home_yellow_cards,h.away_yellow_cards,h.home_red_cards,h.away_red_cards
       ORDER BY m.kickoff_at,m.id`);
     const records = result.rows.map((row) => {
       const data = outcome(row); const route = selectPrimary(routeCandidates(data, (row.snapshots as Row[]).map(snapshot), data.kickoffAt));

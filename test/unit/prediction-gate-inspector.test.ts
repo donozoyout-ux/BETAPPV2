@@ -139,4 +139,15 @@ describe('Prediction Gate Inspector V1', () => {
     expect(result.overallStatus).toBe('WAITING');
     expect(byKey(result, 'OFFICIAL_WINDOW').reasonCode).toBe('OFFICIAL_WINDOW_NOT_OPEN');
   });
+  it.each(['INSUFFICIENT_DATA','STRONG_EVIDENCE'])('never grants authority to %s neighbors', status => {
+    const evidence = { historicalNeighbors: {status,rawWinRate:100,sampleSize:status==='STRONG_EVIDENCE'?20:1} };
+    const preview = inspect(candidate(), 'PREDICT', {state:'PREVIEW',evidence});
+    expect(preview.overallStatus).toBe('WAITING');
+    expect(preview.executionAuthority).toBe(false);
+    expect(inspect(null,'SKIP',{evidence}).overallStatus).not.toBe('OFFICIAL');
+    expect(inspect(candidate(),'PREDICT',{state:'LOCKED_PREDICTION',evidence}).overallStatus).toBe('OFFICIAL');
+    const blocked = candidate({minimumCompleteStateCount:1,completeStateBookmakerCount:1});
+    expect(inspect(blocked,'PREDICT',{state:'LOCKED_PREDICTION',evidence}).overallStatus).not.toBe('OFFICIAL');
+  });
+
 });

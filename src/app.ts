@@ -22,7 +22,7 @@ import { isCompetitionConfigured } from './matching/competition.js';
 
 function oddsEvidence(analysis: OddsIntelligence | undefined): Record<string, unknown> | null {
   if (!analysis) return null;
-  return { pastTwinsCount: analysis.pastTwins.length, evidenceStrength: analysis.evidenceStrength,
+  return { historicalNeighbors: analysis.historicalNeighbors, pastTwinsCount: analysis.pastTwins.length, evidenceStrength: analysis.evidenceStrength,
     oddsRouteStrength: analysis.oddsRoute.strength, oddsRouteDirection: analysis.oddsRoute.direction,
     resultMap: analysis.resultMap.slice(0, 4), explanatoryOnly: true };
 }
@@ -338,7 +338,7 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
   });
   app.get<{ Params: { matchId: string } }>('/api/odds-intelligence/:matchId', async (request) => {
     const analysis = oddsIntelligence ? await oddsIntelligence.byMatch(request.params.matchId) : null;
-    return analysis ?? { matchId: request.params.matchId, status: 'NOT_GENERATED', analysis: null, executionAuthority: false, aiPredictionAuthority: false };
+    return analysis ?? { matchId: request.params.matchId, status: 'NOT_GENERATED', historicalNeighbors: null, analysis: null, executionAuthority: false, aiPredictionAuthority: false };
   });
   app.get<{ Params: { matchId: string } }>('/api/odds-analysis/:matchId', async (request) => {
     const analysis = oddsAnalysis ? await oddsAnalysis.byMatch(request.params.matchId) : null;

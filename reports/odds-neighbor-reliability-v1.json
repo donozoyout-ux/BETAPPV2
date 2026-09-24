@@ -1,0 +1,52 @@
+{
+  "version": "ODDS_NEIGHBOR_RELIABILITY_V1",
+  "baseCommit": "20c0ae6",
+  "branch": "codex/odds-neighbor-reliability-v1",
+  "auditCompletedBeforeImplementation": true,
+  "policy": {
+    "weights": {
+      "market": 30,
+      "odds": 30,
+      "league": 20,
+      "context": 20
+    },
+    "sameCountryPoints": 10,
+    "highScore": 85,
+    "minimumUsableScore": 70,
+    "minimumDisplaySample": 3,
+    "minimumUsableSample": 5,
+    "strongSample": 10,
+    "strongHighRatio": 0.8,
+    "maximumCrossLeagueRatio": 0.5
+  },
+  "rates": {
+    "unit": "percent",
+    "rawDenominator": "settledSampleSize",
+    "weightedDenominator": "sum of similarityScore for usable settled samples",
+    "empty": null
+  },
+  "predictionGateChanged": false,
+  "officialRequiresLockedPrediction": true,
+  "executionAuthority": false,
+  "aiPredictionAuthority": false,
+  "outcomeDrivenFitting": false,
+  "localValidation": {
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "postgresql": "UNAVAILABLE_CONTAINER_RUNTIME",
+    "unitTests": 244
+  },
+  "regressionTests": 236,
+  "newTests": 19,
+  "expectedTotalTests": 255,
+  "limitations": [
+    "Uncalibrated heuristic",
+    "Selected-neighbor cap",
+    "Optional country and unavailable ratings",
+    "Unsupported settlements unavailable"
+  ],
+  "reports": [
+    "reports/odds-neighbor-reliability-v1.md",
+    "reports/odds-neighbor-reliability-v1.json"
+  ]
+}

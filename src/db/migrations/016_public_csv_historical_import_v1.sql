@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS historical_market_odds (
   pre_kickoff_verified boolean NOT NULL DEFAULT true,
   source_row_hash text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE(match_id,source,bookmaker,market_type,market_name,line,selection,observation_stage,source_row_hash)
+  UNIQUE NULLS NOT DISTINCT(match_id,source,bookmaker,market_type,market_name,line,selection,observation_stage,source_row_hash)
 );
 
 CREATE INDEX IF NOT EXISTS historical_csv_imports_status_idx ON historical_csv_imports(status,updated_at);

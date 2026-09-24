@@ -66,6 +66,7 @@ const liveRefresh = config.FOTMOB_ENABLED ? new LiveRefresh(fotmob, repository, 
 }) : null;
 let secondaryTask: Promise<void> | undefined;
 let liveTask: Promise<void> | undefined;
+let competitionBackfillTask: Promise<void> | undefined;
 let stopped = false;
 let wakeSleep: (() => void) | undefined;
 
@@ -74,6 +75,7 @@ function shutdown(signal: string) {
   stopped = true;
   liveRefresh?.stop();
   secondaryRefresh.stop();
+  competitionAutoBackfill.stop();
   for (const collector of collectors) collector.stop();
   wakeSleep?.();
 }
@@ -151,14 +153,6 @@ async function runCycle(): Promise<void> {
       logger.error({ err: error }, 'Control audit failed; continuing');
     }
   }
-  if (!stopped && competitionAutoBackfill.enabled()) {
-    try {
-      const result = await competitionAutoBackfill.runNext();
-      logger.info({ result }, 'Competition auto backfill cycle completed');
-    } catch (error) {
-      logger.error({ err: error }, 'Competition auto backfill failed; continuing');
-    }
-  }
 }
 
 async function waitForNextCycle(): Promise<void> {
@@ -174,10 +168,15 @@ async function waitForNextCycle(): Promise<void> {
 }
 
 try {
-  if (process.argv.includes('--once')) { await runCycle(); await secondaryRefresh.runCycle(); }
+  if (process.argv.includes('--once')) {
+    await runCycle();
+    await secondaryRefresh.runCycle();
+    if (competitionAutoBackfill.enabled()) await competitionAutoBackfill.runNext();
+  }
   else if (config.COLLECTOR_ENABLED) {
     liveTask = liveRefresh?.runForever();
     secondaryTask = secondaryRefresh.runForever();
+    competitionBackfillTask = competitionAutoBackfill.runForever();
     while (!stopped) {
       await runCycle();
       if (!stopped) await waitForNextCycle();
@@ -190,7 +189,9 @@ try {
 } finally {
   liveRefresh?.stop();
   secondaryRefresh.stop();
+  competitionAutoBackfill.stop();
   await liveTask;
   await secondaryTask;
+  await competitionBackfillTask;
   await pool.end();
 }

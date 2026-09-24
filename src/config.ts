@@ -47,6 +47,7 @@ const schema = z.object({
   BACKFILL_ENABLED: booleanFromString.default(false),
   COMPETITION_BACKFILL_AUTO_ENABLED: booleanFromString.default(false),
   COMPETITION_BACKFILL_AUTO_SEASONS: z.coerce.number().int().min(1).max(2).default(1),
+  COMPETITION_BACKFILL_AUTO_INTERVAL_MS: z.coerce.number().int().min(300_000).default(900_000),
   API_FOOTBALL_ENABLED: booleanFromString.default(false),
   API_FOOTBALL_KEY: z.string().default(''),
   FOTMOB_ENABLED: booleanFromString.default(true),

@@ -73,15 +73,15 @@ export function parseOpenFootballDataset(payload: unknown, dataset: OpenFootball
     const externalId='of-'+createHash('sha256').update([
       dataset.sourceKey,String(row.date),String(row.time),normalizeTeamAlias(home),normalizeTeamAlias(away)
     ].join('|')).digest('hex').slice(0,32);
-    const raw={source:'openfootball/football.json',sourceKey:dataset.sourceKey,rowNumber:index+1,row};
+    const raw={source:'openfootball',sourceKey:dataset.sourceKey,sourceUrl:dataset.url,rowNumber:index+1,row};
     const match:NormalizedMatch={
       providerExternalId:externalId,
       league:{providerExternalId:`openfootball:${dataset.configKey}`,name:dataset.competition,country:dataset.country,
-        logoUrl:null,sourceUpdatedAt:fetchedAt,raw:{source:'openfootball/football.json',file:dataset.file}},
+        logoUrl:null,sourceUpdatedAt:fetchedAt,raw:{source:'openfootball',file:dataset.file,sourceUrl:dataset.url}},
       homeTeam:{providerExternalId:`openfootball:${dataset.configKey}:${normalizeTeamAlias(home)}`,name:home,shortName:null,
-        country:dataset.country,logoUrl:null,sourceUpdatedAt:fetchedAt,raw:{source:'openfootball/football.json'}},
+        country:dataset.country,logoUrl:null,sourceUpdatedAt:fetchedAt,raw:{source:'openfootball',sourceUrl:dataset.url}},
       awayTeam:{providerExternalId:`openfootball:${dataset.configKey}:${normalizeTeamAlias(away)}`,name:away,shortName:null,
-        country:dataset.country,logoUrl:null,sourceUpdatedAt:fetchedAt,raw:{source:'openfootball/football.json'}},
+        country:dataset.country,logoUrl:null,sourceUpdatedAt:fetchedAt,raw:{source:'openfootball',sourceUrl:dataset.url}},
       kickoffAt:kickoff,status:'finished',round:row.round==null?null:String(row.round),season:seasonLabel(dataset.season),
       homeScore:ft[0],awayScore:ft[1],sourceUpdatedAt:fetchedAt,raw,
     };

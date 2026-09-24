@@ -45,13 +45,15 @@ describe('OpenFootball CC0 historical import', () => {
 
   it('enables OpenFootball and keeps Football-Data automation disabled on the Render worker', () => {
     const config=loadConfig({DATABASE_URL:'postgresql://localhost/test'});
-    expect(config.OPENFOOTBALL_IMPORT_ENABLED).toBe(true);
+    expect(config.OPENFOOTBALL_IMPORT_ENABLED).toBe(false);
     expect(config.OPENFOOTBALL_IMPORT_SEASONS).toEqual(['2026-27','2025-26','2024-25']);
     expect(config.OPENFOOTBALL_BATCH_SIZE).toBe(150);
     expect(config.OPENFOOTBALL_CURRENT_REFRESH_MS).toBe(86400000);
 
     const yaml=readFileSync('render.yaml','utf8');
     const worker=yaml.split('name: betapp-v2-collector')[1] ?? '';
+    const web=yaml.split('name: betapp-v2-web')[1]?.split('name: betapp-v2-collector')[0] ?? '';
+    expect(web).not.toContain('OPENFOOTBALL_IMPORT_ENABLED');
     expect(worker).toContain('key: PUBLIC_CSV_IMPORT_ENABLED\n        value: "false"');
     expect(worker).toContain('key: OPENFOOTBALL_IMPORT_ENABLED\n        value: "true"');
     expect(worker).toContain('key: OPENFOOTBALL_IMPORT_SEASONS\n        value: 2026-27,2025-26,2024-25');

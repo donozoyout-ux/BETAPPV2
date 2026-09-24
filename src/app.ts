@@ -260,12 +260,23 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
       publicCsvImport: {
         enabled: config.PUBLIC_CSV_IMPORT_ENABLED,
         source: 'football-data.co.uk',
+        automationPolicy: config.PUBLIC_CSV_IMPORT_ENABLED ? 'MANUAL_OVERRIDE' : 'DISABLED_SOURCE_TERMS',
         seasons: config.PUBLIC_CSV_IMPORT_SEASONS,
         batchSize: config.PUBLIC_CSV_IMPORT_BATCH_SIZE,
         intervalMs: config.PUBLIC_CSV_IMPORT_INTERVAL_MS,
         currentSeasonRefreshMs: config.PUBLIC_CSV_CURRENT_REFRESH_MS,
         oddsPolicy: 'ARCHIVE_ONLY_NO_FAKE_TIMESTAMP',
         shadowEvidence: 'CSV_STAGE_V1_RESEARCH_ONLY',
+      },
+      openFootballImport: {
+        enabled: config.OPENFOOTBALL_IMPORT_ENABLED,
+        source: 'openfootball/football.json',
+        license: 'CC0_PUBLIC_DOMAIN',
+        seasons: config.OPENFOOTBALL_IMPORT_SEASONS,
+        batchSize: config.OPENFOOTBALL_BATCH_SIZE,
+        intervalMs: config.OPENFOOTBALL_INTERVAL_MS,
+        currentSeasonRefreshMs: config.OPENFOOTBALL_CURRENT_REFRESH_MS,
+        resultPolicy: 'FINISHED_WITH_EXPLICIT_TIME_ONLY',
       },
       timestamp: new Date().toISOString() });
   });

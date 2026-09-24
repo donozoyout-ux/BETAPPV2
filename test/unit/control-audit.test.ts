@@ -13,6 +13,7 @@ function fakePool(values: { invalid?: number; stale?: number; pending?: number; 
     if (sql.includes('FROM pg_trigger')) return { rows: [{ count: values.triggers ?? 2 }] };
     if (sql.includes('FROM live_provider_health')) return { rows: [{ status: values.api ?? 'SUPPORTED' }] };
     if (sql.includes('invalid_official')) return { rows: [{ total: 0, invalid_official: 0, invalid_timing_known: 0 }] };
+    if (sql.includes('FROM prediction_stage_historical_examples')) return { rows: [] };
     if (sql.includes('WITH stats AS') || sql.includes("scope LIKE 'competition-expansion:%'")
       || sql.includes('FROM historical_csv_imports') || sql.includes('FROM prediction_stage_historical_refreshes')) return { rows: [] };
     if (sql.includes('INSERT INTO control_audit_runs')) return { rows: [{

@@ -32,8 +32,9 @@ export async function runCompetitionBackfill(c: ExpansionCompetition, options: {
   };
   try {
     const previous = !options.dryRun && options.resume ? await deps.historical.expansionReport(c.id) : null;
-    const pinned = previous && previous.status !== 'PASS' ? previous.selectedSeasons : undefined;
-    if (previous && previous.status !== 'PASS') report = { ...previous, completedAt: null, failures: [...previous.failures] };
+    const continuation = previous && (previous.phase !== 'COMPLETE' || previous.failures.length > 0);
+    const pinned = continuation ? previous.selectedSeasons : undefined;
+    if (continuation) report = { ...previous, completedAt: null, failures: [...previous.failures] };
     await persist();
     const scope = await discoverScope(deps.provider, c, options.seasons, deps.pause, pinned);
     report.availableSeasons = scope.availableSeasons; report.selectedSeasons = [...scope.selected.keys()];

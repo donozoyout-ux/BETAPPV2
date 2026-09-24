@@ -1,3 +1,4 @@
+import { dataPoolSection } from './data/coverage-view.js';
 import { liveSection } from './live/view.js';
 import { liveRecommendationsSection } from './live/recommendation-view.js';
 import { controlAuditSection } from './control-audit-view.js';
@@ -802,6 +803,7 @@ export function renderDashboard(data: DashboardData): string {
       </header>
       <main class="content">
       ${liveSection()}
+      ${dataPoolSection()}
       ${liveRecommendationsSection()}
       ${controlAuditSection()}
         <section class="command-hero" id="overview">

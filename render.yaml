@@ -44,7 +44,7 @@ services:
       - key: NOWGOAL_BASE_URL
         value: https://nowgoal816.com/wp-json/sport-theme-plugin/v1/proxy
       - key: SUPPORTED_COMPETITIONS
-        value: PremierLeague,LaLiga,Bundesliga,SerieA,Ligue1,SuperLig,ChampionsLeague,EuropaLeague,ConferenceLeague,BrasileiraoSerieA,WorldCup,EURO,EUROQualification,UefaNationsLeagueA,UefaNationsLeagueB,UefaNationsLeagueC,UefaNationsLeagueD,WorldCupQualificationUEFA,CopaAmerica,WorldCupQualificationCONMEBOL,InternationalFriendlies
+        value: PremierLeague,LaLiga,Bundesliga,SerieA,Ligue1,SuperLig,ChampionsLeague,EuropaLeague,ConferenceLeague,BrasileiraoSerieA,WorldCup,EURO,EUROQualification,UefaNationsLeagueA,UefaNationsLeagueB,UefaNationsLeagueC,UefaNationsLeagueD,WorldCupQualificationUEFA,CopaAmerica,WorldCupQualificationCONMEBOL,InternationalFriendlies,Eredivisie,BelgianProLeague,DanishSuperliga,Allsvenskan,GreekSuperLeague
 
   - type: worker
     name: betapp-v2-collector
@@ -91,7 +91,7 @@ services:
       - key: NOWGOAL_BASE_URL
         value: https://nowgoal816.com/wp-json/sport-theme-plugin/v1/proxy
       - key: SUPPORTED_COMPETITIONS
-        value: PremierLeague,LaLiga,Bundesliga,SerieA,Ligue1,SuperLig,ChampionsLeague,EuropaLeague,ConferenceLeague,BrasileiraoSerieA,WorldCup,EURO,EUROQualification,UefaNationsLeagueA,UefaNationsLeagueB,UefaNationsLeagueC,UefaNationsLeagueD,WorldCupQualificationUEFA,CopaAmerica,WorldCupQualificationCONMEBOL,InternationalFriendlies
+        value: PremierLeague,LaLiga,Bundesliga,SerieA,Ligue1,SuperLig,ChampionsLeague,EuropaLeague,ConferenceLeague,BrasileiraoSerieA,WorldCup,EURO,EUROQualification,UefaNationsLeagueA,UefaNationsLeagueB,UefaNationsLeagueC,UefaNationsLeagueD,WorldCupQualificationUEFA,CopaAmerica,WorldCupQualificationCONMEBOL,InternationalFriendlies,Eredivisie,BelgianProLeague,DanishSuperliga,Allsvenskan,GreekSuperLeague
       - key: COLLECTOR_INTERVAL_MS
         value: "900000"
       - key: COLLECTOR_HISTORY_DAYS

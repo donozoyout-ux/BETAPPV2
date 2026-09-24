@@ -52,3 +52,15 @@ export function teamNameSimilarity(left: string, right: string): number {
   const union = new Set([...at, ...bt]).size;
   return union ? intersection / union : 0;
 }
+
+const nationalAliasGroups = [ ['Turkey', 'Türkiye', 'Turkiye'], ['USA', 'United States', 'United States of America'],
+  ['Korea Republic', 'South Korea', 'Republic of Korea'], ['Czech Republic', 'Czechia'] ];
+// Match exact senior national names before the generic club-suffix normalization.
+const exactNationalName = (s: string) => s.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+export function isKnownNationalName(name: string): boolean {
+  return nationalAliasGroups.some(names => names.some(n => exactNationalName(n) === exactNationalName(name)));
+}
+export function nationalTeamAliases(name: string): string[] {
+  const group = nationalAliasGroups.find(names => names.some(n => exactNationalName(n) === exactNationalName(name)));
+  return group ? [...new Set(group.map(normalizeTeamAlias))] : [exactNationalName(name)];
+}

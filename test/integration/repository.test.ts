@@ -1,3 +1,6 @@
+import { runCompetitionBackfill } from '../../src/historical/competition-backfill.js';
+import { DataCoverageService } from '../../src/data/coverage.js';
+import type { NormalizedMatch, MatchStatistics } from '../../src/domain/types.js';
 import { LiveRepository } from '../../src/live/repository.js';
 import type { SourceData } from '../../src/live/types.js';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
@@ -529,6 +532,72 @@ describe('FootballRepository integration', () => {
     await live.save(id, { ...data, snapshot: { ...data.snapshot, observedAt: new Date(now.getTime()+4000).toISOString() } });
     expect(await repository.matchAnalysisDetail(id)).toMatchObject({ status: 'finished', home_score: 3 });
     expect((await live.read(id))).toHaveLength(2);
+  });
+
+  it('backfills fixtures first, resumes failed details and reports real coverage without manufacturing odds', async () => {
+    const observed = new Date('2026-09-24T00:00:00Z');
+    const fixture = (externalId: string, day: number): NormalizedMatch => ({
+      providerExternalId: externalId,
+      league: { providerExternalId: '57', name: 'Eredivisie', country: 'Netherlands', logoUrl: null, sourceUpdatedAt: observed, raw: {} },
+      homeTeam: { providerExternalId: 'expansion-home', name: 'Expansion Home', shortName: null, country: null, logoUrl: null, sourceUpdatedAt: observed, raw: {} },
+      awayTeam: { providerExternalId: 'expansion-away', name: 'Expansion Away', shortName: null, country: null, logoUrl: null, sourceUpdatedAt: observed, raw: {} },
+      kickoffAt: new Date(`2025-01-0${day}T18:00:00Z`), status: 'finished', season: '2025', round: null,
+      homeScore: 2, awayScore: 1, sourceUpdatedAt: observed, raw: {},
+    });
+    const fixtures = [fixture('expansion-one',1), fixture('expansion-two',2), fixture('expansion-empty',3)];
+    const historical = new HistoricalRepository(pool); const corners = new CornerRepository(pool);
+    let failOnce = true; const requested: string[] = [];
+    const provider = { getAvailableSeasons: async () => ['2025'], getSeasonFixtures: async () => fixtures,
+      getMatchStatistics: async (id: string): Promise<MatchStatistics> => {
+        // No match detail is requested until all three finished fixtures exist.
+        expect(Number((await pool.query("SELECT count(*) FROM provider_entities WHERE provider='fotmob' AND entity_type='match' AND external_id LIKE 'expansion-%'")).rows[0].count)).toBe(3);
+        requested.push(id);
+        if (id === 'expansion-two' && failOnce) { failOnce = false; throw new Error('temporary detail failure'); }
+        return { matchProviderExternalId:id, sourceUpdatedAt:observed, raw:{}, statistics: id === 'expansion-empty' ? [] : [
+          { key:'corners', label:'Corners', period:'ALL', homeValue:5, awayValue:0 },
+          { key:'total_shots', label:'Shots', period:'ALL', homeValue:10, awayValue:4 },
+        ] };
+      } };
+    const deps = { provider, historical, corners, football:repository, pause:async () => undefined,
+      refreshPipeline:async () => { await new PredictionRepository(pool,['Eredivisie']).refreshHistoricalIncremental(); } };
+    const comp = { id:57, key:'Eredivisie', name:'Eredivisie' };
+    const first = await runCompetitionBackfill(comp,{seasons:1,resume:false,dryRun:false},deps);
+    expect(first).toMatchObject({status:'PARTIAL',matchesInserted:3,statisticsFailed:1,statisticsUnavailable:1,historicalExamplesGenerated:0});
+    const resumed = await runCompetitionBackfill(comp,{seasons:1,resume:true,dryRun:false},deps);
+    expect(resumed).toMatchObject({matchesInserted:3,statisticsFailed:0,statisticsSucceeded:2,oddsCoveredMatches:0,cornerStatsCoveredMatches:2});
+    expect(requested).toEqual(['expansion-one','expansion-two','expansion-empty','expansion-two']);
+    const report = await historical.expansionReport(57);
+    expect(report?.completedAt).toBeTruthy();
+    const coverage = await new DataCoverageService(pool,['Eredivisie','Allsvenskan']).get();
+    expect(coverage.competitions[0]).toMatchObject({matches:3,finishedMatches:3,matchesWithStats:2,matchesWithCorners:2,matchesWithOdds:0,predictionHistoricalExamples:0});
+    expect(coverage.competitions[1]).toMatchObject({matches:0,matchesWithStats:0});
+    const empty = await pool.query("SELECT h.* FROM historical_match_stats h JOIN provider_entities p ON p.internal_id=h.match_id AND p.entity_type='match' WHERE p.external_id='expansion-empty'");
+    expect(empty.rows[0]).toMatchObject({home_corners:null,away_corners:null,home_shots:null,home_xg:null});
+    // A later sparse response cannot erase genuine existing evidence.
+    const sparse: MatchStatistics = {matchProviderExternalId:'expansion-one',sourceUpdatedAt:observed,raw:{},statistics:[]};
+    await corners.saveHistorical('fotmob',fixtures[0]!,sparse,true);
+    await historical.save('fotmob',fixtures[0]!,sparse,new Date(),null,true);
+    const preserved = (await pool.query("SELECT h.home_corners,h.away_corners FROM historical_match_stats h JOIN provider_entities p ON p.internal_id=h.match_id AND p.entity_type='match' WHERE p.external_id='expansion-one'")).rows[0];
+    expect(Number(preserved.home_corners)).toBe(5); expect(Number(preserved.away_corners)).toBe(0);
+    const repeated = await runCompetitionBackfill(comp,{seasons:1,resume:false,dryRun:false},deps);
+    expect(repeated).toMatchObject({matchesInserted:0,duplicateMatchesPrevented:3,detailsSkipped:3});
+  });
+
+  it('matches senior national aliases across providers without merging a same-name club', async () => {
+    const now = new Date();
+    const team = (id: string,name: string) => ({providerExternalId:id,name,shortName:null,country:null,logoUrl:null,sourceUpdatedAt:now,raw:{}});
+    const base: NormalizedMatch = {providerExternalId:'expansion-national',
+      league:{providerExternalId:'77',name:'FIFA World Cup',country:null,logoUrl:null,sourceUpdatedAt:now,raw:{}},
+      homeTeam:team('expansion-turkey','Turkey'),awayTeam:team('expansion-korea','Korea Republic'),
+      kickoffAt:new Date('2025-08-01'),status:'finished',season:'2025',round:null,homeScore:1,awayScore:0,sourceUpdatedAt:now,raw:{}};
+    const first = await repository.upsertMatch('fotmob',base);
+    const second = await repository.upsertMatch('national-test',{...base,providerExternalId:'other-national',
+      homeTeam:team('other-turkey','Türkiye'),awayTeam:team('other-korea','South Korea')});
+    expect(second).toBe(first);
+    const club = await repository.upsertMatch('fotmob',{...base,providerExternalId:'expansion-country-club',
+      league:{...base.league,providerExternalId:'40',name:'Belgian Pro League'},homeTeam:team('country-club','Turkey FC')});
+    const ids = await pool.query('SELECT id,home_team_id FROM matches WHERE id=ANY($1::uuid[])',[[first,club]]);
+    expect(ids.rows[0].home_team_id).not.toBe(ids.rows[1].home_team_id);
   });
 
 });

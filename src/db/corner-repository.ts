@@ -25,7 +25,7 @@ export type BackfillProgress = {
 export class CornerRepository {
   constructor(private readonly pool: DatabasePool) {}
 
-  async saveHistorical(provider: string, normalized: NormalizedMatch, statistics: MatchStatistics) {
+  async saveHistorical(provider: string, normalized: NormalizedMatch, statistics: MatchStatistics, preserveMissing = false) {
     const mapped = await this.pool.query<{ match_id: string; competition_id: string; home_team_id: string; away_team_id: string }>(
       `SELECT m.id match_id,m.league_id competition_id,m.home_team_id,m.away_team_id FROM provider_entities pe
        JOIN matches m ON m.id=pe.internal_id WHERE pe.provider=$1 AND pe.entity_type='match' AND pe.external_id=$2`,
@@ -55,19 +55,19 @@ export class CornerRepository {
        home_fouls,away_fouls,home_yellow_cards,away_yellow_cards,home_red_cards,away_red_cards,provider,source_timestamp,
        lineup_metadata,referee_metadata)
        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29::jsonb,$30::jsonb)
-       ON CONFLICT(match_id) DO UPDATE SET home_goals=excluded.home_goals,away_goals=excluded.away_goals,
-       home_corners=excluded.home_corners,away_corners=excluded.away_corners,first_half_home_corners=excluded.first_half_home_corners,
-       first_half_away_corners=excluded.first_half_away_corners,home_xg=excluded.home_xg,away_xg=excluded.away_xg,
-       home_shots=excluded.home_shots,away_shots=excluded.away_shots,home_shots_on_target=excluded.home_shots_on_target,
-       away_shots_on_target=excluded.away_shots_on_target,home_possession=excluded.home_possession,away_possession=excluded.away_possession,
-       home_fouls=excluded.home_fouls,away_fouls=excluded.away_fouls,home_yellow_cards=excluded.home_yellow_cards,
-       away_yellow_cards=excluded.away_yellow_cards,home_red_cards=excluded.home_red_cards,away_red_cards=excluded.away_red_cards,
-       source_timestamp=excluded.source_timestamp,lineup_metadata=excluded.lineup_metadata,
-       referee_metadata=excluded.referee_metadata,updated_at=now()`,
+       ON CONFLICT(match_id) DO UPDATE SET home_goals=CASE WHEN $31::boolean THEN COALESCE(excluded.home_goals,historical_match_stats.home_goals) ELSE excluded.home_goals END,away_goals=CASE WHEN $31::boolean THEN COALESCE(excluded.away_goals,historical_match_stats.away_goals) ELSE excluded.away_goals END,
+       home_corners=CASE WHEN $31::boolean THEN COALESCE(excluded.home_corners,historical_match_stats.home_corners) ELSE excluded.home_corners END,away_corners=CASE WHEN $31::boolean THEN COALESCE(excluded.away_corners,historical_match_stats.away_corners) ELSE excluded.away_corners END,first_half_home_corners=CASE WHEN $31::boolean THEN COALESCE(excluded.first_half_home_corners,historical_match_stats.first_half_home_corners) ELSE excluded.first_half_home_corners END,
+       first_half_away_corners=CASE WHEN $31::boolean THEN COALESCE(excluded.first_half_away_corners,historical_match_stats.first_half_away_corners) ELSE excluded.first_half_away_corners END,home_xg=CASE WHEN $31::boolean THEN COALESCE(excluded.home_xg,historical_match_stats.home_xg) ELSE excluded.home_xg END,away_xg=CASE WHEN $31::boolean THEN COALESCE(excluded.away_xg,historical_match_stats.away_xg) ELSE excluded.away_xg END,
+       home_shots=CASE WHEN $31::boolean THEN COALESCE(excluded.home_shots,historical_match_stats.home_shots) ELSE excluded.home_shots END,away_shots=CASE WHEN $31::boolean THEN COALESCE(excluded.away_shots,historical_match_stats.away_shots) ELSE excluded.away_shots END,home_shots_on_target=CASE WHEN $31::boolean THEN COALESCE(excluded.home_shots_on_target,historical_match_stats.home_shots_on_target) ELSE excluded.home_shots_on_target END,
+       away_shots_on_target=CASE WHEN $31::boolean THEN COALESCE(excluded.away_shots_on_target,historical_match_stats.away_shots_on_target) ELSE excluded.away_shots_on_target END,home_possession=CASE WHEN $31::boolean THEN COALESCE(excluded.home_possession,historical_match_stats.home_possession) ELSE excluded.home_possession END,away_possession=CASE WHEN $31::boolean THEN COALESCE(excluded.away_possession,historical_match_stats.away_possession) ELSE excluded.away_possession END,
+       home_fouls=CASE WHEN $31::boolean THEN COALESCE(excluded.home_fouls,historical_match_stats.home_fouls) ELSE excluded.home_fouls END,away_fouls=CASE WHEN $31::boolean THEN COALESCE(excluded.away_fouls,historical_match_stats.away_fouls) ELSE excluded.away_fouls END,home_yellow_cards=CASE WHEN $31::boolean THEN COALESCE(excluded.home_yellow_cards,historical_match_stats.home_yellow_cards) ELSE excluded.home_yellow_cards END,
+       away_yellow_cards=CASE WHEN $31::boolean THEN COALESCE(excluded.away_yellow_cards,historical_match_stats.away_yellow_cards) ELSE excluded.away_yellow_cards END,home_red_cards=CASE WHEN $31::boolean THEN COALESCE(excluded.home_red_cards,historical_match_stats.home_red_cards) ELSE excluded.home_red_cards END,away_red_cards=CASE WHEN $31::boolean THEN COALESCE(excluded.away_red_cards,historical_match_stats.away_red_cards) ELSE excluded.away_red_cards END,
+       source_timestamp=excluded.source_timestamp,lineup_metadata=CASE WHEN $31::boolean THEN COALESCE(excluded.lineup_metadata,historical_match_stats.lineup_metadata) ELSE excluded.lineup_metadata END,
+       referee_metadata=CASE WHEN $31::boolean THEN COALESCE(excluded.referee_metadata,historical_match_stats.referee_metadata) ELSE excluded.referee_metadata END,updated_at=now()`,
       [ids.match_id, ids.competition_id, normalized.season, normalized.kickoffAt, ids.home_team_id, ids.away_team_id,
         normalized.homeScore, normalized.awayScore, ...corners, ...firstHalfCorners, ...xg, ...shots, ...shotsOnTarget,
         ...possession, ...fouls, ...yellow, ...red, provider, statistics.sourceUpdatedAt,
-        lineupMetadata == null ? null : JSON.stringify(lineupMetadata), refereeMetadata == null ? null : JSON.stringify(refereeMetadata)]);
+        lineupMetadata == null ? null : JSON.stringify(lineupMetadata), refereeMetadata == null ? null : JSON.stringify(refereeMetadata), preserveMissing]);
   }
 
   async loadHistory(): Promise<HistoricalCornerMatch[]> {

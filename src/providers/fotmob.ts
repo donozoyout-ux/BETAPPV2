@@ -14,6 +14,11 @@ export const fotmobCompetitions = [
   { id: 73, name: 'UEFA Europa League', key: 'EuropaLeague' },
   { id: 10216, name: 'UEFA Conference League', key: 'ConferenceLeague' },
   { id: 268, name: 'Brasileirão Série A', key: 'BrasileiraoSerieA' },
+  { id: 57, name: 'Eredivisie', key: 'Eredivisie' },
+  { id: 40, name: 'Belgian Pro League', key: 'BelgianProLeague' },
+  { id: 46, name: 'Danish Superliga', key: 'DanishSuperliga' },
+  { id: 67, name: 'Allsvenskan', key: 'Allsvenskan' },
+  { id: 135, name: 'Greek Super League', key: 'GreekSuperLeague' },
   { id: 77, name: 'FIFA World Cup', key: 'WorldCup' },
   { id: 50, name: 'EURO', key: 'EURO' },
   { id: 9806, name: 'UEFA Nations League A', key: 'UefaNationsLeagueA' },
@@ -107,12 +112,16 @@ export class FotMobProvider implements FootballDataProvider, QualifiableProvider
   }
 
   async getHistoricalFixtures(leagueId: number, season: string): Promise<NormalizedMatch[]> {
+    return (await this.getSeasonFixtures(leagueId, season)).filter(match => match.status === 'finished');
+  }
+
+  async getSeasonFixtures(leagueId: number, season: string): Promise<NormalizedMatch[]> {
     if (!this.supportedLeagueIds.has(leagueId)) throw new Error(`Unsupported FotMob league: ${leagueId}`);
     const fetchedAt = new Date();
     const payload = await this.http.getJson<LeaguePayload>(`/leagues?id=${leagueId}&ccode3=TUR&season=${encodeURIComponent(season)}`);
     const league: FotMobLeague = { id: leagueId, primaryId: leagueId, name: payload.details?.name ?? `League ${leagueId}`,
       ...(payload.details?.country ? { ccode: payload.details.country } : {}), matches: payload.fixtures?.allMatches ?? [] };
-    return (league.matches ?? []).filter((match) => match.status.finished).map((match) => ({
+    return (league.matches ?? []).map((match) => ({
       ...this.normalizeMatch(league, match, fetchedAt), season,
     }));
   }

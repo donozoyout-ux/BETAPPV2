@@ -14,6 +14,7 @@ describe('configured club and international competition support', () => {
     expect(config.SUPPORTED_COMPETITIONS).toEqual(expect.arrayContaining([
       'WorldCup','EURO','EUROQualification','UefaNationsLeagueA','UefaNationsLeagueB','UefaNationsLeagueC','UefaNationsLeagueD',
       'WorldCupQualificationUEFA','CopaAmerica','WorldCupQualificationCONMEBOL','InternationalFriendlies',
+      'Eredivisie','BelgianProLeague','DanishSuperliga','Allsvenskan','GreekSuperLeague',
     ]));
     expect(fotmobCompetitions).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 268, key: 'BrasileiraoSerieA', name: 'Brasileirão Série A' }),
@@ -33,6 +34,7 @@ describe('configured club and international competition support', () => {
       'ChampionsLeague','EuropaLeague','ConferenceLeague','BrasileiraoSerieA',
       'WorldCup','EURO','EUROQualification','UefaNationsLeagueA','UefaNationsLeagueB','UefaNationsLeagueC','UefaNationsLeagueD',
       'WorldCupQualificationUEFA','CopaAmerica','WorldCupQualificationCONMEBOL','InternationalFriendlies',
+      'Eredivisie','BelgianProLeague','DanishSuperliga','Allsvenskan','GreekSuperLeague',
     ]);
 
     const custom = loadConfig({

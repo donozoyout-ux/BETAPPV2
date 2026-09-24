@@ -1,3 +1,4 @@
+import { dataPoolCard, dataPoolScript } from './data/coverage-view.js';
 import { liveResponseV2 } from './live/analysis-v2.js';
 import type { ProviderHealth } from './live/types.js';
 import { liveCard, livePollScript } from './live/view.js';
@@ -232,6 +233,13 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
     version: 'CONTROL_AUDIT_V1',
     history: controlAudit ? await controlAudit.history(Number(request.query.limit ?? 20)) : [],
   }));
+
+  app.get('/data-coverage.js', async (_request, reply) => reply.type('application/javascript').send(dataPoolScript));
+  app.get('/api/data-coverage', async (_request, reply) => {
+    const data = await repository.dataCoverage(config.SUPPORTED_COMPETITIONS);
+    reply.header('Cache-Control', 'private, max-age=300');
+    return { ...data, html: dataPoolCard(data) };
+  });
 
   app.get('/health', async (_request, reply) => {
     const [database, operations] = await Promise.all([repository.databaseHealth(), repository.operationalHealth().catch(() => ({

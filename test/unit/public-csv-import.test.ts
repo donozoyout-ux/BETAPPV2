@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseCsv, parseFootballDataDataset, localKickoffToUtc } from '../../src/historical/public-csv-parser.js';
-import { publicCsvDatasets, seasonLabel } from '../../src/historical/public-csv-source.js';
+import { currentFootballDataSeasonCode, publicCsvDatasets, seasonLabel } from '../../src/historical/public-csv-source.js';
 
 describe('public CSV historical import', () => {
   it('builds only configured Football-Data season URLs', () => {
@@ -11,6 +11,8 @@ describe('public CSV historical import', () => {
     expect(rows.find((row)=>row.configKey==='SuperLig' && row.seasonCode==='2425')?.url)
       .toBe('https://football-data.co.uk/mmz4281/2425/T1.csv');
     expect(seasonLabel('2526')).toBe('2025/2026');
+    expect(currentFootballDataSeasonCode(new Date('2026-09-24T12:00:00Z'))).toBe('2627');
+    expect(currentFootballDataSeasonCode(new Date('2027-03-01T12:00:00Z'))).toBe('2627');
   });
 
   it('parses quoted CSV fields and real match/stat/odds columns without market-average pseudo bookmakers', () => {

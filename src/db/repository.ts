@@ -203,7 +203,8 @@ export class FootballRepository {
     );
   }
 
-  async upsertMatch(provider: string, match: NormalizedMatch, outcome?: MatchWriteOutcome): Promise<string> {
+  async upsertMatch(provider: string, match: NormalizedMatch, outcome?: MatchWriteOutcome,
+    options: { preserveExistingCore?: boolean } = {}): Promise<string> {
     return this.withTransaction(async (client) => {
       const leagueId = await this.upsertLeague(client, provider, match.league);
       const homeTeamId = await this.upsertTeam(client, provider, match.homeTeam, competitionKind(match.league.name) === 'INTERNATIONAL', outcome);
@@ -263,6 +264,11 @@ export class FootballRepository {
         );
       }
       if (!insertedMatch && outcome) outcome.duplicateMatchesPrevented++;
+      if (!insertedMatch && options.preserveExistingCore) {
+        await this.touchMapping(client, provider, 'match', match.providerExternalId, match.sourceUpdatedAt);
+        await this.savePayload(client, provider, 'match', match.providerExternalId, match.raw, match.sourceUpdatedAt);
+        return id;
+      }
       if (!await guardPrimary(client, id, provider, match)) return id;
       const updated = await client.query(
         `UPDATE matches SET league_id=$2,home_team_id=$3,away_team_id=$4,kickoff_at=$5,status=$6,

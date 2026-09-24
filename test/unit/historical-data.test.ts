@@ -25,6 +25,9 @@ describe('free historical data architecture', () => {
 
   it('keeps unqualified and paid sources from starting collectors', () => {
     expect(canStartHistoricalCollector('fotmob')).toBe(true);
+    expect(canStartHistoricalCollector('openfootball')).toBe(true);
+    expect(canStartHistoricalCollector('football-data-csv')).toBe(false);
+    expect(historicalProviderPolicies.openfootball.status).toBe('PRODUCTION_ELIGIBLE');
     expect(canStartHistoricalCollector('statbunker')).toBe(false);
     expect(canStartHistoricalCollector('soccerstats')).toBe(false);
     expect(canStartHistoricalCollector('adamchoi')).toBe(false);

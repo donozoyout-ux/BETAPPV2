@@ -182,7 +182,7 @@ describe('FootballRepository integration', () => {
   it('validates migrations, checkpoint, profiles, replay, rollback and advisory locks', async () => {
     const migrations = await migrationStatus(pool);
     expect(migrations.pendingMigrations).toEqual([]);
-    expect(migrations.schemaVersion).toBe('016_public_csv_historical_import_v1.sql');
+    expect(migrations.schemaVersion).toBe('018_openfootball_import_v1.sql');
     const health = await repository.databaseHealth();
     expect(health.status).toBe('ok');
     await repository.markStarted('fotmob', 'integration-checkpoint', { index: 0 });
@@ -581,6 +581,32 @@ describe('FootballRepository integration', () => {
     expect(Number(preserved.home_corners)).toBe(5); expect(Number(preserved.away_corners)).toBe(0);
     const repeated = await runCompetitionBackfill(comp,{seasons:1,resume:false,dryRun:false},deps);
     expect(repeated).toMatchObject({matchesInserted:0,duplicateMatchesPrevented:3,detailsSkipped:3});
+  });
+
+
+  it('lets OpenFootball map an existing historical match without overwriting core score or kickoff', async () => {
+    const sourceAt=new Date('2026-09-24T12:00:00Z');
+    const base:NormalizedMatch={
+      providerExternalId:'core-protected-fotmob',
+      league:{providerExternalId:'57',name:'Eredivisie',country:'Netherlands',logoUrl:null,sourceUpdatedAt:sourceAt,raw:{}},
+      homeTeam:{providerExternalId:'core-home',name:'Core Home',shortName:null,country:'Netherlands',logoUrl:null,sourceUpdatedAt:sourceAt,raw:{}},
+      awayTeam:{providerExternalId:'core-away',name:'Core Away',shortName:null,country:'Netherlands',logoUrl:null,sourceUpdatedAt:sourceAt,raw:{}},
+      kickoffAt:new Date('2026-08-20T18:00:00Z'),status:'finished',season:'2026/2027',round:'1',
+      homeScore:2,awayScore:1,sourceUpdatedAt:sourceAt,raw:{},
+    };
+    const id=await repository.upsertMatch('fotmob',base);
+    const openFootball={...base,providerExternalId:'of-core-protected',
+      league:{...base.league,providerExternalId:'openfootball:nl.1.json'},
+      homeTeam:{...base.homeTeam,providerExternalId:'openfootball:nl:core-home'},
+      awayTeam:{...base.awayTeam,providerExternalId:'openfootball:nl:core-away'},
+      kickoffAt:new Date('2026-08-20T18:05:00Z'),homeScore:9,awayScore:9,sourceUpdatedAt:new Date('2026-09-25T12:00:00Z')};
+    const mapped=await repository.upsertMatch('openfootball',openFootball,undefined,{preserveExistingCore:true});
+    expect(mapped).toBe(id);
+    expect(await repository.matchAnalysisDetail(id)).toMatchObject({
+      kickoff_at:new Date('2026-08-20T18:00:00Z'),home_score:2,away_score:1,status:'finished',
+    });
+    const mapping=await pool.query("SELECT internal_id FROM provider_entities WHERE provider='openfootball' AND entity_type='match' AND external_id='of-core-protected'");
+    expect(mapping.rows[0]?.internal_id).toBe(id);
   });
 
   it('matches senior national aliases across providers without merging a same-name club', async () => {

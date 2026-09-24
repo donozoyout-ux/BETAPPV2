@@ -13,6 +13,8 @@ export function coverageRows(rows: Array<Record<string, unknown>>, configured: r
       matchesWithOdds: sum('odds'), matchesWithThreeBookmakers: sum('odds_three'), oddsSnapshots: sum('odds_snapshots'),
       csvHistoricalOddsMatches: sum('csv_odds'), csvHistoricalThreeBookmakers: sum('csv_odds_three'),
       csvHistoricalOddsQuotes: sum('csv_odds_quotes'),
+      csvStageMatches: sum('csv_stage_matches'), csvStageExamples: sum('csv_stage_examples'),
+      csvStageResearchEligible: sum('csv_stage_research_eligible'),
       upcomingMatches7d: sum('upcoming_matches'), upcomingMatchesWithOdds7d: sum('upcoming_odds'),
       upcomingMatchesWithThreeBookmakers7d: sum('upcoming_odds_three'),
       matchesWithCorners: sum('corners'), predictionHistoricalExamples: sum('examples'),
@@ -45,6 +47,10 @@ export class DataCoverageService {
     ), csv_odds AS (
       SELECT match_id,count(*)::int quotes,count(DISTINCT lower(bookmaker))::int bookmakers
       FROM historical_market_odds WHERE pre_kickoff_verified=true GROUP BY match_id
+    ), stage_examples AS (
+      SELECT competition_id,count(DISTINCT match_id)::int matches,count(*)::int examples,
+        count(*) FILTER(WHERE research_eligible)::int research_eligible
+      FROM prediction_stage_historical_examples GROUP BY competition_id
     ), examples AS (SELECT competition_id,count(*)::int count FROM prediction_historical_examples GROUP BY competition_id)
     SELECT l.name competition,count(m.id)::int matches,
       count(m.id) FILTER(WHERE m.status='finished')::int finished_matches,
@@ -59,6 +65,9 @@ export class DataCoverageService {
       count(m.id) FILTER(WHERE co.match_id IS NOT NULL)::int csv_odds,
       count(m.id) FILTER(WHERE co.bookmakers>=3)::int csv_odds_three,
       COALESCE(sum(co.quotes),0)::int csv_odds_quotes,
+      COALESCE(se.matches,0)::int csv_stage_matches,
+      COALESCE(se.examples,0)::int csv_stage_examples,
+      COALESCE(se.research_eligible,0)::int csv_stage_research_eligible,
       count(m.id) FILTER(WHERE m.status='scheduled' AND m.kickoff_at>=now() AND m.kickoff_at<now()+interval '7 days')::int upcoming_matches,
       count(m.id) FILTER(WHERE m.status='scheduled' AND m.kickoff_at>=now() AND m.kickoff_at<now()+interval '7 days'
         AND o.match_id IS NOT NULL)::int upcoming_odds,
@@ -69,18 +78,38 @@ export class DataCoverageService {
     FROM leagues l LEFT JOIN matches m ON m.league_id=l.id LEFT JOIN stats s ON s.match_id=m.id
     LEFT JOIN odds o ON o.match_id=m.id LEFT JOIN csv_odds co ON co.match_id=m.id
     LEFT JOIN historical_match_stats h ON h.match_id=m.id
-    LEFT JOIN examples e ON e.competition_id=l.id GROUP BY l.id,l.name,e.count ORDER BY l.name`);
-    const [reports,csvImports] = await Promise.all([
+    LEFT JOIN stage_examples se ON se.competition_id=l.id
+    LEFT JOIN examples e ON e.competition_id=l.id
+    GROUP BY l.id,l.name,e.count,se.matches,se.examples,se.research_eligible ORDER BY l.name`);
+    const [reports,csvImports,csvStageRefreshes,shadowSafety,shadowResearch,openFootballImports] = await Promise.all([
       this.pool.query<{ report: ExpansionReport }>(`SELECT cursor->'report' report FROM collector_checkpoints
         WHERE provider='fotmob' AND scope LIKE 'competition-expansion:%' AND cursor ? 'report' ORDER BY updated_at DESC`),
       this.pool.query(`SELECT source_key,competition,season,status,total_rows,valid_rows,imported_rows,statistics_rows,odds_rows,
         cursor_row,last_error,started_at,completed_at,updated_at FROM historical_csv_imports
         ORDER BY season DESC,competition`),
+      this.pool.query(`SELECT source_key,status,matches_inspected,examples_inserted,research_eligible_examples,
+        last_error,started_at,completed_at,updated_at FROM prediction_stage_historical_refreshes
+        ORDER BY updated_at DESC`),
+      this.pool.query(`SELECT count(*)::int total,
+        count(*) FILTER(WHERE official_eligible)::int invalid_official,
+        count(*) FILTER(WHERE timing_known)::int invalid_timing_known
+        FROM prediction_stage_historical_examples`),
+      this.pool.query(`SELECT market_type,movement_class,count(*)::int examples,
+        count(*) FILTER(WHERE settlement_result NOT IN('PUSH','VOID'))::int binary_examples,
+        count(*) FILTER(WHERE settlement_result IN('WIN','HALF_WIN'))::int positive_examples,
+        avg(closing_fair_probability)::numeric average_closing_fair_probability,
+        avg(probability_delta_pp)::numeric average_probability_delta_pp
+        FROM prediction_stage_historical_examples WHERE research_eligible=true
+        GROUP BY market_type,movement_class ORDER BY examples DESC,market_type,movement_class`),
+      this.pool.query(`SELECT source_key,competition,season,status,total_matches,finished_rows,imported_rows,
+        matches_inserted,matches_updated,duplicates_prevented,result_rows,skipped_unfinished,skipped_unsafe_time,
+        cursor_row,last_error,started_at,completed_at,updated_at FROM openfootball_imports
+        ORDER BY season DESC,competition`),
     ]);
     const competitions = enrichCoverageTargets(coverageRows(result.rows, this.configured));
     const sum = (key: 'matches' | 'finishedMatches' | 'predictionHistoricalExamples' | 'matchesWithOdds' | 'matchesWithStats'
       | 'matchesWithThreeBookmakers' | 'oddsSnapshots' | 'csvHistoricalOddsMatches' | 'csvHistoricalThreeBookmakers'
-      | 'csvHistoricalOddsQuotes' | 'upcomingMatches7d' | 'upcomingMatchesWithOdds7d'
+      | 'csvHistoricalOddsQuotes' | 'csvStageMatches' | 'csvStageExamples' | 'csvStageResearchEligible' | 'upcomingMatches7d' | 'upcomingMatchesWithOdds7d'
       | 'upcomingMatchesWithThreeBookmakers7d') => competitions.reduce((total,c) => total+c[key], 0);
     return { competitions, summary: { totalMatches: sum('matches'), totalFinishedMatches: sum('finishedMatches'),
       totalHistoricalExamples: sum('predictionHistoricalExamples'), totalOddsCovered: sum('matchesWithOdds'),
@@ -88,11 +117,25 @@ export class DataCoverageService {
       csvHistoricalOddsMatches: sum('csvHistoricalOddsMatches'),
       csvHistoricalThreeBookmakers: sum('csvHistoricalThreeBookmakers'),
       csvHistoricalOddsQuotes: sum('csvHistoricalOddsQuotes'),
+      csvStageMatches: sum('csvStageMatches'),
+      csvStageExamples: sum('csvStageExamples'),
+      csvStageResearchEligible: sum('csvStageResearchEligible'),
       upcomingMatches7d: sum('upcomingMatches7d'), upcomingOddsCovered7d: sum('upcomingMatchesWithOdds7d'),
       upcomingThreeBookmakerCovered7d: sum('upcomingMatchesWithThreeBookmakers7d'),
       totalStatsCovered: sum('matchesWithStats') },
       backfills: reports.rows.map(r => r.report).filter(r => competitions.some(c => c.providerId === r.providerId)),
       publicCsvImports: csvImports.rows,
+      publicCsvStageRefreshes: csvStageRefreshes.rows,
+      shadowSafety: shadowSafety.rows[0] ?? { total:0, invalid_official:0, invalid_timing_known:0 },
+      openFootballImports: openFootballImports.rows,
+      shadowResearch: shadowResearch.rows.map((row) => ({
+        marketType:String(row.market_type),movementClass:String(row.movement_class),
+        examples:Number(row.examples ?? 0),binaryExamples:Number(row.binary_examples ?? 0),
+        positiveExamples:Number(row.positive_examples ?? 0),
+        positiveRate:Number(row.binary_examples ?? 0) > 0 ? Number(row.positive_examples ?? 0)/Number(row.binary_examples) : null,
+        averageClosingFairProbability:row.average_closing_fair_probability==null?null:Number(row.average_closing_fair_probability),
+        averageProbabilityDeltaPp:row.average_probability_delta_pp==null?null:Number(row.average_probability_delta_pp),
+      })),
       targetPolicy: DATA_TARGET_V1,
       generatedAt: new Date().toISOString(), cacheSeconds: 300 };
   }

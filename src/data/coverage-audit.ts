@@ -22,5 +22,13 @@ export function coverageAuditChecks(data: DataCoverage): ControlAuditCheck[] {
       : importStatus === 'WARN' ? 'Aktarımda eksik istatistik veya kısmi hata mevcut.' : 'Son tamamlanan aktarımda ölümcül hata yok.' },
   { key: 'DATA_TARGET_PROGRESS', status: targetGap ? 'WARN' : 'PASS', value: targetRows,
     message: targetGap ? 'Bazı lig/turnuvalar DATA_TARGET_V1 hedefinin altında; otomatik kuyruk eksikleri önceliklendiriyor.'
-      : 'Tüm etkin lig/turnuvalar DATA_TARGET_V1 maç ve istatistik hedefini karşıladı.' } ];
+      : 'Tüm etkin lig/turnuvalar DATA_TARGET_V1 maç ve istatistik hedefini karşıladı.' },
+  { key: 'PREMATCH_ODDS_COVERAGE',
+    status: data.summary.upcomingMatches7d === 0 || data.summary.upcomingOddsCovered7d === data.summary.upcomingMatches7d ? 'PASS' : 'WARN',
+    value: { upcoming7d: data.summary.upcomingMatches7d, withOdds: data.summary.upcomingOddsCovered7d,
+      withThreeBookmakers: data.summary.upcomingThreeBookmakerCovered7d, totalSnapshots: data.summary.totalOddsSnapshots },
+    message: data.summary.upcomingMatches7d === 0 ? 'Önümüzdeki 7 günde takip edilen planlı maç yok.'
+      : data.summary.upcomingOddsCovered7d === data.summary.upcomingMatches7d
+        ? 'Önümüzdeki 7 günlük maçların tamamında gerçek pre-match odds snapshotı mevcut.'
+        : 'Önümüzdeki 7 günlük bazı maçlarda henüz gerçek pre-match odds snapshotı eksik.' } ];
 }

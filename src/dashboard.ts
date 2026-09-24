@@ -2,6 +2,7 @@ import { dataPoolSection } from './data/coverage-view.js';
 import { liveSection } from './live/view.js';
 import { liveRecommendationsSection } from './live/recommendation-view.js';
 import { controlAuditSection } from './control-audit-view.js';
+import { stageResearchSection } from './predictions/stage-research-view.js';
 import { translatePredictionGateReason } from './predictions/gate-inspector.js';
 
 type DashboardData = { matches: Array<Record<string, unknown>>; providers: Array<Record<string, unknown>>;
@@ -804,6 +805,7 @@ export function renderDashboard(data: DashboardData): string {
       <main class="content">
       ${liveSection()}
       ${dataPoolSection()}
+      ${stageResearchSection()}
       ${liveRecommendationsSection()}
       ${controlAuditSection()}
         <section class="command-hero" id="overview">

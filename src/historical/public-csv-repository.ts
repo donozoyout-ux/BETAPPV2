@@ -32,7 +32,7 @@ export class PublicCsvImportRepository {
     for (const dataset of datasets) {
       await this.pool.query(`INSERT INTO historical_csv_imports(source_key,source_name,competition,season,source_url,status)
         VALUES($1,'football-data.co.uk',$2,$3,$4,'PENDING')
-        ON CONFLICT(source_key) DO UPDATE SET source_url=excluded.source_url,updated_at=now()`,
+        ON CONFLICT(source_key) DO UPDATE SET source_url=excluded.source_url`,
       [dataset.sourceKey,dataset.competition,dataset.seasonLabel,dataset.url]);
     }
   }
@@ -44,9 +44,26 @@ export class PublicCsvImportRepository {
   }
 
   async resetForChangedContent(sourceKey: string) {
-    await this.pool.query(`UPDATE historical_csv_imports SET status='PENDING',content_hash=NULL,total_rows=0,valid_rows=0,
-      imported_rows=0,matches_inserted=0,matches_updated=0,duplicates_prevented=0,statistics_rows=0,odds_rows=0,
-      cursor_row=0,last_error=NULL,started_at=NULL,completed_at=NULL,updated_at=now() WHERE source_key=$1`,[sourceKey]);
+    const client=await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('DELETE FROM prediction_stage_historical_examples WHERE source_key=$1',[sourceKey]);
+      await client.query('DELETE FROM prediction_stage_historical_refreshes WHERE source_key=$1',[sourceKey]);
+      await client.query('DELETE FROM historical_market_odds WHERE source_key=$1',[sourceKey]);
+      await client.query(`UPDATE historical_csv_imports SET status='PENDING',content_hash=NULL,total_rows=0,valid_rows=0,
+        imported_rows=0,matches_inserted=0,matches_updated=0,duplicates_prevented=0,statistics_rows=0,odds_rows=0,
+        cursor_row=0,last_error=NULL,started_at=NULL,completed_at=NULL,updated_at=now() WHERE source_key=$1`,[sourceKey]);
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async markChecked(sourceKey: string) {
+    await this.pool.query(`UPDATE historical_csv_imports SET updated_at=now(),last_error=NULL WHERE source_key=$1`,[sourceKey]);
   }
 
   async markRunning(dataset: PublicCsvDataset, contentHash: string, totalRows: number, validRows: number) {

@@ -91,7 +91,7 @@ export class OpenFootballHistoricalImporter {
         for(const item of batch){
           if(this.stopped) break;
           const outcome={matchesInserted:0,matchesUpdated:0,teamsCreated:0,duplicateMatchesPrevented:0};
-          await this.football.upsertMatch('openfootball',item.match,outcome);
+          await this.football.upsertMatch('openfootball',item.match,outcome,{preserveExistingCore:true});
           await this.historical.save('openfootball',item.match,item.statistics,fetchedAt,null,true);
           imported+=1; inserted+=outcome.matchesInserted; updated+=outcome.matchesUpdated; duplicates+=outcome.duplicateMatchesPrevented;
         }

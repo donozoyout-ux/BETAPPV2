@@ -120,8 +120,7 @@ export class StageHistoricalRepository {
   async runForever() {
     while (!this.stopped) {
       try {
-        const result=await this.runNext();
-        if (result.state==='COMPLETE') return;
+        await this.runNext();
       } catch (error) {
         this.logger.warn({err:error},'CSV stage shadow evidence refresh failed; continuing');
       }

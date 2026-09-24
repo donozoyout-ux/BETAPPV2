@@ -1,5 +1,3 @@
-import type { DataCoverage } from './coverage.js';
-
 export const DATA_TARGET_V1 = {
   clubFinishedMatches: 300,
   internationalFinishedMatches: 80,
@@ -7,10 +5,13 @@ export const DATA_TARGET_V1 = {
   maxSeasonCycles: 2,
 } as const;
 
-export type CoverageCompetition = DataCoverage['competitions'][number];
+export type CoverageTargetInput = {
+  type: 'CLUB' | 'INTERNATIONAL';
+  finishedMatches: number;
+  matchesWithStats: number;
+};
 
-export function coverageTarget(row: Pick<CoverageCompetition,
-  'type' | 'finishedMatches' | 'matchesWithStats'>) {
+export function coverageTarget(row: CoverageTargetInput) {
   const targetFinishedMatches = row.type === 'INTERNATIONAL'
     ? DATA_TARGET_V1.internationalFinishedMatches
     : DATA_TARGET_V1.clubFinishedMatches;
@@ -31,6 +32,6 @@ export function coverageTarget(row: Pick<CoverageCompetition,
   };
 }
 
-export function enrichCoverageTargets<T extends CoverageCompetition>(rows: T[]) {
+export function enrichCoverageTargets<T extends CoverageTargetInput>(rows: T[]) {
   return rows.map((row) => ({ ...row, target: coverageTarget(row) }));
 }

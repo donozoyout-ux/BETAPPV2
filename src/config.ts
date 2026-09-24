@@ -25,6 +25,14 @@ const competitionList = z.string().default(defaultCompetitionKeys.join(',')).tra
   return migrated;
 });
 
+const footballDataSeasonList = z.string().default('2526,2425').transform((value, context) => {
+  const items = [...new Set(value.split(',').map((item) => item.trim()).filter(Boolean))];
+  if (!items.length || items.some((item) => !/^\d{4}$/.test(item))) {
+    context.addIssue({ code: 'custom', message: 'Expected Football-Data seasons such as 2526,2425' });
+  }
+  return items;
+});
+
 const positiveIntegerList = z.string().default('2,3,4,14,15,22,136').transform((value, context) => {
   const parsed = value.split(',').map((item) => Number(item.trim()));
   const items = [...new Set(parsed.filter(Number.isFinite))];
@@ -54,6 +62,11 @@ const schema = z.object({
   API_FOOTBALL_PREMATCH_INTERVAL_MS: z.coerce.number().int().min(3_600_000).default(10_800_000),
   API_FOOTBALL_PREMATCH_FUTURE_DAYS: z.coerce.number().int().min(0).max(3).default(1),
   API_FOOTBALL_PREMATCH_MAX_FIXTURES: z.coerce.number().int().min(1).max(20).default(4),
+  PUBLIC_CSV_IMPORT_ENABLED: booleanFromString.default(false),
+  PUBLIC_CSV_IMPORT_BASE_URL: z.string().url().default('https://football-data.co.uk'),
+  PUBLIC_CSV_IMPORT_SEASONS: footballDataSeasonList,
+  PUBLIC_CSV_IMPORT_BATCH_SIZE: z.coerce.number().int().min(10).max(500).default(100),
+  PUBLIC_CSV_IMPORT_INTERVAL_MS: z.coerce.number().int().min(300_000).default(600_000),
   FOTMOB_ENABLED: booleanFromString.default(true),
   NOWGOAL_ENABLED: booleanFromString.default(true),
   NOWGOAL_FUTURE_DAYS: z.coerce.number().int().min(0).max(14).default(3),

@@ -13,7 +13,9 @@ import type { Logger } from '../logger.js';
 
 export const priorityAutoBackfillKeys = [
   'Eredivisie','BelgianProLeague','DanishSuperliga','Allsvenskan','GreekSuperLeague',
-  'WorldCup','EURO','EUROQualification','UefaNationsLeagueA','WorldCupQualificationUEFA','InternationalFriendlies',
+  'WorldCup','EURO','EUROQualification',
+  'UefaNationsLeagueA','UefaNationsLeagueB','UefaNationsLeagueC','UefaNationsLeagueD',
+  'WorldCupQualificationUEFA','CopaAmerica','WorldCupQualificationCONMEBOL','InternationalFriendlies',
 ] as const;
 
 export function autoBackfillTargets(config: AppConfig) {
@@ -36,6 +38,9 @@ export class CompetitionAutoBackfill {
   private readonly corners: CornerRepository;
   private readonly predictions: PredictionRepository;
   private readonly attempted = new Set<number>();
+  private stopped = false;
+  private wakeSleep: (() => void) | undefined;
+  private running = false;
 
   constructor(private readonly pool: DatabasePool, private readonly config: AppConfig,
     private readonly provider: FotMobProvider, private readonly logger: Logger) {
@@ -49,8 +54,28 @@ export class CompetitionAutoBackfill {
     return this.config.BACKFILL_ENABLED && this.config.COMPETITION_BACKFILL_AUTO_ENABLED && this.config.FOTMOB_ENABLED;
   }
 
+  stop() {
+    this.stopped = true;
+    this.wakeSleep?.();
+  }
+
+  private async wait(): Promise<void> {
+    await new Promise<void>((resolve) => {
+      const finish = () => {
+        clearTimeout(timer);
+        this.wakeSleep = undefined;
+        resolve();
+      };
+      const timer = setTimeout(finish, this.config.COMPETITION_BACKFILL_AUTO_INTERVAL_MS);
+      this.wakeSleep = finish;
+    });
+  }
+
   async runNext() {
     if (!this.enabled()) return { state: 'DISABLED' as const };
+    if (this.running) return { state: 'IN_PROGRESS' as const };
+    this.running = true;
+    try {
     for (const competition of autoBackfillTargets(this.config)) {
       if (this.attempted.has(competition.id)) continue;
       const previous = await this.historical.expansionReport(competition.id);
@@ -105,6 +130,23 @@ export class CompetitionAutoBackfill {
         lock.release();
       }
     }
-    return { state: 'COMPLETE' as const };
+      return { state: 'COMPLETE' as const };
+    } finally {
+      this.running = false;
+    }
+  }
+
+  async runForever() {
+    if (!this.enabled()) return;
+    while (!this.stopped) {
+      try {
+        const result = await this.runNext();
+        this.logger.info({ result }, 'Competition auto backfill background cycle completed');
+        if (result.state === 'COMPLETE') return;
+      } catch (error) {
+        this.logger.error({ err: error }, 'Competition auto backfill background cycle failed');
+      }
+      if (!this.stopped) await this.wait();
+    }
   }
 }

@@ -263,7 +263,9 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
         seasons: config.PUBLIC_CSV_IMPORT_SEASONS,
         batchSize: config.PUBLIC_CSV_IMPORT_BATCH_SIZE,
         intervalMs: config.PUBLIC_CSV_IMPORT_INTERVAL_MS,
+        currentSeasonRefreshMs: config.PUBLIC_CSV_CURRENT_REFRESH_MS,
         oddsPolicy: 'ARCHIVE_ONLY_NO_FAKE_TIMESTAMP',
+        shadowEvidence: 'CSV_STAGE_V1_RESEARCH_ONLY',
       },
       timestamp: new Date().toISOString() });
   });

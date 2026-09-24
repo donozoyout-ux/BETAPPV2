@@ -147,9 +147,9 @@ export class ApiFootballProvider {
     this.configured = config.API_FOOTBALL_ENABLED && Boolean(config.API_FOOTBALL_KEY.trim());
     this.health = this.configured ? 'UNAVAILABLE' : 'NOT_CONFIGURED';
   }
-  async request(path: string): Promise<unknown[]> {
-    if (!this.configured) return [];
-    // Serialize requests; no burst after quota exhaustion and no secrets in errors/logs.
+  private async requestPage(path: string): Promise<{ rows: unknown[]; page: number; total: number }> {
+    if (!this.configured) return { rows: [], page: 1, total: 1 };
+    // Serialize all calls for this API key; live and prematch collectors share the same provider instance.
     const previous = this.chain; let release!: () => void;
     this.chain = new Promise<void>(r => { release = r; });
     await previous;
@@ -169,14 +169,17 @@ export class ApiFootballProvider {
       }
       if (!response.ok) throw new Error('API_FOOTBALL_UNAVAILABLE');
       const body = obj(await response.json());
-      if (Object.keys(obj(body.errors)).length || (Array.isArray(body.errors) && body.errors.length) || !Array.isArray(body.response) || Number(obj(body.paging).total ?? 1) > 1) throw new Error('API_FOOTBALL_INCOMPLETE_RESPONSE');
+      if (Object.keys(obj(body.errors)).length || (Array.isArray(body.errors) && body.errors.length) || !Array.isArray(body.response)) {
+        throw new Error('API_FOOTBALL_INCOMPLETE_RESPONSE');
+      }
       this.failures = 0; this.health = 'SUPPORTED';
       const daily = response.headers.get('x-ratelimit-requests-remaining');
       const minute = response.headers.get('x-ratelimit-remaining');
       if (daily === '0' || minute === '0') {
         this.health = 'RATE_LIMITED'; this.blockedUntil = Date.now() + (daily === '0' ? 86_400_000 : 60_000);
       }
-      return body.response;
+      const paging = obj(body.paging);
+      return { rows: body.response, page: Math.max(1, Number(paging.current ?? 1)), total: Math.max(1, Number(paging.total ?? 1)) };
     } catch (error) {
       if (this.health !== 'RATE_LIMITED') {
         this.health = this.failures > 1 ? 'UNAVAILABLE' : 'DEGRADED';
@@ -184,6 +187,24 @@ export class ApiFootballProvider {
       }
       throw error;
     } finally { release(); }
+  }
+
+  async request(path: string): Promise<unknown[]> {
+    const page = await this.requestPage(path);
+    if (page.total > 1) throw new Error('API_FOOTBALL_INCOMPLETE_RESPONSE');
+    return page.rows;
+  }
+
+  async requestAllPages(path: string, maxPages = 10): Promise<unknown[]> {
+    const first = await this.requestPage(path);
+    if (first.total > maxPages) throw new Error('API_FOOTBALL_TOO_MANY_PAGES');
+    const rows = [...first.rows];
+    for (let page = first.page + 1; page <= first.total; page += 1) {
+      const separator = path.includes('?') ? '&' : '?';
+      const next = await this.requestPage(`${path}${separator}page=${page}`);
+      rows.push(...next.rows);
+    }
+    return rows;
   }
   private supportedFixture(fixture: ApiFixture) {
     return isCompetitionConfigured(fixture.league, this.config.SUPPORTED_COMPETITIONS);
@@ -210,7 +231,7 @@ export class ApiFootballProvider {
       return { fixture: { providerMatchId: fixture.snapshot.externalId, kickoffAt: new Date(fixture.kickoffAt),
         homeTeam: fixture.homeTeam, awayTeam: fixture.awayTeam, leagueName: fixture.league }, odds: [] };
     }
-    const rows = await this.request(`/odds?fixture=${encodeURIComponent(fixture.snapshot.externalId)}`);
+    const rows = await this.requestAllPages(`/odds?fixture=${encodeURIComponent(fixture.snapshot.externalId)}`, 10);
     const oddsFixture: OddsFixture = { providerMatchId: fixture.snapshot.externalId, kickoffAt: new Date(fixture.kickoffAt),
       homeTeam: fixture.homeTeam, awayTeam: fixture.awayTeam, leagueName: fixture.league };
     return { fixture: oddsFixture, odds: apiPrematchOdds(rows, fixture, capturedAt) };

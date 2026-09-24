@@ -41,6 +41,13 @@ export function dataPoolCard(data: DataCoverage): string {
         <td>${esc(r.matches_inspected)}</td><td>${esc(r.examples_inserted)}</td><td>${esc(r.research_eligible_examples)}</td>
         <td>${esc(r.last_error)}</td></tr>`).join('')
         : '<tr><td colspan="6">Henüz shadow refresh çalışmadı.</td></tr>'}</tbody></table></div>
+    <h3>Shadow hareket araştırması</h3>
+    <div class="scroll"><table><thead><tr><th>Market</th><th>Hareket</th><th>N</th><th>Binary N</th><th>Pozitif oran</th><th>Ort. closing fair</th><th>Ort. Δ pp</th></tr></thead><tbody>
+      ${data.shadowResearch.length ? data.shadowResearch.map(r => `<tr><td>${esc(r.marketType)}</td><td>${esc(r.movementClass)}</td>
+        <td>${esc(r.examples)}</td><td>${esc(r.binaryExamples)}</td><td>${r.positiveRate == null ? '—' : esc((r.positiveRate*100).toFixed(1)+'%')}</td>
+        <td>${r.averageClosingFairProbability == null ? '—' : esc((r.averageClosingFairProbability*100).toFixed(1)+'%')}</td>
+        <td>${r.averageProbabilityDeltaPp == null ? '—' : esc(r.averageProbabilityDeltaPp.toFixed(2))}</td></tr>`).join('')
+        : '<tr><td colspan="7">Araştırma için henüz yeterli stage örneği yok.</td></tr>'}</tbody></table></div>
     <p>Son ölçüm: ${esc(data.generatedAt)} · En az 5 dakika önbellek. Canlı/pre-match snapshot kapsamı yalnız gerçekten timestamp ile kaydedilmiş odds'tur. CSV stage verisi ayrı shadow araştırma katmanıdır; resmi Prediction V1 kararını değiştirmez.</p>`;
 }
 export function dataPoolSection() {

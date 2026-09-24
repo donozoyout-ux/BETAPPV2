@@ -18,6 +18,11 @@ export function coverageAuditChecks(data: DataCoverage): ControlAuditCheck[] {
   const csvImports = data.publicCsvImports;
   const csvComplete = csvImports.length > 0 && csvImports.every((row) => String(row.status) === 'COMPLETED');
   const csvFailed = csvImports.filter((row) => String(row.status) === 'FAILED').length;
+  const shadowInvalidOfficial = Number(data.shadowSafety.invalid_official ?? 0);
+  const shadowInvalidTiming = Number(data.shadowSafety.invalid_timing_known ?? 0);
+  const shadowIsolationFailed = shadowInvalidOfficial > 0 || shadowInvalidTiming > 0;
+  const completedCsvSources = csvImports.filter((row) => String(row.status) === 'COMPLETED').length;
+  const completedShadowRefreshes = data.publicCsvStageRefreshes.filter((row) => String(row.status) === 'COMPLETED').length;
   return [ { key: 'COMPETITION_DATA_COVERAGE', status: rows.some(r => r.status === 'WARN') ? 'WARN' : 'PASS', value: rows,
     message: rows.some(r => r.status === 'WARN') ? 'Bazı etkin lig/turnuvalarda henüz kalıcı maç verisi yok.' : 'Etkin lig/turnuvalarda kalıcı maç verisi mevcut.' },
   { key: 'HISTORICAL_IMPORT_HEALTH', status: importStatus, value: last ?? null,
@@ -40,5 +45,16 @@ export function coverageAuditChecks(data: DataCoverage): ControlAuditCheck[] {
       failed: csvFailed, archivedOddsQuotes: data.summary.csvHistoricalOddsQuotes },
     message: csvComplete ? 'Açık Football-Data CSV seed kapsamı tamamlandı.'
       : csvFailed > 0 ? 'Bazı açık CSV datasetleri geçici olarak başarısız; worker diğer datasetlerle devam ediyor.'
-      : 'Açık CSV historical seed halen kontrollü şekilde devam ediyor.' } ];
+      : 'Açık CSV historical seed halen kontrollü şekilde devam ediyor.' },
+  { key: 'CSV_STAGE_SHADOW_ISOLATION',
+    status: shadowIsolationFailed ? 'FAIL' : 'PASS',
+    value: { total: Number(data.shadowSafety.total ?? 0), invalidOfficial: shadowInvalidOfficial,
+      invalidTimingKnown: shadowInvalidTiming },
+    message: shadowIsolationFailed ? 'Shadow CSV stage kanıtında resmi uygunluk veya bilinmeyen timing için hatalı işaret bulundu.'
+      : 'CSV stage shadow kanıtı resmi Prediction V1 havuzundan ve exact-timestamp kanıtından ayrılmış durumda.' },
+  { key: 'CSV_STAGE_RESEARCH_PROGRESS',
+    status: completedShadowRefreshes >= completedCsvSources ? 'PASS' : 'WARN',
+    value: { completedCsvSources, completedShadowRefreshes, researchEligible: data.summary.csvStageResearchEligible },
+    message: completedShadowRefreshes >= completedCsvSources ? 'Tamamlanan CSV datasetleri için shadow evidence üretildi.'
+      : 'Bazı tamamlanan CSV datasetleri için shadow evidence üretimi henüz sırada.' } ];
 }

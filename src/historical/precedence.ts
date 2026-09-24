@@ -1,6 +1,6 @@
 import type { HistoricalDataQuality, HistoricalProviderId } from './types.js';
 
-const priority: Record<string, number> = { fotmob: 1, statbunker: 2, soccerstats: 3, adamchoi: 4 };
+const priority: Record<string, number> = { fotmob: 1, 'football-data-csv': 2, statbunker: 3, soccerstats: 4, adamchoi: 5 };
 const quality: Record<HistoricalDataQuality, number> = { COMPLETE: 4, PARTIAL: 3, LIMITED: 2, POOR: 1 };
 
 export function shouldReplaceHistoricalStats(existingProvider: string | null, existingQuality: HistoricalDataQuality | null,

@@ -257,6 +257,14 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
         scope: 'ALL_CONFIGURED_BY_DATA_DEFICIT',
         targetPolicy: 'DATA_TARGET_V1',
       },
+      publicCsvImport: {
+        enabled: config.PUBLIC_CSV_IMPORT_ENABLED,
+        source: 'football-data.co.uk',
+        seasons: config.PUBLIC_CSV_IMPORT_SEASONS,
+        batchSize: config.PUBLIC_CSV_IMPORT_BATCH_SIZE,
+        intervalMs: config.PUBLIC_CSV_IMPORT_INTERVAL_MS,
+        oddsPolicy: 'ARCHIVE_ONLY_NO_FAKE_TIMESTAMP',
+      },
       timestamp: new Date().toISOString() });
   });
 

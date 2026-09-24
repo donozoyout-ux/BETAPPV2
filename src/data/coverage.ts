@@ -11,6 +11,8 @@ export function coverageRows(rows: Array<Record<string, unknown>>, configured: r
     return { competition: String(c.name), configKey: c.key, providerId: c.id, type: competitionKind(c.name),
       matches: sum('matches'), finishedMatches: sum('finished_matches'), matchesWithStats: sum('stats'),
       matchesWithOdds: sum('odds'), matchesWithThreeBookmakers: sum('odds_three'), oddsSnapshots: sum('odds_snapshots'),
+      csvHistoricalOddsMatches: sum('csv_odds'), csvHistoricalThreeBookmakers: sum('csv_odds_three'),
+      csvHistoricalOddsQuotes: sum('csv_odds_quotes'),
       upcomingMatches7d: sum('upcoming_matches'), upcomingMatchesWithOdds7d: sum('upcoming_odds'),
       upcomingMatchesWithThreeBookmakers7d: sum('upcoming_odds_three'),
       matchesWithCorners: sum('corners'), predictionHistoricalExamples: sum('examples'),
@@ -40,6 +42,9 @@ export class DataCoverageService {
       FROM odds_snapshots o JOIN matches om ON om.id=o.match_id
       WHERE o.captured_at < om.kickoff_at AND o.odds_decimal > 1
       GROUP BY o.match_id
+    ), csv_odds AS (
+      SELECT match_id,count(*)::int quotes,count(DISTINCT lower(bookmaker))::int bookmakers
+      FROM historical_market_odds WHERE pre_kickoff_verified=true GROUP BY match_id
     ), examples AS (SELECT competition_id,count(*)::int count FROM prediction_historical_examples GROUP BY competition_id)
     SELECT l.name competition,count(m.id)::int matches,
       count(m.id) FILTER(WHERE m.status='finished')::int finished_matches,
@@ -51,6 +56,9 @@ export class DataCoverageService {
       count(m.id) FILTER(WHERE o.match_id IS NOT NULL)::int odds,
       count(m.id) FILTER(WHERE o.bookmakers>=3)::int odds_three,
       COALESCE(sum(o.snapshots),0)::int odds_snapshots,
+      count(m.id) FILTER(WHERE co.match_id IS NOT NULL)::int csv_odds,
+      count(m.id) FILTER(WHERE co.bookmakers>=3)::int csv_odds_three,
+      COALESCE(sum(co.quotes),0)::int csv_odds_quotes,
       count(m.id) FILTER(WHERE m.status='scheduled' AND m.kickoff_at>=now() AND m.kickoff_at<now()+interval '7 days')::int upcoming_matches,
       count(m.id) FILTER(WHERE m.status='scheduled' AND m.kickoff_at>=now() AND m.kickoff_at<now()+interval '7 days'
         AND o.match_id IS NOT NULL)::int upcoming_odds,
@@ -59,21 +67,32 @@ export class DataCoverageService {
       count(m.id) FILTER(WHERE s.corners OR (h.home_corners IS NOT NULL AND h.away_corners IS NOT NULL))::int corners,
       COALESCE(e.count,0)::int examples,min(m.kickoff_at) earliest,max(m.kickoff_at) latest
     FROM leagues l LEFT JOIN matches m ON m.league_id=l.id LEFT JOIN stats s ON s.match_id=m.id
-    LEFT JOIN odds o ON o.match_id=m.id LEFT JOIN historical_match_stats h ON h.match_id=m.id
+    LEFT JOIN odds o ON o.match_id=m.id LEFT JOIN csv_odds co ON co.match_id=m.id
+    LEFT JOIN historical_match_stats h ON h.match_id=m.id
     LEFT JOIN examples e ON e.competition_id=l.id GROUP BY l.id,l.name,e.count ORDER BY l.name`);
-    const reports = await this.pool.query<{ report: ExpansionReport }>(`SELECT cursor->'report' report FROM collector_checkpoints
-      WHERE provider='fotmob' AND scope LIKE 'competition-expansion:%' AND cursor ? 'report' ORDER BY updated_at DESC`);
+    const [reports,csvImports] = await Promise.all([
+      this.pool.query<{ report: ExpansionReport }>(`SELECT cursor->'report' report FROM collector_checkpoints
+        WHERE provider='fotmob' AND scope LIKE 'competition-expansion:%' AND cursor ? 'report' ORDER BY updated_at DESC`),
+      this.pool.query(`SELECT source_key,competition,season,status,total_rows,valid_rows,imported_rows,statistics_rows,odds_rows,
+        cursor_row,last_error,started_at,completed_at,updated_at FROM historical_csv_imports
+        ORDER BY season DESC,competition`),
+    ]);
     const competitions = enrichCoverageTargets(coverageRows(result.rows, this.configured));
     const sum = (key: 'matches' | 'finishedMatches' | 'predictionHistoricalExamples' | 'matchesWithOdds' | 'matchesWithStats'
-      | 'matchesWithThreeBookmakers' | 'oddsSnapshots' | 'upcomingMatches7d' | 'upcomingMatchesWithOdds7d'
+      | 'matchesWithThreeBookmakers' | 'oddsSnapshots' | 'csvHistoricalOddsMatches' | 'csvHistoricalThreeBookmakers'
+      | 'csvHistoricalOddsQuotes' | 'upcomingMatches7d' | 'upcomingMatchesWithOdds7d'
       | 'upcomingMatchesWithThreeBookmakers7d') => competitions.reduce((total,c) => total+c[key], 0);
     return { competitions, summary: { totalMatches: sum('matches'), totalFinishedMatches: sum('finishedMatches'),
       totalHistoricalExamples: sum('predictionHistoricalExamples'), totalOddsCovered: sum('matchesWithOdds'),
       totalThreeBookmakerCovered: sum('matchesWithThreeBookmakers'), totalOddsSnapshots: sum('oddsSnapshots'),
+      csvHistoricalOddsMatches: sum('csvHistoricalOddsMatches'),
+      csvHistoricalThreeBookmakers: sum('csvHistoricalThreeBookmakers'),
+      csvHistoricalOddsQuotes: sum('csvHistoricalOddsQuotes'),
       upcomingMatches7d: sum('upcomingMatches7d'), upcomingOddsCovered7d: sum('upcomingMatchesWithOdds7d'),
       upcomingThreeBookmakerCovered7d: sum('upcomingMatchesWithThreeBookmakers7d'),
       totalStatsCovered: sum('matchesWithStats') },
       backfills: reports.rows.map(r => r.report).filter(r => competitions.some(c => c.providerId === r.providerId)),
+      publicCsvImports: csvImports.rows,
       targetPolicy: DATA_TARGET_V1,
       generatedAt: new Date().toISOString(), cacheSeconds: 300 };
   }

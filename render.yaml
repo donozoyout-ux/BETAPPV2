@@ -82,6 +82,16 @@ services:
         value: "1"
       - key: COMPETITION_BACKFILL_AUTO_INTERVAL_MS
         value: "900000"
+      - key: PUBLIC_CSV_IMPORT_ENABLED
+        value: "true"
+      - key: PUBLIC_CSV_IMPORT_BASE_URL
+        value: https://football-data.co.uk
+      - key: PUBLIC_CSV_IMPORT_SEASONS
+        value: 2526,2425
+      - key: PUBLIC_CSV_IMPORT_BATCH_SIZE
+        value: "100"
+      - key: PUBLIC_CSV_IMPORT_INTERVAL_MS
+        value: "600000"
       - key: API_FOOTBALL_ENABLED
         value: "false"
       - key: API_FOOTBALL_KEY

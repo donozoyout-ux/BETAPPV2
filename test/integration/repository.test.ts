@@ -1,3 +1,5 @@
+import { calibrationMetadataSql,calibrationRowsSql,decodeCalibrationRows } from '../../src/odds-neighbors/calibration-source.js';
+import { calibrationReport } from '../../src/odds-neighbors/calibration.js';
 import { runCompetitionBackfill } from '../../src/historical/competition-backfill.js';
 import { DataCoverageService } from '../../src/data/coverage.js';
 import type { NormalizedMatch, MatchStatistics } from '../../src/domain/types.js';
@@ -626,6 +628,19 @@ describe('FootballRepository integration', () => {
       league:{...base.league,providerExternalId:'40',name:'Belgian Pro League'},homeTeam:team('country-club','Turkey FC')});
     const ids = await pool.query('SELECT id,home_team_id FROM matches WHERE id=ANY($1::uuid[])',[[first,club]]);
     expect(ids.rows[0].home_team_id).not.toBe(ids.rows[1].home_team_id);
+  });
+
+  it('audits stored routes in a read-only transaction without writing prediction state', async()=>{
+    const client=await pool.connect();
+    try { await client.query('BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
+      const before=(await client.query('SELECT count(*) FROM prediction_journal')).rows[0].count;
+      const metadata=(await client.query(calibrationMetadataSql)).rows[0];const rows=(await client.query(calibrationRowsSql)).rows;
+      const decoded=decodeCalibrationRows(rows);expect(decoded.matchesWithRoutes).toBeGreaterThan(0);
+      const report=calibrationReport(decoded.records,metadata,'2026-09-24T00:00:00Z');
+      expect(report.safety).toMatchObject({parityFailures:0,leakageViolations:0,productionThresholdsChanged:false});
+      expect((await client.query('SELECT count(*) FROM prediction_journal')).rows[0].count).toBe(before);
+      await client.query('ROLLBACK');
+    }finally{client.release();}
   });
 
 });

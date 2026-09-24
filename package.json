@@ -9,6 +9,7 @@
     "node": ">=22 <26"
   },
   "scripts": {
+    "odds-neighbors:calibrate": "tsx src/odds-neighbors/calibration-cli.ts",
     "build": "node scripts/clean.mjs && tsc -p tsconfig.build.json && node scripts/copy-assets.mjs",
     "start": "node dist/server.js",
     "start:worker": "node dist/worker.js",

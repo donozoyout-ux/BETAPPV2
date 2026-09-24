@@ -14,7 +14,7 @@ function outcome(row: Row): MatchOutcomeData { return { matchId: String(row.matc
   homeYellowCards: row.home_yellow_cards == null ? null : Number(row.home_yellow_cards), awayYellowCards: row.away_yellow_cards == null ? null : Number(row.away_yellow_cards),
   homeRedCards: row.home_red_cards == null ? null : Number(row.home_red_cards), awayRedCards: row.away_red_cards == null ? null : Number(row.away_red_cards) }; }
 function identity(route: OddsRoute) { return `${route.marketType}|${route.marketName}|${route.line ?? 'null'}|${route.selection}`; }
-function routeCandidates(data: MatchOutcomeData, snapshots: OddsSnapshot[], generatedAt: Date): OddsRoute[] {
+export function routeCandidates(data: MatchOutcomeData, snapshots: OddsSnapshot[], generatedAt: Date): OddsRoute[] {
   const markets = new Map<string, OddsSnapshot[]>();
   for (const item of snapshots) { const key = `${item.marketType}|${item.marketName}|${item.line ?? 'null'}`; markets.set(key, [...(markets.get(key) ?? []), item]); }
   const routes: OddsRoute[] = [];

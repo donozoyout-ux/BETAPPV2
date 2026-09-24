@@ -1,0 +1,22 @@
+{
+  "version": "ODDS_NEIGHBOR_CALIBRATION_V2",
+  "status": "AWAITING_WORKSPACE_CONFIRMATION",
+  "baseBranch": "codex/odds-neighbor-reliability-v1",
+  "baseCommit": "0e5851de568242d900d7dd7a594e7bd893c41e81",
+  "v1Present": true,
+  "realDataUsed": false,
+  "dataset": null,
+  "metrics": null,
+  "productionThresholdsChanged": false,
+  "executionAuthority": false,
+  "aiPredictionAuthority": false,
+  "blocker": "Render requires user confirmation of workspace before read-only database queries. No stored records have been queried.",
+  "tests": {
+    "previous": 255,
+    "added": 9,
+    "expectedTotal": 264,
+    "localUnitPassed": 252,
+    "localPostgreSQL": "UNAVAILABLE_CONTAINER_RUNTIME"
+  },
+  "regenerate": "npm run odds-neighbors:calibrate -- --input stored-snapshot.json"
+}

@@ -35,7 +35,8 @@ export class DataCoverageService {
         bool_or(period='ALL' AND stat_key IN('corners','corner_kicks') AND home_value IS NOT NULL AND away_value IS NOT NULL) corners
       FROM match_statistics GROUP BY match_id
     ), odds AS (
-      SELECT o.match_id,count(*)::int snapshots,count(DISTINCT o.provider)::int bookmakers
+      SELECT o.match_id,count(*)::int snapshots,
+        count(DISTINCT regexp_replace(lower(o.provider),'^[^:]+:',''))::int bookmakers
       FROM odds_snapshots o JOIN matches om ON om.id=o.match_id
       WHERE o.captured_at < om.kickoff_at AND o.odds_decimal > 1
       GROUP BY o.match_id

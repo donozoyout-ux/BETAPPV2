@@ -20,8 +20,11 @@ describe('data coverage and control audit', () => {
       target:{targetFinishedMatches:80,targetMatchesWithStats:56,needsBackfill:true}});
     expect(a.summary).toMatchObject({totalMatches:5,totalHistoricalExamples:6});
     expect(coverageAuditChecks(a)[0]?.status).toBe('WARN');
+    expect(coverageAuditChecks(a).find(item => item.key === 'DATA_TARGET_PROGRESS')?.status).toBe('WARN');
     expect(coverageAuditChecks({...a,competitions:a.competitions.slice(0,1)})[0]?.status).toBe('PASS');
     expect(dataPoolCard(a)).toContain('Eredivisie');
+    expect(dataPoolCard(a)).toContain('300');
+    expect(dataPoolCard(a)).toContain('DATA_TARGET_V1');
   });
   it('reports fatal-before-fixtures as FAIL, partial failures WARN and clean imports PASS', () => {
     const base = {competitions:enrichCoverageTargets(coverageRows(rows,['Eredivisie'])),summary:{totalMatches:5,totalFinishedMatches:4,totalHistoricalExamples:6,totalOddsCovered:2,totalStatsCovered:3},targetPolicy:DATA_TARGET_V1,generatedAt:'now',cacheSeconds:300};

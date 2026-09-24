@@ -25,6 +25,13 @@ export type PublicCsvDataset = PublicCsvLeagueSource & {
   url: string;
 };
 
+export function currentFootballDataSeasonCode(now = new Date()): string {
+  const year = now.getUTCFullYear();
+  const month = now.getUTCMonth() + 1;
+  const start = month >= 7 ? year : year - 1;
+  return `${String(start).slice(-2)}${String(start + 1).slice(-2)}`;
+}
+
 export function seasonLabel(code: string): string {
   if (!/^\d{4}$/.test(code)) throw new Error(`Invalid Football-Data season code: ${code}`);
   const start = 2000 + Number(code.slice(0,2));

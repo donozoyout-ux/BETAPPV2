@@ -16,6 +16,7 @@ import { adaptiveRuleConfigHash, adaptiveRuleEvaluationInputHash, generateAdapti
 import type { HistoricalExample, PredictionEvaluation, PredictionTarget, SettlementOutcome } from './types.js';
 import { inspectPredictionRow } from './gate-inspector.js';
 import { isCompetitionConfigured } from '../matching/competition.js';
+import { wilsonInterval } from './similarity.js';
 
 function withPredictionGate(row: Record<string, unknown>, now = new Date(), config: PredictionConfig = predictionConfig) {
   const facts = { prediction_run_exists: true, odds_analysis_exists: true, ...row };
@@ -76,6 +77,75 @@ export class PredictionRepository {
   async ensureModel(config: PredictionConfig = predictionConfig) {
     await this.pool.query(`INSERT INTO prediction_model_versions(model_version,config_hash,config)
       VALUES($1,$2,$3::jsonb) ON CONFLICT DO NOTHING`, [config.modelVersion,predictionConfigHash(config),JSON.stringify(config)]);
+  }
+
+  async csvStageResearch(limit = 100) {
+    const safeLimit = Math.max(1, Math.min(300, Math.trunc(limit)));
+    const [groups, totals] = await Promise.all([
+      this.pool.query(`SELECT l.name competition,e.market_type,e.market_name,e.line,e.selection,e.movement_class,
+        count(*)::int examples,
+        count(*) FILTER(WHERE e.settlement_result NOT IN('PUSH','VOID'))::int binary_examples,
+        count(*) FILTER(WHERE e.settlement_result IN('WIN','HALF_WIN'))::int positive_examples,
+        avg(e.closing_fair_probability)::numeric average_closing_fair_probability,
+        avg(e.probability_delta_pp)::numeric average_probability_delta_pp,
+        avg(e.movement_agreement_ratio)::numeric average_agreement,
+        avg(CASE e.settlement_result
+          WHEN 'WIN' THEN e.closing_odds-1
+          WHEN 'LOSS' THEN -1
+          WHEN 'HALF_WIN' THEN 0.5*(e.closing_odds-1)
+          WHEN 'HALF_LOSS' THEN -0.5
+          ELSE 0 END)::numeric average_reference_paper_return
+        FROM prediction_stage_historical_examples e
+        JOIN leagues l ON l.id=e.competition_id
+        WHERE e.research_eligible=true AND e.official_eligible=false AND e.timing_known=false
+        GROUP BY l.id,l.name,e.market_type,e.market_name,e.line,e.selection,e.movement_class
+        ORDER BY binary_examples DESC,examples DESC,l.name,e.market_type,e.market_name,e.line,e.selection,e.movement_class
+        LIMIT $1`,[safeLimit]),
+      this.pool.query(`SELECT count(*)::int total,
+        count(*) FILTER(WHERE research_eligible)::int research_eligible,
+        count(*) FILTER(WHERE official_eligible)::int invalid_official,
+        count(*) FILTER(WHERE timing_known)::int invalid_timing_known,
+        count(DISTINCT match_id)::int matches,
+        count(DISTINCT competition_id)::int competitions
+        FROM prediction_stage_historical_examples`),
+    ]);
+    const rows = groups.rows.filter((row) => this.competitionAllowed(row.competition)).map((row) => {
+      const binary = Number(row.binary_examples ?? 0);
+      const positive = Number(row.positive_examples ?? 0);
+      const rate = binary > 0 ? positive / binary : null;
+      const averageFair = row.average_closing_fair_probability == null ? null : Number(row.average_closing_fair_probability);
+      const [wilsonLower95,wilsonUpper95] = wilsonInterval(positive,binary);
+      return {
+        competition:String(row.competition),marketType:String(row.market_type),marketName:String(row.market_name),
+        line:row.line==null?null:Number(row.line),selection:String(row.selection),movementClass:String(row.movement_class),
+        examples:Number(row.examples ?? 0),binaryExamples:binary,positiveExamples:positive,positiveRate:rate,
+        wilsonLower95,wilsonUpper95,averageClosingFairProbability:averageFair,
+        calibrationGapPp:rate==null||averageFair==null?null:(rate-averageFair)*100,
+        averageProbabilityDeltaPp:row.average_probability_delta_pp==null?null:Number(row.average_probability_delta_pp),
+        averageAgreement:row.average_agreement==null?null:Number(row.average_agreement),
+        referencePaperRoi:row.average_reference_paper_return==null?null:Number(row.average_reference_paper_return),
+        evidenceLevel:binary>=100?'LARGE_SAMPLE':binary>=30?'DESCRIPTIVE':'INSUFFICIENT_DATA',
+        promotionEligible:false,
+        promotionBlockedReason:'EXACT_CAPTURE_TIME_UNKNOWN',
+      };
+    });
+    const total = totals.rows[0] ?? {};
+    return {
+      version:'CSV_STAGE_RESEARCH_V1' as const,
+      researchOnly:true as const,
+      exactCaptureTimeKnown:false as const,
+      officialPredictionEligible:false as const,
+      autoApply:false as const,
+      executionAuthority:false as const,
+      aiPredictionAuthority:false as const,
+      summary:{
+        total:Number(total.total ?? 0),researchEligible:Number(total.research_eligible ?? 0),
+        matches:Number(total.matches ?? 0),competitions:Number(total.competitions ?? 0),
+        invalidOfficial:Number(total.invalid_official ?? 0),invalidTimingKnown:Number(total.invalid_timing_known ?? 0),
+      },
+      groups:rows,
+      generatedAt:new Date(),
+    };
   }
 
   async loadHistoricalExamples(before?: Date, includeIneligible = false): Promise<HistoricalExample[]> {

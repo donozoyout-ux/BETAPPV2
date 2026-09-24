@@ -20,7 +20,7 @@ describe('data coverage and control audit', () => {
     });
     const service = new DataCoverageService({query} as never,['Eredivisie','WorldCup']);
     const [a,b] = await Promise.all([service.get(),service.get()]); await service.get();
-    expect(a).toEqual(b); expect(query).toHaveBeenCalledTimes(6);
+    expect(a).toEqual(b); expect(query).toHaveBeenCalledTimes(7);
     expect(a.competitions[0]).toMatchObject({type:'CLUB',matches:5,matchesWithStats:3,matchesWithOdds:2,
       matchesWithThreeBookmakers:1,oddsSnapshots:18,csvHistoricalOddsMatches:3,csvHistoricalThreeBookmakers:2,
       csvHistoricalOddsQuotes:42,csvStageMatches:2,csvStageExamples:12,csvStageResearchEligible:9,
@@ -46,7 +46,7 @@ describe('data coverage and control audit', () => {
       csvHistoricalOddsMatches:3,csvHistoricalThreeBookmakers:2,csvHistoricalOddsQuotes:42,
       csvStageMatches:2,csvStageExamples:12,csvStageResearchEligible:9,
       upcomingMatches7d:2,upcomingOddsCovered7d:1,upcomingThreeBookmakerCovered7d:1,totalStatsCovered:3},
-      backfills:[],publicCsvImports:[],publicCsvStageRefreshes:[],
+      backfills:[],publicCsvImports:[],publicCsvStageRefreshes:[],openFootballImports:[],
       shadowSafety:{total:12,invalid_official:0,invalid_timing_known:0},shadowResearch:[],
       targetPolicy:DATA_TARGET_V1,generatedAt:'now',cacheSeconds:300};
     const report = {...blankReport({id:57,key:'Eredivisie',name:'Eredivisie'},false),completedAt:new Date().toISOString()};

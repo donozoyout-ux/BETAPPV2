@@ -12,7 +12,8 @@ function fakePool(values: { invalid?: number; stale?: number; pending?: number; 
     if (sql.includes('suspicious')) return { rows: [{ suspicious: values.suspicious ?? 0 }] };
     if (sql.includes('FROM pg_trigger')) return { rows: [{ count: values.triggers ?? 2 }] };
     if (sql.includes('FROM live_provider_health')) return { rows: [{ status: values.api ?? 'SUPPORTED' }] };
-    if (sql.includes('WITH stats AS') || sql.includes("scope LIKE 'competition-expansion:%'")) return { rows: [] };
+    if (sql.includes('WITH stats AS') || sql.includes("scope LIKE 'competition-expansion:%'")
+      || sql.includes('FROM historical_csv_imports')) return { rows: [] };
     if (sql.includes('INSERT INTO control_audit_runs')) return { rows: [{
       id: 1, version: 'CONTROL_AUDIT_V1', status: values.invalid ? 'FAIL' : 'PASS',
       checked_at: new Date(), checks: [], summary: {},

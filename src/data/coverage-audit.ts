@@ -15,6 +15,9 @@ export function coverageAuditChecks(data: DataCoverage): ControlAuditCheck[] {
     needsBackfill: c.target.needsBackfill,
   }));
   const targetGap = targetRows.some((row) => row.needsBackfill);
+  const csvImports = data.publicCsvImports;
+  const csvComplete = csvImports.length > 0 && csvImports.every((row) => String(row.status) === 'COMPLETED');
+  const csvFailed = csvImports.filter((row) => String(row.status) === 'FAILED').length;
   return [ { key: 'COMPETITION_DATA_COVERAGE', status: rows.some(r => r.status === 'WARN') ? 'WARN' : 'PASS', value: rows,
     message: rows.some(r => r.status === 'WARN') ? 'Bazı etkin lig/turnuvalarda henüz kalıcı maç verisi yok.' : 'Etkin lig/turnuvalarda kalıcı maç verisi mevcut.' },
   { key: 'HISTORICAL_IMPORT_HEALTH', status: importStatus, value: last ?? null,
@@ -30,5 +33,12 @@ export function coverageAuditChecks(data: DataCoverage): ControlAuditCheck[] {
     message: data.summary.upcomingMatches7d === 0 ? 'Önümüzdeki 7 günde takip edilen planlı maç yok.'
       : data.summary.upcomingOddsCovered7d === data.summary.upcomingMatches7d
         ? 'Önümüzdeki 7 günlük maçların tamamında gerçek pre-match odds snapshotı mevcut.'
-        : 'Önümüzdeki 7 günlük bazı maçlarda henüz gerçek pre-match odds snapshotı eksik.' } ];
+        : 'Önümüzdeki 7 günlük bazı maçlarda henüz gerçek pre-match odds snapshotı eksik.' },
+  { key: 'PUBLIC_CSV_IMPORT_HEALTH',
+    status: csvComplete ? 'PASS' : 'WARN',
+    value: { datasets: csvImports.length, completed: csvImports.filter((row) => String(row.status) === 'COMPLETED').length,
+      failed: csvFailed, archivedOddsQuotes: data.summary.csvHistoricalOddsQuotes },
+    message: csvComplete ? 'Açık Football-Data CSV seed kapsamı tamamlandı.'
+      : csvFailed > 0 ? 'Bazı açık CSV datasetleri geçici olarak başarısız; worker diğer datasetlerle devam ediyor.'
+      : 'Açık CSV historical seed halen kontrollü şekilde devam ediyor.' } ];
 }

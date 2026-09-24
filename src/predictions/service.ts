@@ -120,7 +120,7 @@ export class PredictionRepository {
         line:row.line==null?null:Number(row.line),selection:String(row.selection),movementClass:String(row.movement_class),
         examples:Number(row.examples ?? 0),binaryExamples:binary,positiveExamples:positive,positiveRate:rate,
         wilsonLower95,wilsonUpper95,averageClosingFairProbability:averageFair,
-        calibrationGapPp:rate==null||averageFair==null?null:(rate-averageFair)*100,
+        calibrationGapPp:rate==null||averageFair==null?null:Number(((rate-averageFair)*100).toFixed(6)),
         averageProbabilityDeltaPp:row.average_probability_delta_pp==null?null:Number(row.average_probability_delta_pp),
         averageAgreement:row.average_agreement==null?null:Number(row.average_agreement),
         referencePaperRoi:row.average_reference_paper_return==null?null:Number(row.average_reference_paper_return),

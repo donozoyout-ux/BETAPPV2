@@ -17,6 +17,7 @@ import { OddsRepository } from './db/odds-repository.js';
 import { OddsCollector } from './collector/odds-collector.js';
 import { PredictionRepository, PredictionService } from './predictions/service.js';
 import { ControlAuditService } from './control-audit.js';
+import { CompetitionAutoBackfill } from './historical/competition-auto-backfill.js';
 
 const config = loadConfig();
 const logger = createLogger(config, 'betapp-worker');
@@ -48,6 +49,7 @@ const oddsCollector = config.NOWGOAL_ENABLED
 const predictionRepository = new PredictionRepository(pool, config.SUPPORTED_COMPETITIONS);
 const predictionService = new PredictionService(predictionRepository);
 const controlAudit = new ControlAuditService(pool, config);
+const competitionAutoBackfill = new CompetitionAutoBackfill(pool, config, fotmob, logger);
 const collectors = [...footballCollectors, ...(oddsCollector ? [oddsCollector] : [])];
 const liveRepository = new LiveRepository(pool);
 const secondaryRefresh = new SecondaryLiveRefresh(new ApiFootballProvider(config), liveRepository, config, logger);
@@ -147,6 +149,14 @@ async function runCycle(): Promise<void> {
       logger.info({ status: audit.status, version: audit.version }, 'Control audit completed');
     } catch (error) {
       logger.error({ err: error }, 'Control audit failed; continuing');
+    }
+  }
+  if (!stopped && competitionAutoBackfill.enabled()) {
+    try {
+      const result = await competitionAutoBackfill.runNext();
+      logger.info({ result }, 'Competition auto backfill cycle completed');
+    } catch (error) {
+      logger.error({ err: error }, 'Competition auto backfill failed; continuing');
     }
   }
 }

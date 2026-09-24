@@ -250,6 +250,11 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
     return reply.code(status === 'ok' ? 200 : 503).send({ app: 'UP', status, database, ...operations,
       apiFootball: !config.API_FOOTBALL_ENABLED || !config.API_FOOTBALL_KEY.trim() ? { status: 'NOT_CONFIGURED' }
         : repository.liveProviderHealth ? await repository.liveProviderHealth() : { status: 'UNAVAILABLE' },
+      competitionAutoBackfill: {
+        enabled: config.BACKFILL_ENABLED && config.COMPETITION_BACKFILL_AUTO_ENABLED && config.FOTMOB_ENABLED,
+        seasons: config.COMPETITION_BACKFILL_AUTO_SEASONS,
+        scope: 'PRIORITY',
+      },
       timestamp: new Date().toISOString() });
   });
 

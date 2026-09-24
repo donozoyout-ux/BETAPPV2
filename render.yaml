@@ -75,7 +75,11 @@ services:
       - key: COLLECTOR_ENABLED
         value: "true"
       - key: BACKFILL_ENABLED
-        value: "false"
+        value: "true"
+      - key: COMPETITION_BACKFILL_AUTO_ENABLED
+        value: "true"
+      - key: COMPETITION_BACKFILL_AUTO_SEASONS
+        value: "1"
       - key: API_FOOTBALL_ENABLED
         value: "false"
       - key: API_FOOTBALL_KEY

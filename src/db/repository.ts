@@ -1,13 +1,16 @@
+import { DataCoverageService } from '../data/coverage.js';
 import { guardPrimary, LiveRepository } from '../live/repository.js';
 import { createHash } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import type { MatchStatistics, NormalizedLeague, NormalizedMatch, NormalizedTeam } from '../domain/types.js';
 import { resolveConsensus } from '../consensus/engine.js';
-import { competitionKey } from '../matching/competition.js';
-import { kickoffConfidence, normalizeTeamAlias } from '../matching/team-alias.js';
+import { competitionKey, competitionKind } from '../matching/competition.js';
+import { kickoffConfidence, normalizeTeamAlias, nationalTeamAliases, isKnownNationalName } from '../matching/team-alias.js';
 import type { DatabasePool } from './pool.js';
 import { migrationStatus } from './migrator.js';
 import { databaseErrorMessage } from './error.js';
+
+export type MatchWriteOutcome = { matchesInserted: number; matchesUpdated: number; teamsCreated: number; duplicateMatchesPrevented: number };
 
 type EntityType = 'league' | 'team' | 'match';
 
@@ -141,22 +144,27 @@ export class FootballRepository {
     return id;
   }
 
-  private async upsertTeam(client: PoolClient, provider: string, team: NormalizedTeam) {
+  private async upsertTeam(client: PoolClient, provider: string, team: NormalizedTeam, national = false, outcome?: MatchWriteOutcome) {
     await this.lockEntity(client, provider, 'team', team.providerExternalId);
     let id = await this.mapping(client, provider, 'team', team.providerExternalId);
     if (!id) {
       const normalizedAlias = normalizeTeamAlias(team.name);
-      const alias = await client.query<{ team_id: string }>(
-        'SELECT team_id FROM team_aliases WHERE normalized_alias=$1 ORDER BY provider NULLS FIRST LIMIT 1',
-        [normalizedAlias],
+      const aliases = national ? nationalTeamAliases(team.name) : [normalizedAlias];
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`team-alias:${[...aliases].sort()[0]}`]);
+      const alias = await client.query<{ team_id: string; name: string }>(
+        'SELECT DISTINCT ta.team_id,t.name FROM team_aliases ta JOIN teams t ON t.id=ta.team_id WHERE normalized_alias=ANY($1::text[])',
+        [aliases],
       );
-      id = alias.rows[0]?.team_id;
+      const candidates = alias.rows.filter(row => isKnownNationalName(team.name) === isKnownNationalName(row.name));
+      // Ambiguous identities are never merged by picking an arbitrary team.
+      id = candidates.length === 1 ? candidates[0]!.team_id : undefined;
       if (!id) {
         const inserted = await client.query<{ id: string }>(
           `INSERT INTO teams(name,short_name,country,logo_url) VALUES ($1,$2,$3,$4) RETURNING id`,
           [team.name, team.shortName, team.country, team.logoUrl],
         );
         id = inserted.rows[0]!.id;
+        if (outcome) outcome.teamsCreated++;
       }
       await client.query(
         `INSERT INTO team_aliases(team_id,alias,normalized_alias,provider) VALUES($1,$2,$3,$4)
@@ -195,11 +203,11 @@ export class FootballRepository {
     );
   }
 
-  async upsertMatch(provider: string, match: NormalizedMatch): Promise<string> {
+  async upsertMatch(provider: string, match: NormalizedMatch, outcome?: MatchWriteOutcome): Promise<string> {
     return this.withTransaction(async (client) => {
       const leagueId = await this.upsertLeague(client, provider, match.league);
-      const homeTeamId = await this.upsertTeam(client, provider, match.homeTeam);
-      const awayTeamId = await this.upsertTeam(client, provider, match.awayTeam);
+      const homeTeamId = await this.upsertTeam(client, provider, match.homeTeam, competitionKind(match.league.name) === 'INTERNATIONAL', outcome);
+      const awayTeamId = await this.upsertTeam(client, provider, match.awayTeam, competitionKind(match.league.name) === 'INTERNATIONAL', outcome);
       await this.lockEntity(client, provider, 'match', match.providerExternalId);
       let id = await this.mapping(client, provider, 'match', match.providerExternalId);
       if (id) {
@@ -207,8 +215,12 @@ export class FootballRepository {
           'SELECT status,source_updated_at FROM matches WHERE id=$1 FOR UPDATE', [id]);
         const current = existing.rows[0];
         if (current && ((current.status === 'finished' && match.status !== 'finished')
-          || current.source_updated_at > match.sourceUpdatedAt)) return id;
+          || current.source_updated_at > match.sourceUpdatedAt)) {
+          if (outcome) outcome.duplicateMatchesPrevented++;
+          return id;
+        }
       }
+      let insertedMatch = false;
       let matchConfidence = 'EXACT';
       const values = [
         leagueId,
@@ -237,6 +249,8 @@ export class FootballRepository {
             `INSERT INTO matches(league_id,home_team_id,away_team_id,kickoff_at,status,round,season,home_score,away_score,source_updated_at)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`, values);
           id = inserted.rows[0]!.id;
+          insertedMatch = true;
+          if (outcome) outcome.matchesInserted++;
           matchConfidence = candidate ? matchConfidence : 'UNMATCHED';
         }
         await client.query(
@@ -248,6 +262,7 @@ export class FootballRepository {
           [provider, match.providerExternalId, id, match.sourceUpdatedAt, matchConfidence],
         );
       }
+      if (!insertedMatch && outcome) outcome.duplicateMatchesPrevented++;
       if (!await guardPrimary(client, id, provider, match)) return id;
       const updated = await client.query(
         `UPDATE matches SET league_id=$2,home_team_id=$3,away_team_id=$4,kickoff_at=$5,status=$6,
@@ -255,6 +270,7 @@ export class FootballRepository {
          WHERE id=$1 AND (status <> 'finished' OR $6 = 'finished')
          AND (source_updated_at IS NULL OR source_updated_at <= $11) RETURNING id`, [id, ...values]);
       if (!updated.rows.length) return id;
+      if (!insertedMatch && outcome) outcome.matchesUpdated++;
       await this.touchMapping(client, provider, 'match', match.providerExternalId, match.sourceUpdatedAt);
       await this.savePayload(client, provider, 'match', match.providerExternalId, match.raw, match.sourceUpdatedAt);
       for (const [metric, value] of [['home_score', match.homeScore], ['away_score', match.awayScore]] as const) {
@@ -565,6 +581,14 @@ export class FootballRepository {
        AND os.provider LIKE 'nowgoal:%'
        ORDER BY m.kickoff_at,home.name,os.market_type,os.line NULLS FIRST,os.provider,os.selection
        LIMIT $1`, [safeLimit])).rows;
+  }
+
+  private coverageServices = new Map<string, DataCoverageService>();
+  async dataCoverage(configured: readonly string[]) {
+    const key = [...configured].sort().join(',');
+    let service = this.coverageServices.get(key);
+    if (!service) { service = new DataCoverageService(this.pool, configured); this.coverageServices.set(key, service); }
+    return service.get();
   }
 
   async liveSources(id: string) { return new LiveRepository(this.pool).read(id); }

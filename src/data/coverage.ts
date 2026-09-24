@@ -1,0 +1,60 @@
+import type { DatabasePool } from '../db/pool.js';
+import { fotmobCompetitions } from '../providers/fotmob.js';
+import { competitionKey, competitionKind } from '../matching/competition.js';
+import type { ExpansionReport } from '../historical/competition-scope.js';
+export function coverageRows(rows: Array<Record<string, unknown>>, configured: readonly string[]) {
+  return fotmobCompetitions.filter(c => configured.includes(c.key)).map(c => {
+    const matches = rows.filter(row => competitionKey(String(row.competition)) === competitionKey(c.name));
+    const sum = (key: string) => matches.reduce((total,row) => total + Number(row[key] ?? 0), 0);
+    const dates = (key: string) => matches.map(r => r[key]).filter(Boolean).map(d => new Date(String(d)).toISOString()).sort();
+    return { competition: String(c.name), configKey: c.key, providerId: c.id, type: competitionKind(c.name),
+      matches: sum('matches'), finishedMatches: sum('finished_matches'), matchesWithStats: sum('stats'),
+      matchesWithOdds: sum('odds'), matchesWithCorners: sum('corners'), predictionHistoricalExamples: sum('examples'),
+      earliestMatch: dates('earliest')[0] ?? null, latestMatch: dates('latest').at(-1) ?? null };
+  });
+}
+export class DataCoverageService {
+  private cache: { expiresAt: number; value: Awaited<ReturnType<DataCoverageService['load']>> } | undefined;
+  private pending: Promise<Awaited<ReturnType<DataCoverageService['load']>>> | undefined;
+  constructor(private readonly pool: DatabasePool, private readonly configured: readonly string[]) {}
+  async get() {
+    if (this.cache && this.cache.expiresAt > Date.now()) return this.cache.value;
+    if (this.pending) return this.pending;
+    this.pending = this.load();
+    try { const value = await this.pending; this.cache = { value, expiresAt: Date.now()+300_000 }; return value; }
+    finally { this.pending = undefined; }
+  }
+  private async load() {
+    // Aggregate each evidence table before joining to avoid cross-product overcounts.
+    const result = await this.pool.query(`WITH stats AS (
+      SELECT match_id,bool_or(home_value IS NOT NULL OR away_value IS NOT NULL) available,
+        bool_or(period='ALL' AND stat_key IN('corners','corner_kicks') AND home_value IS NOT NULL AND away_value IS NOT NULL) corners
+      FROM match_statistics GROUP BY match_id
+    ), odds AS (
+      SELECT DISTINCT o.match_id FROM odds_snapshots o JOIN matches m ON m.id=o.match_id
+      WHERE o.captured_at < m.kickoff_at AND o.odds_decimal > 1
+    ), examples AS (SELECT competition_id,count(*)::int count FROM prediction_historical_examples GROUP BY competition_id)
+    SELECT l.name competition,count(m.id)::int matches,
+      count(m.id) FILTER(WHERE m.status='finished')::int finished_matches,
+      count(m.id) FILTER(WHERE s.available OR h.home_corners IS NOT NULL OR h.away_corners IS NOT NULL
+        OR h.home_shots IS NOT NULL OR h.away_shots IS NOT NULL OR h.home_possession IS NOT NULL OR h.away_possession IS NOT NULL
+        OR h.home_shots_on_target IS NOT NULL OR h.away_shots_on_target IS NOT NULL
+        OR h.home_fouls IS NOT NULL OR h.away_fouls IS NOT NULL OR h.home_yellow_cards IS NOT NULL OR h.away_yellow_cards IS NOT NULL
+        OR h.home_red_cards IS NOT NULL OR h.away_red_cards IS NOT NULL OR h.home_xg IS NOT NULL OR h.away_xg IS NOT NULL)::int stats,
+      count(m.id) FILTER(WHERE o.match_id IS NOT NULL)::int odds,
+      count(m.id) FILTER(WHERE s.corners OR (h.home_corners IS NOT NULL AND h.away_corners IS NOT NULL))::int corners,
+      COALESCE(e.count,0)::int examples,min(m.kickoff_at) earliest,max(m.kickoff_at) latest
+    FROM leagues l LEFT JOIN matches m ON m.league_id=l.id LEFT JOIN stats s ON s.match_id=m.id
+    LEFT JOIN odds o ON o.match_id=m.id LEFT JOIN historical_match_stats h ON h.match_id=m.id
+    LEFT JOIN examples e ON e.competition_id=l.id GROUP BY l.id,l.name,e.count ORDER BY l.name`);
+    const reports = await this.pool.query<{ report: ExpansionReport }>(`SELECT cursor->'report' report FROM collector_checkpoints
+      WHERE provider='fotmob' AND scope LIKE 'competition-expansion:%' AND cursor ? 'report' ORDER BY updated_at DESC`);
+    const competitions = coverageRows(result.rows, this.configured);
+    const sum = (key: 'matches' | 'finishedMatches' | 'predictionHistoricalExamples' | 'matchesWithOdds' | 'matchesWithStats') => competitions.reduce((total,c) => total+c[key], 0);
+    return { competitions, summary: { totalMatches: sum('matches'), totalFinishedMatches: sum('finishedMatches'),
+      totalHistoricalExamples: sum('predictionHistoricalExamples'), totalOddsCovered: sum('matchesWithOdds'), totalStatsCovered: sum('matchesWithStats') },
+      backfills: reports.rows.map(r => r.report).filter(r => competitions.some(c => c.providerId === r.providerId)),
+      generatedAt: new Date().toISOString(), cacheSeconds: 300 };
+  }
+}
+export type DataCoverage = Awaited<ReturnType<DataCoverageService['get']>>;

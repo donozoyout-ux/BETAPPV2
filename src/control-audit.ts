@@ -1,3 +1,5 @@
+import { DataCoverageService } from './data/coverage.js';
+import { coverageAuditChecks } from './data/coverage-audit.js';
 import type { AppConfig } from './config.js';
 import type { DatabasePool } from './db/pool.js';
 
@@ -10,7 +12,10 @@ export type ControlAuditCheck = {
 };
 
 export class ControlAuditService {
-  constructor(private readonly pool: DatabasePool, private readonly config: AppConfig) {}
+  private readonly coverage: DataCoverageService;
+  constructor(private readonly pool: DatabasePool, private readonly config: AppConfig) {
+    this.coverage = new DataCoverageService(pool, config.SUPPORTED_COMPETITIONS);
+  }
 
   async run(timeZone = 'Europe/Istanbul') {
     const persistence = (await this.pool.query(`SELECT
@@ -119,6 +124,8 @@ export class ControlAuditService {
           : apiStatus === 'NOT_CONFIGURED' ? 'API-Football opsiyonel ve kapalı.' : 'API-Football ikinci kaynak sağlıklı durumda değil.',
       },
     ];
+
+    checks.push(...coverageAuditChecks(await this.coverage.get()));
 
     const status: ControlAuditStatus = checks.some((item) => item.status === 'FAIL') ? 'FAIL'
       : checks.some((item) => item.status === 'WARN') ? 'WARN' : 'PASS';

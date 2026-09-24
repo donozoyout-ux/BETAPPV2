@@ -6,9 +6,10 @@ const legacyDefaultCompetitionKeys = ['PremierLeague','LaLiga','Bundesliga','Ser
 const internationalCompetitionKeys = ['WorldCup','EURO','EUROQualification',
   'UefaNationsLeagueA','UefaNationsLeagueB','UefaNationsLeagueC','UefaNationsLeagueD',
   'WorldCupQualificationUEFA','CopaAmerica','WorldCupQualificationCONMEBOL','InternationalFriendlies'] as const;
-const supportedCompetitionKeys = [...legacyDefaultCompetitionKeys,'BrasileiraoSerieA',...internationalCompetitionKeys] as const;
+const expansionCompetitionKeys = ['Eredivisie','BelgianProLeague','DanishSuperliga','Allsvenskan','GreekSuperLeague'] as const;
+const supportedCompetitionKeys = [...legacyDefaultCompetitionKeys,'BrasileiraoSerieA',...internationalCompetitionKeys,...expansionCompetitionKeys] as const;
 const acceptedCompetitionInputKeys = [...supportedCompetitionKeys,'MLS'] as const;
-const defaultCompetitionKeys = [...legacyDefaultCompetitionKeys,'BrasileiraoSerieA',...internationalCompetitionKeys] as const;
+const defaultCompetitionKeys = supportedCompetitionKeys;
 const previousDefaultCompetitionKeys = [...legacyDefaultCompetitionKeys,'MLS','BrasileiraoSerieA'] as const;
 const competitionList = z.string().default(defaultCompetitionKeys.join(',')).transform((value, context) => {
   const parsed = value.split(',').map((item) => item.trim()).filter(Boolean);

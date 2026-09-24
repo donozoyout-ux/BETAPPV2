@@ -23,6 +23,7 @@
     "providers:qualify": "tsx src/qualification/cli.ts",
     "data:backfill": "tsx src/corners/backfill-cli.ts",
     "data:audit": "tsx src/data/audit-cli.ts",
+    "backfill:competitions": "tsx src/historical/competition-backfill-cli.ts",
     "historical:backfill": "tsx src/historical/backfill-cli.ts",
     "historical:dry-run": "tsx src/historical/dry-run-cli.ts",
     "historical:qualify": "tsx src/historical/qualification-cli.ts",

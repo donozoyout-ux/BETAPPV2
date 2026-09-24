@@ -1,0 +1,40 @@
+import { describe, expect, it, vi } from 'vitest';
+import { coverageRows, DataCoverageService } from '../../src/data/coverage.js';
+import { coverageAuditChecks } from '../../src/data/coverage-audit.js';
+import { dataPoolCard } from '../../src/data/coverage-view.js';
+import { buildApp } from '../../src/app.js';
+import { loadConfig } from '../../src/config.js';
+import { createLogger } from '../../src/logger.js';
+import { blankReport } from '../../src/historical/competition-scope.js';
+const rows = [{ competition:'Eredivisie', matches:5, finished_matches:4, stats:3, odds:2, corners:1, examples:6, earliest:'2025-01-01',latest:'2026-01-01' }];
+describe('data coverage and control audit', () => {
+  it('distinguishes clubs/nations, zero coverage and caches concurrent reads for five minutes', async () => {
+    const query = vi.fn(async (sql: string) => ({rows:sql.includes('WITH stats AS') ? rows : []}));
+    const service = new DataCoverageService({query} as never,['Eredivisie','WorldCup']);
+    const [a,b] = await Promise.all([service.get(),service.get()]); await service.get();
+    expect(a).toEqual(b); expect(query).toHaveBeenCalledTimes(2);
+    expect(a.competitions[0]).toMatchObject({type:'CLUB',matches:5,matchesWithStats:3,matchesWithOdds:2});
+    expect(a.competitions[1]).toMatchObject({type:'INTERNATIONAL',matches:0,earliestMatch:null});
+    expect(a.summary).toMatchObject({totalMatches:5,totalHistoricalExamples:6});
+    expect(coverageAuditChecks(a)[0]?.status).toBe('WARN');
+    expect(coverageAuditChecks({...a,competitions:a.competitions.slice(0,1)})[0]?.status).toBe('PASS');
+    expect(dataPoolCard(a)).toContain('Eredivisie');
+  });
+  it('reports fatal-before-fixtures as FAIL, partial failures WARN and clean imports PASS', () => {
+    const base = {competitions:coverageRows(rows,['Eredivisie']),summary:{totalMatches:5,totalFinishedMatches:4,totalHistoricalExamples:6,totalOddsCovered:2,totalStatsCovered:3},generatedAt:'now',cacheSeconds:300};
+    const report = {...blankReport({id:57,key:'Eredivisie',name:'Eredivisie'},false),completedAt:new Date().toISOString()};
+    expect(coverageAuditChecks({...base,backfills:[{...report,status:'FAILED',fixturesPersisted:0}]})[1]?.status).toBe('FAIL');
+    expect(coverageAuditChecks({...base,backfills:[{...report,status:'PARTIAL',fixturesPersisted:3}]})[1]?.status).toBe('WARN');
+    expect(coverageAuditChecks({...base,backfills:[{...report,status:'PASS',fixturesPersisted:3}]})[1]?.status).toBe('PASS');
+  });
+  it('serves coverage API with explicit zeros and escaped HTML', async () => {
+    const service = new DataCoverageService({ query: async () => ({rows:[]}) } as never,['Eredivisie','WorldCup']);
+    const config = loadConfig({DATABASE_URL:'postgresql://localhost/test',LOG_LEVEL:'silent'});
+    const app = buildApp(config,{dataCoverage:()=>service.get()} as never,createLogger(config));
+    try { const response = await app.inject('/api/data-coverage'); expect(response.statusCode).toBe(200);
+      expect(response.json().summary.totalMatches).toBe(0); expect(response.headers['cache-control']).toContain('300');
+      const data = await service.get(); data.competitions[0]!.competition='<script>alert(1)</script>';
+      expect(dataPoolCard(data)).not.toContain('<script>alert');
+    } finally {await app.close();}
+  });
+});

@@ -1,4 +1,18 @@
 const aliases = new Map<string, string>([
+  ['eredivisie', 'eredivisie'],
+  ['netherlands eredivisie', 'eredivisie'],
+  ['first division a', 'belgian_pro_league'],
+  ['belgian pro league', 'belgian_pro_league'],
+  ['belgium first division a', 'belgian_pro_league'],
+  ['superligaen', 'danish_superliga'],
+  ['danish superliga', 'danish_superliga'],
+  ['denmark superliga', 'danish_superliga'],
+  ['allsvenskan', 'allsvenskan'],
+  ['swedish allsvenskan', 'allsvenskan'],
+  ['super league 1', 'greek_super_league'],
+  ['greek super league', 'greek_super_league'],
+  ['greece super league', 'greek_super_league'],
+
   ['premier league', 'premier_league'], ['la liga', 'la_liga'], ['laliga', 'la_liga'],
   ['bundesliga', 'bundesliga'], ['serie a', 'serie_a'], ['ligue 1', 'ligue_1'],
   ['super lig', 'super_lig'], ['super lig turkey', 'super_lig'], ['süper lig', 'super_lig'],
@@ -33,6 +47,8 @@ export function competitionKey(name: string): string | null {
 
 
 const configCompetitionKeys = new Map<string, string>([
+  ['Eredivisie', 'eredivisie'], ['BelgianProLeague', 'belgian_pro_league'],
+  ['DanishSuperliga', 'danish_superliga'], ['Allsvenskan', 'allsvenskan'], ['GreekSuperLeague', 'greek_super_league'],
   ['PremierLeague', 'premier_league'], ['LaLiga', 'la_liga'], ['Bundesliga', 'bundesliga'],
   ['SerieA', 'serie_a'], ['Ligue1', 'ligue_1'], ['SuperLig', 'super_lig'],
   ['ChampionsLeague', 'champions_league'], ['EuropaLeague', 'europa_league'],
@@ -49,4 +65,11 @@ export function isCompetitionConfigured(name: string, configuredKeys: readonly s
   const canonical = competitionKey(name);
   if (!canonical) return false;
   return configuredKeys.some((key) => configCompetitionKeys.get(key) === canonical);
+}
+
+export function competitionKind(name: string): 'CLUB' | 'INTERNATIONAL' {
+  const key = competitionKey(name);
+  return key && new Set(['world_cup','euro','euro_qualification','uefa_nations_league_a','uefa_nations_league_b',
+    'uefa_nations_league_c','uefa_nations_league_d','world_cup_qualification_uefa','copa_america',
+    'world_cup_qualification_conmebol','friendlies']).has(key) ? 'INTERNATIONAL' : 'CLUB';
 }

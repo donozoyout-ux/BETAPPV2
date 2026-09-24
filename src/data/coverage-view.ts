@@ -6,6 +6,10 @@ export function dataPoolCard(data: DataCoverage): string {
     ['Gerçek oran geçmişi olan maç',s.totalOddsCovered],['Prediction historical examples',s.totalHistoricalExamples]].map(([label,value]) => `<article class="card"><strong>${esc(label)}</strong><p>${esc(value)}</p></article>`).join('')}</div>
     <div class="scroll"><table><thead><tr><th>Lig / Turnuva</th><th>Tür</th><th>Maç</th><th>İstatistik</th><th>Oran</th><th>Historical örnek</th><th>Tarih aralığı</th></tr></thead><tbody>
     ${data.competitions.map(c => `<tr><td>${esc(c.competition)}</td><td>${c.type === 'CLUB' ? 'Kulüp' : 'Milli takım'}</td><td>${c.matches}</td><td>${c.matchesWithStats}</td><td>${c.matchesWithOdds}</td><td>${c.predictionHistoricalExamples}</td><td>${esc(c.earliestMatch)} — ${esc(c.latestMatch)}</td></tr>`).join('')}</tbody></table></div>
+    <h3>Otomatik veri yükleme</h3>
+    <div class="scroll"><table><thead><tr><th>Lig / Turnuva</th><th>Durum</th><th>Faz</th><th>Kaydedilen</th><th>İstatistik</th><th>Hata</th></tr></thead><tbody>
+    ${data.backfills.length ? data.backfills.slice(0,20).map(r => `<tr><td>${esc(r.competition)}</td><td>${esc(r.status)}</td><td>${esc(r.phase)}</td><td>${esc(r.fixturesPersisted)}</td><td>${esc(r.statisticsSucceeded)}</td><td>${esc(r.statisticsFailed)}</td></tr>`).join('')
+      : '<tr><td colspan="6">Henüz competition backfill raporu yok.</td></tr>'}</tbody></table></div>
     <p>Son ölçüm: ${esc(data.generatedAt)} · En az 5 dakika önbellek. Oran kapsamı yalnız gerçek maç öncesi kayıtlardır.</p>`;
 }
 export function dataPoolSection() {

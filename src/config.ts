@@ -25,7 +25,7 @@ const competitionList = z.string().default(defaultCompetitionKeys.join(',')).tra
   return migrated;
 });
 
-const footballDataSeasonList = z.string().default('2526,2425').transform((value, context) => {
+const footballDataSeasonList = z.string().default('2627,2526,2425').transform((value, context) => {
   const items = [...new Set(value.split(',').map((item) => item.trim()).filter(Boolean))];
   if (!items.length || items.some((item) => !/^\d{4}$/.test(item))) {
     context.addIssue({ code: 'custom', message: 'Expected Football-Data seasons such as 2526,2425' });
@@ -67,6 +67,7 @@ const schema = z.object({
   PUBLIC_CSV_IMPORT_SEASONS: footballDataSeasonList,
   PUBLIC_CSV_IMPORT_BATCH_SIZE: z.coerce.number().int().min(10).max(500).default(100),
   PUBLIC_CSV_IMPORT_INTERVAL_MS: z.coerce.number().int().min(300_000).default(600_000),
+  PUBLIC_CSV_CURRENT_REFRESH_MS: z.coerce.number().int().min(21_600_000).default(43_200_000),
   FOTMOB_ENABLED: booleanFromString.default(true),
   NOWGOAL_ENABLED: booleanFromString.default(true),
   NOWGOAL_FUTURE_DAYS: z.coerce.number().int().min(0).max(14).default(3),

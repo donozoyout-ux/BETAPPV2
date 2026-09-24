@@ -17,6 +17,7 @@ import type { Logger } from './logger.js';
 import type { PredictionRepository } from './predictions/service.js';
 import type { OddsIntelligenceRepository } from './odds-neighbors/repository.js';
 import type { OddsIntelligence } from './odds-neighbors/types.js';
+import { stageResearchCard, stageResearchScript } from './predictions/stage-research-view.js';
 import { isCompetitionConfigured } from './matching/competition.js';
 
 function oddsEvidence(analysis: OddsIntelligence | undefined): Record<string, unknown> | null {
@@ -233,6 +234,19 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
     version: 'CONTROL_AUDIT_V1',
     history: controlAudit ? await controlAudit.history(Number(request.query.limit ?? 20)) : [],
   }));
+
+  app.get('/stage-research.js', async (_request, reply) =>
+    reply.type('application/javascript').send(stageResearchScript));
+  app.get<{ Querystring: { limit?: string } }>('/api/research/csv-stage', async (request, reply) => {
+    const report = predictions ? await predictions.csvStageResearch(Number(request.query.limit ?? 100)) : {
+      version:'CSV_STAGE_RESEARCH_V1',researchOnly:true,exactCaptureTimeKnown:false,officialPredictionEligible:false,
+      autoApply:false,executionAuthority:false,aiPredictionAuthority:false,
+      summary:{total:0,researchEligible:0,matches:0,competitions:0,invalidOfficial:0,invalidTimingKnown:0},
+      groups:[],generatedAt:new Date(),
+    };
+    reply.header('Cache-Control','private, max-age=300');
+    return { ...report, html: stageResearchCard(report) };
+  });
 
   app.get('/data-coverage.js', async (_request, reply) => reply.type('application/javascript').send(dataPoolScript));
   app.get('/api/data-coverage', async (_request, reply) => {

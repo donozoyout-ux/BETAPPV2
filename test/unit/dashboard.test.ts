@@ -235,7 +235,7 @@ describe('renderDashboard', () => {
       predictionDiagnostics: { historical: { total: 217, eligible: 217 }, current: { targets: 0 } },
     });
     expect(html).toContain('Geçmiş analiz arşivi hazır');
-    expect(html).toContain('Historical analiz örnekleri');
+    expect(html).toContain('Tarihsel analiz örnekleri');
     expect(html).toContain('217');
     expect(html).toContain('14.348');
     expect(html).toContain('Arsenal — Chelsea');

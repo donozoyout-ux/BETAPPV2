@@ -1,8 +1,9 @@
+import { topNavigation, matchDetailTabs } from './ui/components.js';
 import { renderHistoricalNeighbors, historicalRateText } from './odds-neighbors/reliability-view.js';
 import type { HistoricalNeighbors } from './odds-neighbors/reliability.js';
 import { liveSection } from './live/view.js';
 import { escapeHtml, formatDate, gateValue, objectValue, optionalOdds, shell,
-  translateMarket, translateSelection } from './dashboard.js';
+  translateGrade, translateMarket, translateSelection } from './dashboard.js';
 
 export type MatchAnalysisPageData = {
   match: Record<string, unknown>;
@@ -152,7 +153,8 @@ export function renderMatchAnalysis(data: MatchAnalysisPageData): string {
   const match = data.match;
   const matchId = String(match.id ?? '');
   const gate = data.predictionGate ?? null;
-  const status = String(gate?.overallStatus ?? 'WAITING');
+  const status = gate?.overallStatus === 'OFFICIAL' && data.predictionDetail?.state !== 'LOCKED_PREDICTION'
+    ? 'WAITING' : String(gate?.overallStatus ?? 'WAITING');
   const candidate = objectValue(gate?.candidate);
   const historical = objectValue(candidate?.historical);
   const gates = arrayValue(gate?.gates);
@@ -168,46 +170,41 @@ export function renderMatchAnalysis(data: MatchAnalysisPageData): string {
   const runCount = Array.isArray(detail.runs) ? detail.runs.length : 0;
   const safetyGates = gates.filter((item) => ['SELF_AUDIT_GLOBAL','SELF_AUDIT_SEGMENT'].includes(String(item.key)));
 
-  return shell(`<div class="app-shell detail-shell"><aside class="sidebar"><a class="brand" href="/"><span class="brand-mark">B</span><span>BETAPP<small>Maç Analizi</small></span></a>
-    <div class="side-group"><div class="side-label">Maç Terminali</div><nav class="side-nav" aria-label="Maç analizi menüsü">
-      <a href="/"><span class="nav-icon">←</span>Genel Bakış</a><a class="active" href="#match-overview"><span class="nav-icon">◎</span>Maç Özeti</a>
-      <a href="#gate-inspector"><span class="nav-icon">✓</span>Gate Inspector</a><a href="#odds-route"><span class="nav-icon">↗</span>Oran Rotası</a>
-      <a href="#past-twins"><span class="nav-icon">∿</span>Geçmiş İkizler</a><a href="#match-statistics"><span class="nav-icon">▤</span>İstatistikler</a>
-      <a href="#corner-analysis"><span class="nav-icon">⌁</span>Korner Analizi</a></nav></div>
-    <div class="sidebar-foot"><a class="system-pill" href="/"><span class="live-dot ${status === 'OFFICIAL' ? '' : 'wait'}"></span><span><strong style="display:block;color:var(--text)">${escapeHtml(statusLabels[status] ?? status)}</strong>Prediction Gate Inspector</span></a></div></aside>
-    <div class="app-main"><header class="topbar"><div class="top-title"><strong>BETAPP Maç Analizi</strong><span>${escapeHtml(match.league)} · ${escapeHtml(formatDate(match.kickoff_at, { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }))}</span></div>
-      <div class="top-actions"><a class="top-chip" href="/">← Genel Bakış</a></div></header><main class="content detail-content">
+  return shell(`${topNavigation(true)}<main class="product-main detail-content"><div class="page-heading"><div><h1>Maç Analizi</h1><p>${escapeHtml(match.league)}</p></div><a class="text-link" href="/#today">← Bugünün Maçları</a></div>${matchDetailTabs()}
+      <section data-detail="overview" id="overview">
       ${match.status === 'live' ? liveSection(match) : ''}
-      <section class="match-hero" id="match-overview"><div class="match-meta"><span>${escapeHtml(match.league)}</span><span>${escapeHtml(formatDate(match.kickoff_at, { day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' }))}</span><span>${escapeHtml(match.status)}</span></div>
+      <section class="match-hero" id="match-overview"><div class="match-meta"><span>${escapeHtml(match.league)}</span><span>${escapeHtml(formatDate(match.kickoff_at, { day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' }))}</span><span>${escapeHtml(({ scheduled: 'Başlamadı', live: 'Canlı', finished: 'Tamamlandı', postponed: 'Ertelendi', cancelled: 'İptal edildi' } as Record<string, string>)[String(match.status)] ?? 'Durum bekleniyor')}</span></div>
         <div class="scoreboard"><strong>${escapeHtml(match.home_team)}</strong><b>${score}</b><strong>${escapeHtml(match.away_team)}</strong></div>
-        <div class="hero-gate"><span class="badge ${statusClasses[status] ?? 'neutral'}">${escapeHtml(statusLabels[status] ?? status)}</span><strong>${heroCopy}</strong><p>${escapeHtml(gate?.summary ?? 'Prediction V1 değerlendirmesi henüz oluşmadı.')}</p></div></section>
-      ${renderOneXTwo(odds)}
+        <div class="hero-gate"><span class="badge ${statusClasses[status] ?? 'neutral'}">${escapeHtml(statusLabels[status] ?? status)}</span><strong>${heroCopy}</strong><p>${escapeHtml(status === 'WAITING' && gate?.overallStatus === 'OFFICIAL' ? 'Tahmin henüz kilitlenmedi.' : gate?.summary ?? 'Prediction V1 değerlendirmesi henüz oluşmadı.')}</p></div></section>
+      ${renderOneXTwo(odds)}</section><section data-detail="prediction" id="prediction" hidden><h2>Tahmin</h2>
 
       <section class="detail-grid core-grid"><article class="detail-panel core-panel"><span class="section-kicker">BETAPP ANALİZİ</span><h2>Ana Aday</h2>${candidate ? `<div class="candidate-market">${escapeHtml(mainMarket)}</div>
         <div class="detail-metrics">${candidateMetric('Güncel oran', optionalOdds(candidate.currentOdds ?? candidate.referenceOdds))}${candidateMetric('Açılış oranı', optionalOdds(candidate.openingOdds))}
           ${candidateMetric('Tahmin skoru', candidate.predictionScore == null ? null : `${candidate.predictionScore} / 100`)}${candidateMetric('Geçmiş benzer', historical?.settledSampleSize)}
-          ${candidateMetric('Geçmiş başarı', percentText(historical?.historicalHitRate))}${candidateMetric('Oran hareketi', candidate.movementClass)}
-          ${candidateMetric('Bookmaker', candidate.bookmakerCount)}${candidateMetric('Veri kalitesi', candidate.dataQualityGrade)}${candidateMetric('Model güveni', candidate.confidenceGrade)}</div>`
+          ${candidateMetric('Geçmiş başarı', percentText(historical?.historicalHitRate))}${candidateMetric('Oran hareketi', ({ SUPPORT: 'Destekliyor', NEUTRAL: 'Nötr', AGAINST: 'Ters yönde', CONFLICT: 'Çelişiyor' } as Record<string, string>)[String(candidate.movementClass)] ?? '—')}
+          ${candidateMetric('Bookmaker', candidate.bookmakerCount)}${candidateMetric('Veri kalitesi', translateGrade(candidate.dataQualityGrade))}${candidateMetric('Model güveni', translateGrade(candidate.confidenceGrade))}</div>`
         : renderEmpty('Henüz resmi aday hesaplanmadı', 'Oran analizi ve Prediction V1 değerlendirmesi tamamlandığında ana aday burada görünecek.')}</article>
         <article class="detail-panel why-panel"><div class="why-head"><div><span class="section-kicker">NEDEN?</span><h2>${passed} / ${gates.length} geçti</h2></div><span class="badge ${statusClasses[status] ?? 'neutral'}">${escapeHtml(statusLabels[status] ?? status)}</span></div>
           <div class="why-list">${gates.length ? gates.map((item) => `<div><span>${item.passed ? '✓' : '×'} ${escapeHtml(item.label)}<small>Mevcut: ${escapeHtml(gateValue(item.current))} · Gerekli: ${escapeHtml(gateValue(item.required))}</small></span><b>${item.passed ? 'GEÇTİ' : 'GEÇMEDİ'}</b></div>`).join('') : '<p>Gate değerlendirmesi henüz oluşmadı.</p>'}</div></article></section>
 
-      <section class="detail-grid evidence-grid"><article class="detail-panel wide" id="gate-inspector"><div class="detail-title"><div><span class="section-kicker">PREDICTION V1</span><h2>Prediction Gate Inspector</h2></div><span>${passed} / ${gates.length} geçti</span></div>${renderGateTable(gates)}</article>
-        <article class="detail-panel" id="odds-route"><span class="section-kicker">ODDS NEIGHBOR V2</span><h2>Oran Rotası</h2>${renderOddsRoute(data.oddsIntelligence ?? null)}</article></section>
-
+      </section><section data-detail="gates" id="gates" hidden><h2>Gate Inspector</h2><article class="detail-panel wide" id="gate-inspector"><div class="detail-title"><div><span class="section-kicker">PREDICTION V1</span><h2>Prediction Gate Inspector</h2></div><span>${passed} / ${gates.length} geçti</span></div>${renderGateTable(gates)}</article>      <details class="technical-records"><summary>Teknik Prediction V1 kayıtları</summary><div class="details-body"><div class="analysis-summary">
+        <span>Durum <b>${escapeHtml(detail.state ?? 'NOT_GENERATED')}</b></span><span>Run sayısı <b>${runCount}</b></span><span>Journal <b>${detail.journal ? 'VAR' : 'YOK'}</b></span>
+        <span>Execution authority <b>FALSE</b></span><span>AI prediction authority <b>FALSE</b></span></div></div></details>
+</section>
+      <section data-detail="odds" id="odds" hidden><h2>Oran Analizi</h2><article class="detail-panel" id="odds-route"><span class="section-kicker">ODDS NEIGHBOR V2</span><h2>Oran Rotası</h2>${renderOddsRoute(data.oddsIntelligence ?? null)}</article><section class="detail-panel detail-section">${renderOddsAnalysis(data.oddsAnalysis ?? null)}</section></section>
+      <section data-detail="neighbors" id="neighbors" hidden><h2>Geçmiş Benzerler</h2>
       <section class="detail-grid split-grid"><article class="detail-panel" id="past-twins"><span class="section-kicker">GEÇMİŞ KANIT</span><h2>Geçmiş Komşular</h2>${renderTwins(data.oddsIntelligence ?? null)}</article>
         <article class="detail-panel"><span class="section-kicker">SONUÇ HARİTASI</span><h2>Geçmiş benzer oran profillerinin sonuç dağılımı</h2>${renderResultMap(data.oddsIntelligence ?? null)}</article></section>
 
+      </section><section data-detail="quality" id="quality" hidden><h2>Veri Kalitesi</h2>
       <section class="detail-grid split-grid"><article class="detail-panel"><span class="section-kicker">KANIT UYUMU</span><h2>Çelişki Kontrolü</h2>${renderConflicts(data.oddsIntelligence ?? null)}</article>
         <article class="detail-panel"><span class="section-kicker">SELF-AUDIT</span><h2>Tahmin Güvenliği</h2>${safetyGates.length ? `<div class="conflict-grid">${safetyGates.map((item) => `<div><span>${escapeHtml(item.label)}</span><strong class="${item.passed ? 'signal-support' : 'signal-conflict'}">${item.passed ? 'GEÇTİ' : 'GEÇMEDİ'}</strong></div>`).join('')}</div>` : renderEmpty('Self-Audit gate bilgisi yok', 'Gate Inspector çıktısı oluştuğunda güvenlik durumu gösterilecek.')}</article></section>
 
-      <section class="detail-panel detail-section" id="odds-analysis"><span class="section-kicker">ODDS V1</span><h2>Oran Analizi</h2>${renderOddsAnalysis(data.oddsAnalysis ?? null)}</section>
+
       <section class="detail-grid split-grid"><article class="detail-panel" id="match-statistics"><span class="section-kicker">GERÇEK MAÇ VERİSİ</span><h2>Maç İstatistikleri</h2>${renderStatistics(match)}</article>
         <article class="detail-panel" id="corner-analysis"><span class="section-kicker">CORNER ENGINE</span><h2>Korner Analizi</h2>${renderCorners(matchId, data.cornerAnalysis ?? null)}</article></section>
 
-      <details class="technical-records"><summary>Teknik Prediction V1 kayıtları</summary><div class="details-body"><div class="analysis-summary">
-        <span>Durum <b>${escapeHtml(detail.state ?? 'NOT_GENERATED')}</b></span><span>Run sayısı <b>${runCount}</b></span><span>Journal <b>${detail.journal ? 'VAR' : 'YOK'}</b></span>
-        <span>Execution authority <b>FALSE</b></span><span>AI prediction authority <b>FALSE</b></span></div></div></details>
+      </section>
       <footer class="footer"><span>BETAPP · Maç analiz terminali</span><span>Geçmiş kanıt ve model çıktıları garanti veya bahis talimatı değildir.</span></footer>
-    </main></div></div>`, `${String(match.home_team ?? '')} — ${String(match.away_team ?? '')} · BETAPP Analizi`);
+    </main>`, `${String(match.home_team ?? '')} — ${String(match.away_team ?? '')} · BETAPP Analizi`);
 }

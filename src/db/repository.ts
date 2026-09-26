@@ -472,7 +472,7 @@ export class FootballRepository {
     }
   }
 
-  async operationalHealth() {
+  async operationalHealth(liveOddsEnabled = true) {
     const [providerRows, qualificationRows, workerRows, backfillRows] = await Promise.all([
       this.pool.query('SELECT provider,status,last_checked_at,last_success_at,last_failure_at,message FROM provider_status'),
       this.pool.query(`SELECT provider,max(checked_at) checked_at,
@@ -486,8 +486,26 @@ export class FootballRepository {
     for (const row of qualificationRows.rows) if (!providerMap.has(row.provider)) providerMap.set(row.provider, row);
     const providers = Object.fromEntries(['fotmob','sofascore','iddaa','flashscore','nowgoal'].map((name) =>
       [name, providerMap.get(name) ?? { provider: name, status: 'unknown' }]));
+    const predictionRunsConfigured = (await this.pool.query<{ configured: boolean }>("SELECT to_regclass('prediction_runs') IS NOT NULL AS configured")).rows[0]?.configured ?? false;
+    const liveConfigured = liveOddsEnabled && predictionRunsConfigured;
+    let liveOdds: Record<string, unknown> = { status: liveConfigured ? 'NO_DATA' : 'NOT_CONFIGURED', trackedMatches: 0,
+      recentObservations: 0, lastCaptureAt: null };
+    if (liveConfigured) {
+      const exists = (await this.pool.query<{ exists: boolean }>("SELECT to_regclass('nowgoal_live_match_tracking') IS NOT NULL AS exists")).rows[0]?.exists;
+      if (exists) {
+        const aggregate = (await this.pool.query(`SELECT count(*)::integer tracked,
+          count(*) FILTER(WHERE last_status='BLOCKED')::integer blocked,
+          count(*) FILTER(WHERE last_status='ERROR')::integer errors,max(last_capture_at) last_capture,
+          (SELECT count(*)::integer FROM nowgoal_live_odds_snapshots WHERE captured_at>=now()-interval '1 hour') recent
+          FROM nowgoal_live_match_tracking`)).rows[0] as Record<string, unknown>;
+        const recent = Number(aggregate.recent ?? 0);
+        const status = recent > 0 ? 'AVAILABLE' : Number(aggregate.blocked) > 0 ? 'BLOCKED'
+          : Number(aggregate.errors) > 0 ? 'ERROR' : 'NO_DATA';
+        liveOdds = { status, trackedMatches: aggregate.tracked, recentObservations: recent, lastCaptureAt: aggregate.last_capture };
+      }
+    }
     return { providers, worker: { lastRun: workerRows.rows[0]?.last_run ?? null, lastSuccess: workerRows.rows[0]?.last_success ?? null },
-      backfill: backfillRows.rows[0] ?? { status: 'NOT_STARTED' } };
+      liveOdds, backfill: backfillRows.rows[0] ?? { status: 'NOT_STARTED' } };
   }
 
   async backfillStatus() {
@@ -635,5 +653,20 @@ export class FootballRepository {
        JOIN teams at ON at.id=m.away_team_id JOIN leagues l ON l.id=m.league_id
        WHERE ca.match_id=$1 ORDER BY ca.created_at DESC LIMIT 1`, [matchId]);
     return result.rows[0] ?? null;
+  }
+
+  async liveOddsMatchDetail(matchId: string) {
+    const match = await this.pool.query('SELECT m.id,m.kickoff_at,m.status,m.home_score,m.away_score,l.name league,ht.name home_team,at.name away_team FROM matches m JOIN leagues l ON l.id=m.league_id JOIN teams ht ON ht.id=m.home_team_id JOIN teams at ON at.id=m.away_team_id WHERE m.id=$1',[matchId]);
+    if(!match.rows[0])return null;
+    const table=(await this.pool.query("SELECT to_regclass('nowgoal_live_odds_snapshots') IS NOT NULL AS exists")).rows[0]?.exists;
+    if(!table)return {...match.rows[0],observations:[],liveOddsStatus:'NOT_CONFIGURED',postgresStatus:'NOT_CONFIGURED',sheetSyncStatus:'NOT_CONFIGURED',observationCount:0,bookmakerCount:0,ftCount:0,htCount:0};
+    const observations=await this.pool.query('SELECT * FROM nowgoal_live_odds_snapshots WHERE match_id=$1 ORDER BY captured_at DESC,match_minute DESC NULLS LAST,bookmaker,period LIMIT 500',[matchId]);
+    const trackingExists=(await this.pool.query("SELECT to_regclass('nowgoal_live_match_tracking') IS NOT NULL AS exists")).rows[0]?.exists;
+    const tracking=trackingExists?(await this.pool.query('SELECT * FROM nowgoal_live_match_tracking WHERE match_id=$1',[matchId])).rows[0]:null;
+    const rows=observations.rows;
+    return {...match.rows[0],observations:rows,liveOddsStatus:tracking?.last_status??(observations.rowCount?'AVAILABLE':'NO_DATA'),
+      postgresStatus:'AVAILABLE',sheetSyncStatus:rows.some((row)=>row.sheet_synced_at==null)?'PENDING':rows.length?'SYNCED':'NO_DATA',
+      bookmakerCount:new Set(rows.map((row)=>row.bookmaker).filter(Boolean)).size,ftCount:rows.filter((row)=>row.period==='FT').length,
+      htCount:rows.filter((row)=>row.period==='HT').length,observationCount:observations.rowCount??0,lastCaptureAt:tracking?.last_capture_at??observations.rows[0]?.captured_at??null};
   }
 }

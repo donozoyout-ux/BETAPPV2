@@ -1,0 +1,36 @@
+# Nowgoal Live Odds Analysis V1 audit
+
+- Branch: codex/nowgoal-live-odds-sheet-v1
+- Source URL: https://live11.nowgoal26.com/match/live-2993801
+- HTTP: 200
+- LIVE_ODDS source qualification: SUPPORTED
+- Analyzed matches: UNAVAILABLE
+- Live matches eligible: UNAVAILABLE
+- Matches captured: UNAVAILABLE
+- Total observations: UNAVAILABLE
+- AH / 1X2 / O-U observations: UNAVAILABLE / UNAVAILABLE / UNAVAILABLE
+- Stored bookmakers: UNAVAILABLE
+- Stored FT / HT observations: UNAVAILABLE / UNAVAILABLE
+- Sheet rows: UNAVAILABLE
+- Duplicates blocked: UNAVAILABLE
+- Source blocks: UNAVAILABLE
+- Parser failures: UNAVAILABLE
+- Source smoke observations: 30
+- Source smoke bookmakers: Sb, Bet365, Sbobet
+- Source smoke FT / HT observations: 23 / 7
+- Analyzed match filter: UNAVAILABLE (database connection)
+- New DB rows: 0
+- Google Sheets: SYNC_DISABLED (0 appended)
+- Google Sheets overall: PARTIAL
+- Real data used: PASS
+- No fake production data: PASS
+- Typecheck: PASS
+- Lint: PASS
+- Unit tests: 45 passed
+- PostgreSQL tests: BLOCKED (container runtime unavailable)
+- Build: PASS
+- CI: NOT RUN
+- Prediction V1 logic changed: NO
+- Feature statuses: {"nowgoalLiveSource":"PASS","liveOddsParser":"PASS","asianHandicap":"PASS","oneXTwo":"PASS","overUnder":"PASS","ft":"PASS","ht":"PASS","multipleBookmakers":"PASS","historyRows":"PASS","postgres":"BLOCKED","deduplication":"PARTIAL (PostgreSQL integration unavailable)","googleSheets":"BLOCKED","sheetBatchSync":"PASS (mocked)","analyzedMatchFilter":"BLOCKED","finishedMatchFinalCapture":"BLOCKED","noFakeData":"PASS","predictionLogicChanged":"NO","officialPredictionSemanticsChanged":"NO","executionAuthority":false,"aiPredictionAuthority":false}
+- Final verdict: PARTIAL — PostgreSQL, analyzed-match capture, and live Google Sheets remain unverified.
+- Limitations: connect ECONNREFUSED 127.0.0.1:5432

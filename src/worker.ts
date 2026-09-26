@@ -25,6 +25,10 @@ import { PublicCsvHistoricalImporter } from './historical/public-csv-importer.js
 import { OpenFootballImportRepository } from './historical/openfootball-repository.js';
 import { OpenFootballHistoricalImporter } from './historical/openfootball-importer.js';
 import { StageHistoricalRepository } from './predictions/stage-history-repository.js';
+import { NowgoalLiveOddsCollector } from './collector/nowgoal-live-odds-collector.js';
+import { NowgoalLiveOddsRepository } from './db/nowgoal-live-odds-repository.js';
+import { NowgoalLiveOddsProvider } from './providers/nowgoal-live-odds.js';
+import { GoogleLiveOddsSheetSync } from './sheets/nowgoal-live-odds.js';
 
 const config = loadConfig();
 const logger = createLogger(config, 'betapp-worker');
@@ -67,6 +71,10 @@ const openFootballImporter = new OpenFootballHistoricalImporter(
   config, repository, historicalRepository, openFootballImportRepository, logger,
 );
 const stageHistoricalRepository = new StageHistoricalRepository(pool, logger, config.PUBLIC_CSV_IMPORT_INTERVAL_MS);
+const liveOddsRepository = new NowgoalLiveOddsRepository(pool);
+const liveOddsCollector = config.NOWGOAL_LIVE_ODDS_ENABLED ? new NowgoalLiveOddsCollector(config,
+  new NowgoalLiveOddsProvider(config, logger), liveOddsRepository,
+  new GoogleLiveOddsSheetSync(config, liveOddsRepository), logger) : null;
 const collectors = [...footballCollectors, ...(oddsCollector ? [oddsCollector] : [])];
 const liveRepository = new LiveRepository(pool);
 const apiFootball = new ApiFootballProvider(config);
@@ -92,6 +100,7 @@ let apiFootballOddsTask: Promise<void> | undefined;
 let publicCsvImportTask: Promise<void> | undefined;
 let openFootballImportTask: Promise<void> | undefined;
 let stageHistoricalTask: Promise<void> | undefined;
+let liveOddsTask: Promise<void> | undefined;
 let stopped = false;
 let wakeSleep: (() => void) | undefined;
 
@@ -105,6 +114,7 @@ function shutdown(signal: string) {
   publicCsvImporter.stop();
   openFootballImporter.stop();
   stageHistoricalRepository.stop();
+  liveOddsCollector?.stop();
   for (const collector of collectors) collector.stop();
   wakeSleep?.();
 }
@@ -170,6 +180,10 @@ async function runCycle(): Promise<void> {
     try { await oddsCollector?.runCycle(); }
     catch (error) { logger.error({ err: error }, 'Odds collector cycle failed'); }
   }
+  if (!stopped && liveOddsCollector) {
+    try { await liveOddsCollector.runCycle(); }
+    catch (error) { logger.error({ err: error }, 'Nowgoal live odds collection failed; continuing'); }
+  }
   if (!stopped) {
     try { await predictionService.refreshPreviewsAndLocks(); }
     catch (error) { logger.error({ err: error }, 'Prediction preview/lock cycle failed; continuing'); }
@@ -204,6 +218,7 @@ try {
     if (competitionAutoBackfill.enabled()) await competitionAutoBackfill.runNext();
     if (publicCsvImporter.enabled()) await publicCsvImporter.runCycle();
     if (openFootballImporter.enabled()) await openFootballImporter.runCycle();
+    if (liveOddsCollector) await liveOddsCollector.runCycle();
     await stageHistoricalRepository.runNext();
   }
   else if (config.COLLECTOR_ENABLED) {
@@ -214,6 +229,7 @@ try {
     publicCsvImportTask = publicCsvImporter.runForever();
     openFootballImportTask = openFootballImporter.runForever();
     stageHistoricalTask = stageHistoricalRepository.runForever();
+    liveOddsTask = liveOddsCollector?.runForever();
     while (!stopped) {
       await runCycle();
       if (!stopped) await waitForNextCycle();
@@ -238,5 +254,7 @@ try {
   await publicCsvImportTask;
   await openFootballImportTask;
   await stageHistoricalTask;
+  liveOddsCollector?.stop();
+  await liveOddsTask;
   await pool.end();
 }

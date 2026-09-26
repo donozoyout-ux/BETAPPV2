@@ -5,6 +5,7 @@ import { createLogger } from '../logger.js';
 import { FotMobProvider } from '../providers/fotmob.js';
 import { FlashscoreProvider, IddaaProvider } from '../providers/public-page-provider.js';
 import { SofascoreProvider } from '../providers/sofascore.js';
+import { NowgoalLiveOddsProvider } from '../providers/nowgoal-live-odds.js';
 import type { ProviderQualification } from './types.js';
 
 function printReport(report: ProviderQualification) {
@@ -23,6 +24,7 @@ const providers = [
   new FotMobProvider(config, logger),
   new IddaaProvider(config),
   new FlashscoreProvider(config),
+  new NowgoalLiveOddsProvider(config,logger),
 ];
 
 console.log('PROVIDER QUALIFICATION');

@@ -2,7 +2,7 @@ import helmet from '@fastify/helmet';
 import Fastify from 'fastify';
 import type { AppConfig } from './config.js';
 import type { FootballRepository } from './db/repository.js';
-import { renderCornerDetail, renderDashboard } from './dashboard.js';
+import { renderCornerDetail, renderDashboard, renderLiveOddsDetail } from './dashboard.js';
 import type { Logger } from './logger.js';
 
 export function buildApp(config: AppConfig, repository: FootballRepository, logger: Logger) {
@@ -10,8 +10,8 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
   void app.register(helmet, { contentSecurityPolicy: false });
 
   app.get('/health', async (_request, reply) => {
-    const [database, operations] = await Promise.all([repository.databaseHealth(), repository.operationalHealth().catch(() => ({
-      providers: {}, worker: { lastRun: null, lastSuccess: null }, backfill: { status: 'UNKNOWN' },
+    const [database, operations] = await Promise.all([repository.databaseHealth(), repository.operationalHealth(config.NOWGOAL_LIVE_ODDS_ENABLED).catch(() => ({
+      providers: {}, worker: { lastRun: null, lastSuccess: null }, liveOdds: { status: 'ERROR' }, backfill: { status: 'UNKNOWN' },
     }))]);
     const status = database.status === 'ok' ? 'ok' : 'degraded';
     if (status !== 'ok') logger.error({ database }, 'Health check failed');
@@ -29,6 +29,11 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
     const detail = await repository.cornerAnalysisDetail(request.params.matchId);
     if (!detail) return reply.code(404).send({ error: 'corner_analysis_not_found' });
     return reply.type('text/html; charset=utf-8').send(renderCornerDetail(detail));
+  });
+  app.get<{ Params: { matchId: string } }>('/matches/:matchId/live-odds',async(request,reply)=>{
+    const detail=await repository.liveOddsMatchDetail(request.params.matchId);
+    if(!detail)return reply.code(404).send({error:'match_not_found'});
+    return reply.type('text/html; charset=utf-8').send(renderLiveOddsDetail(detail,config.GOOGLE_SHEETS_PUBLIC_URL));
   });
 
   app.setErrorHandler((error, _request, reply) => {

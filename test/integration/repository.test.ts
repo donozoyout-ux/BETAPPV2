@@ -8,6 +8,8 @@ import { CornerRepository } from '../../src/db/corner-repository.js';
 import { configHash, cornerModelConfig } from '../../src/corners/config.js';
 import { buildAllTeamProfiles } from '../../src/corners/profiles.js';
 import { runBacktest } from '../../src/corners/backtest.js';
+import { NowgoalLiveOddsRepository } from '../../src/db/nowgoal-live-odds-repository.js';
+import type { LiveOddsObservation } from '../../src/providers/nowgoal-live-odds.js';
 
 describe('FootballRepository integration', () => {
   let container: Awaited<ReturnType<PostgreSqlContainer['start']>> | undefined;
@@ -74,6 +76,41 @@ describe('FootballRepository integration', () => {
     expect(Number(counts.rows[0].teams)).toBe(2);
   });
 
+  it('stores only analyzed Nowgoal matches and deduplicates structured history observations',async()=>{
+    await pool.query('CREATE TABLE IF NOT EXISTS prediction_runs(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),match_id uuid NOT NULL REFERENCES matches(id))');
+    const observedAt=new Date();const sourceMatch={
+      providerExternalId:'2993801',league:{providerExternalId:'live-league',name:'Serie A',country:'Italy',logoUrl:null,sourceUpdatedAt:observedAt,raw:{}},
+      homeTeam:{providerExternalId:'live-home',name:'Live Home',shortName:null,country:'Italy',logoUrl:null,sourceUpdatedAt:observedAt,raw:{}},
+      awayTeam:{providerExternalId:'live-away',name:'Live Away',shortName:null,country:'Italy',logoUrl:null,sourceUpdatedAt:observedAt,raw:{}},
+      kickoffAt:new Date(observedAt.getTime()-30*60_000),status:'live' as const,round:null,season:null,homeScore:0,awayScore:0,
+      sourceUpdatedAt:observedAt,raw:{},
+    };
+    const matchId=await repository.upsertMatch('nowgoal',sourceMatch);
+    await pool.query('INSERT INTO odds_snapshots(match_id,provider,provider_match_id,market_type,market_name,line,selection,odds_decimal,captured_at) VALUES($1,$2,$3,$4,$5,NULL,$6,$7,$8)',
+      [matchId,'nowgoal:bet365','2993801','MATCH_RESULT','1X2','HOME',3.25,observedAt]);
+    const liveRepository=new NowgoalLiveOddsRepository(pool);
+    const competitionConfig={SUPPORTED_COMPETITIONS:['SerieA']} as never;
+    expect((await liveRepository.trackingCandidates(competitionConfig)).matches.some((item)=>item.matchId===matchId)).toBe(false);
+    await pool.query('INSERT INTO prediction_runs(match_id) VALUES($1)',[matchId]);
+    expect((await liveRepository.trackingCandidates(competitionConfig)).matches.some((item)=>item.matchId===matchId&&item.nowgoalMatchId==='2993801')).toBe(true);
+
+    const observation:LiveOddsObservation={nowgoalMatchId:'2993801',sourceUrl:'https://live11.nowgoal26.com/match/live-2993801',
+      capturedAt:observedAt,matchMinute:'62',minuteLabel:'62',scoreHome:1,scoreAway:0,scoreText:'1:0',period:'FT',bookmaker:'Integration Test Bookmaker',
+      ahInitialHome:1.02,ahInitialLine:0.25,ahInitialAway:0.88,ahLiveHome:1.04,ahLiveLine:0.25,ahLiveAway:0.86,
+      oneXTwoInitialHome:2.7,oneXTwoInitialDraw:2.4,oneXTwoInitialAway:3.2,oneXTwoLiveHome:2.6,oneXTwoLiveDraw:2.45,oneXTwoLiveAway:3.25,
+      ouInitialOver:0.91,ouInitialLine:2.25,ouInitialUnder:0.97,ouLiveOver:0.89,ouLiveLine:2.25,ouLiveUnder:0.99,
+      parserVersion:'integration-test',rawHash:'integration-test-row-hash',rawPayload:{integrationTest:true}};
+    expect(await liveRepository.saveObservations(matchId,[observation])).toBe(1);
+    expect(await liveRepository.saveObservations(matchId,[observation])).toBe(0);
+    const saved=await pool.query('SELECT count(*)::integer n FROM nowgoal_live_odds_snapshots WHERE match_id=$1',[matchId]);
+    expect(saved.rows[0]?.n).toBe(1);
+    await pool.query('UPDATE matches SET status=$2 WHERE id=$1',[matchId,'finished']);
+    await liveRepository.markFinishedCapture(matchId);
+    expect((await liveRepository.trackingCandidates(competitionConfig)).matches.some((item)=>item.matchId===matchId)).toBe(false);
+    await expect(pool.query('INSERT INTO nowgoal_live_odds_snapshots(match_id,nowgoal_match_id,source_url,captured_at,period,parser_version,raw_hash) VALUES(gen_random_uuid(),$1,$2,now(),$3,$4,$5)',
+      ['x','x','FT','1','orphan'])).rejects.toThrow();
+  });
+
   it('matches aliases across providers and retains changed odds snapshots', async () => {
     const observedAt = new Date('2026-09-16T12:00:00Z');
     const base = {
@@ -118,7 +155,7 @@ describe('FootballRepository integration', () => {
   it('validates migrations, checkpoint, profiles, replay, rollback and advisory locks', async () => {
     const migrations = await migrationStatus(pool);
     expect(migrations.pendingMigrations).toEqual([]);
-    expect(migrations.schemaVersion).toBe('004_database_validation.sql');
+    expect(migrations.schemaVersion).toBe('016_nowgoal_live_odds_analysis_v1.sql');
     const health = await repository.databaseHealth();
     expect(health.status).toBe('ok');
     await repository.markStarted('fotmob', 'integration-checkpoint', { index: 0 });

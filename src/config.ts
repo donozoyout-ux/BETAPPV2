@@ -1,6 +1,9 @@
 import { z } from 'zod';
 
 const booleanFromString = z.enum(['true', 'false']).transform((value) => value === 'true');
+const optionalText = z.preprocess((value) => value === '' ? undefined : value,z.string().optional());
+const optionalEmail = z.preprocess((value) => value === '' ? undefined : value,z.string().email().optional());
+const optionalUrl = z.preprocess((value) => value === '' ? undefined : value,z.string().url().optional());
 const supportedCompetitionKeys = ['PremierLeague','LaLiga','Bundesliga','SerieA','Ligue1','SuperLig',
   'ChampionsLeague','EuropaLeague','ConferenceLeague'] as const;
 const competitionList = z.string().default(supportedCompetitionKeys.join(',')).transform((value, context) => {
@@ -23,6 +26,14 @@ const schema = z.object({
   COLLECTOR_ENABLED: booleanFromString.default(true),
   BACKFILL_ENABLED: booleanFromString.default(false),
   FOTMOB_ENABLED: booleanFromString.default(true),
+  NOWGOAL_LIVE_BASE_URL: z.string().url().default('https://live11.nowgoal26.com/match/live-'),
+  NOWGOAL_LIVE_ODDS_ENABLED: booleanFromString.default(true),
+  NOWGOAL_LIVE_SMOKE_MATCH_ID: z.string().regex(/^\d+$/).default('2993801'),
+  GOOGLE_SHEETS_SPREADSHEET_ID: optionalText,
+  GOOGLE_SHEETS_PUBLIC_URL: optionalUrl,
+  GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL: optionalEmail,
+  GOOGLE_SHEETS_PRIVATE_KEY: optionalText,
+  GOOGLE_SHEETS_SYNC_MINUTES: z.coerce.number().int().min(1).max(1440).default(5),
   SUPPORTED_COMPETITIONS: competitionList,
   COLLECTOR_INTERVAL_MS: z.coerce.number().int().min(60_000).default(900_000),
   COLLECTOR_HISTORY_DAYS: z.coerce.number().int().min(0).max(30).default(2),

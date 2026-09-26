@@ -23,6 +23,7 @@
     "providers:qualify": "tsx src/qualification/cli.ts",
     "data:backfill": "tsx src/corners/backfill-cli.ts",
     "data:audit": "tsx src/data/audit-cli.ts",
+    "odds:live-audit": "tsx src/odds/live-audit-cli.ts",
     "corners:profiles": "tsx src/corners/profiles-cli.ts",
     "corners:analyze": "tsx src/corners/analyze-cli.ts",
     "corners:backtest": "tsx src/corners/backtest-cli.ts",

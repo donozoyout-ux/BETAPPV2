@@ -503,6 +503,8 @@ describe('FootballRepository integration', () => {
     expect(intelligence?.pastTwins.map((item) => item.matchId)).toContain(historyId);
     expect(intelligence?.resultMap.find((item) => item.market === 'TOTAL_CORNERS' && item.line === 8.5 && item.selection === 'OVER'))
       .toMatchObject({ sampleSize: 1, positiveCount: 1 });
+    expect(intelligence?.historicalNeighbors).toMatchObject({status:'INSUFFICIENT_DATA',sampleSize:2,sameLeagueCount:2,crossLeagueCount:0});
+    expect(intelligence?.historicalNeighbors.neighbors.find(n => n.matchId === historyId)).toMatchObject({matchId:historyId,quality:'HIGH',sameLeague:true});
     expect(intelligence?.executionAuthority).toBe(false);
     expect(Number((await pool.query('SELECT count(*) FROM prediction_journal')).rows[0]!.count)).toBe(beforeJournal);
   });

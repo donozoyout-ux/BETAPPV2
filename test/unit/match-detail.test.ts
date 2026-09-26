@@ -83,7 +83,7 @@ describe('match analysis detail renderer', () => {
     expect(html).toContain('&lt;script&gt;Şut&lt;/script&gt;');
     expect(html).toContain('&lt;b&gt;fotmob&lt;/b&gt;');
     expect(html).toContain('&lt;svg&gt;');
-    expect(html).toContain('%92.0');
+    expect(html).toContain('92 / 100');
     expect(html).not.toContain('%9200.0');
     expect(html).toContain('2 — 1');
     expect(html).not.toContain('<span class="badge neutral">2</span>');
@@ -97,8 +97,8 @@ describe('match analysis detail renderer', () => {
       homeScore: 0, awayScore: 0, outcome: { home: 0, away: 0 } });
     const html = renderMatchAnalysis(page('REVIEW', { oddsIntelligence: { evidenceStrength: 'LOW', oddsRoute: null,
       pastTwins: [twin(0, 'Alt sınır'), twin(100, 'Üst sınır')], resultMap: [], conflictCheck: [] } }));
-    expect(html).toContain('%0.0');
-    expect(html).toContain('%100.0');
+    expect(html).toContain('0 / 100');
+    expect(html).toContain('100 / 100');
     expect(html).not.toContain('%10000.0');
     expect(html).not.toContain('<span class="badge neutral">0</span>');
   });

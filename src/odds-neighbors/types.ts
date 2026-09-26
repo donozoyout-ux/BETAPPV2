@@ -17,14 +17,14 @@ export type OddsRoute = {
 };
 
 export type MatchOutcomeData = {
-  matchId: string; competitionId: string; kickoffAt: Date; league: string; homeTeam: string; awayTeam: string;
+  matchId: string; competitionId: string; country?: string | null; kickoffAt: Date; league: string; homeTeam: string; awayTeam: string;
   homeScore: number | null; awayScore: number | null; firstHalfHomeScore: number | null; firstHalfAwayScore: number | null;
   homeCorners: number | null; awayCorners: number | null; homeYellowCards: number | null; awayYellowCards: number | null;
   homeRedCards: number | null; awayRedCards: number | null;
 };
 
 export type HistoricalNeighborInput = MatchOutcomeData & { route: OddsRoute };
-export type HistoricalTwin = MatchOutcomeData & {
+export type HistoricalTwin = HistoricalNeighborInput & NonNullable<ReturnType<typeof import('./reliability.js').scoreNeighbor>> & {
   exampleId: string; distance: number; similarity: number; matchedDimensions: string[]; differences: Record<string, number>;
   openingOdds: number; decisionOdds: number; outcome: { home: number | null; away: number | null };
 };
@@ -36,6 +36,7 @@ export type EvidenceGap = ResultMapRow & { baselineRate: number | null; baseline
 export type ConflictCheck = { source: 'ODDS_TWINS' | 'ODDS_ROUTE' | 'TEAM_HISTORICAL_STATS' | 'XG' | 'CORNERS_MODEL'; state: SignalState; reason: string };
 export type OddsIntelligence = {
   match: { id: string; kickoffAt: Date; league: string; homeTeam: string; awayTeam: string }; primaryMarket: Pick<OddsRoute, 'marketType' | 'marketName' | 'line' | 'selection'>;
+  historicalNeighbors: import('./reliability.js').HistoricalNeighbors;
   oddsRoute: OddsRoute; searchMode: SearchMode; pastTwins: HistoricalTwin[]; resultMap: ResultMapRow[]; evidenceGap: EvidenceGap[];
   evidenceStrength: EvidenceStrength; conflictCheck: ConflictCheck[]; dataCompleteness: { routeSnapshots: number; neighbors: number; resultRowsWithData: number; resultRows: number };
   generatedAt: Date; executionAuthority: false; aiPredictionAuthority: false;

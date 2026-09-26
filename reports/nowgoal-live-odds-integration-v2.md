@@ -38,3 +38,5 @@
 | GITHUB_ACTIONS | BLOCKED (run starts after push; not yet checked) |
 
 PostgreSQL integration suite uses deterministic Nowgoal parser fixtures only inside an isolated PostgreSQL Testcontainer. Local run could not start because this Windows host has no working container runtime. CI is configured to run all integration suites on PostgreSQL 16 through Testcontainers.
+
+CI run [36261080920](https://github.com/donozoyout-ux/BETAPPV2/actions/runs/36261080920) executed PostgreSQL integration successfully but failed one eligibility assertion because a fixture named skip-competition was configured as PREDICT in a supported competition. This fixture is being corrected and the run will be repeated.

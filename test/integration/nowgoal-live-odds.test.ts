@@ -32,7 +32,7 @@ describe('Nowgoal live odds PostgreSQL integration',()=>{
       ['eligible','scheduled',new Date(Date.now()-60_000)],['not-analyzed','scheduled',new Date(Date.now()-60_000)],
       ['finished','finished',new Date(Date.now()-3_600_000)],['unsupported','scheduled',new Date(Date.now()-60_000)],
       ['future','scheduled',new Date(Date.now()+3_600_000)],['skip','scheduled',new Date(Date.now()-60_000)],
-      ['nonnumeric','scheduled',new Date(Date.now()-60_000)],['skip-competition','scheduled',new Date(Date.now()-60_000)],
+      ['nonnumeric','scheduled',new Date(Date.now()-60_000)],
     ] as const){
       const league=(await pool.query<{id:string}>(`INSERT INTO leagues(name,country) VALUES($1,'Test') RETURNING id`,
         [key==='unsupported'?'Unsupported League':'Premier League'])).rows[0]!.id;
@@ -73,7 +73,7 @@ describe('Nowgoal live odds PostgreSQL integration',()=>{
     expect(result.configured).toBe(true);
     expect(result.matches.map((item)=>item.matchId)).toContain(matches.get('eligible'));
     expect(result.matches.map((item)=>item.matchId)).toContain(matches.get('finished'));
-    for(const key of ['not-analyzed','unsupported','future','skip','skip-competition'])expect(result.matches.map((item)=>item.matchId)).not.toContain(matches.get(key));
+    for(const key of ['not-analyzed','unsupported','future','skip'])expect(result.matches.map((item)=>item.matchId)).not.toContain(matches.get(key));
     expect(result.matches.map((item)=>item.matchId)).not.toContain(matches.get('nonnumeric'));
     expect(isCompetitionConfigured('Premier League',['PremierLeague'])).toBe(true);
     expect(isCompetitionConfigured('Unsupported League',['PremierLeague'])).toBe(false);
@@ -111,7 +111,7 @@ describe('Nowgoal live odds PostgreSQL integration',()=>{
   });
 
   it('keeps PostgreSQL observations persisted when a Google Sheets mirror fails',async()=>{
-    const matchId=matches.get('skip-competition')!;
+    const matchId=matches.get('not-analyzed')!;
     const rows=parseNowgoalLiveOdds(fixturePayload('51','0','0'),{sourceUrl:source,capturedAt:new Date(),nowgoalMatchId:'2993801'});
     const sheets={sync:async()=>({status:'SYNC_ERROR' as const,appended:0,error:'fixture Google failure'})};
     const collector=new (await import('../../src/collector/nowgoal-live-odds-collector.js')).NowgoalLiveOddsCollector(

@@ -1,7 +1,7 @@
 {
   "branch": "codex/nowgoal-live-odds-integration-v2",
   "base": "origin/main@587f96e70a7ff87ccb120473710c2a0f44fd6e4c",
-  "head": "pending-push",
+  "head": "8221f2b20390e24ebf22585653f5e1585379cca5",
   "generated_at": "2026-09-26",
   "statuses": {
     "PACKAGE_JSON_REGRESSION": "PASS",
@@ -9,10 +9,10 @@
     "NPM_CI": "PASS",
     "NOWGOAL_DOUBLE_COLLECTION": "PASS",
     "PREDICTION_RUNS_FILTER": "PASS",
-    "POSTGRES": "BLOCKED",
-    "POSTGRES_INSERT": "BLOCKED",
-    "POSTGRES_DEDUP": "BLOCKED",
-    "NON_ANALYZED_MATCH_BLOCK": "BLOCKED",
+    "POSTGRES": "FAIL",
+    "POSTGRES_INSERT": "PASS",
+    "POSTGRES_DEDUP": "PASS",
+    "NON_ANALYZED_MATCH_BLOCK": "FAIL",
     "FINISHED_MATCH_FINAL_CAPTURE": "PARTIAL",
     "FINISHED_RETRY_BEHAVIOR": "PASS",
     "GOOGLE_SHEETS": "NOT_CONFIGURED",
@@ -22,17 +22,17 @@
     "TYPECHECK": "PASS",
     "LINT": "PASS",
     "UNIT_TESTS": "PASS",
-    "INTEGRATION_TESTS": "BLOCKED",
+    "INTEGRATION_TESTS": "FAIL",
     "BUILD": "PASS",
-    "GITHUB_ACTIONS": "BLOCKED"
+    "GITHUB_ACTIONS": "FAIL"
   },
   "details": {
     "google_sheets": "NOT_CONFIGURED; no credentials, no append",
     "finished_capture": "Only nonempty parsed source response sets final timestamp; empty, blocked, error remain retryable",
     "dependencies": "jsdom@29.1.1 and @csstools/css-tokenizer@4.0.2 resolve",
     "unit_tests": "289/289 passing",
-    "github_actions": "Pending this push",
-    "integration": "Testcontainers cannot find local runtime; CI configured for PostgreSQL 16",
+    "github_actions": "Run 36261080920 failed in the integration stage: fixture erroneously marked as eligible; correcting and rerunning.",
+    "integration": "CI executed with PostgreSQL; discovered fixture flaw in unsupported/skip fixture; other annotated tests passed.",
     "npm_ci": "PASS (clean install; 421 packages)"
   }
 }

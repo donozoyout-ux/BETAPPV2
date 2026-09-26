@@ -1,38 +1,99 @@
 {
+  "audit": "NOWGOAL LIVE ODDS V2.2 REAL E2E AUDIT",
   "branch": "codex/nowgoal-live-odds-integration-v2",
-  "base": "origin/main@587f96e70a7ff87ccb120473710c2a0f44fd6e4c",
-  "head": "8096e99282c39aebfe80334bca9f30004dbf4872",
-  "generated_at": "2026-09-26",
-  "statuses": {
-    "PACKAGE_JSON_REGRESSION": "PASS",
-    "PACKAGE_LOCK": "PASS",
-    "NPM_CI": "PASS",
-    "NOWGOAL_DOUBLE_COLLECTION": "PASS",
-    "PREDICTION_RUNS_FILTER": "PASS",
-    "POSTGRES": "PASS",
-    "POSTGRES_INSERT": "PASS",
-    "POSTGRES_DEDUP": "PASS",
-    "NON_ANALYZED_MATCH_BLOCK": "PASS",
-    "FINISHED_MATCH_FINAL_CAPTURE": "PASS",
-    "FINISHED_RETRY_BEHAVIOR": "PASS",
-    "GOOGLE_SHEETS": "NOT_CONFIGURED",
-    "NO_FAKE_DATA": "PASS",
-    "PREDICTION_LOGIC_CHANGED": "PASS",
-    "OFFICIAL_PREDICTION_SEMANTICS_CHANGED": "PASS",
-    "TYPECHECK": "PASS",
-    "LINT": "PASS",
-    "UNIT_TESTS": "PASS",
+  "commit": "59a9ea8a86d53fc4a99e752f8e350e26d8854f26",
+  "github_actions": {
+    "run": "36261526415",
+    "status": "PASS",
+    "url": "https://github.com/donozoyout-ux/BETAPPV2/actions/runs/36261526415",
+    "head": "59a9ea8a86d53fc4a99e752f8e350e26d8854f26"
+  },
+  "code_ci": {
+    "UNIT_TEST_COUNT": "290/290",
+    "PACKAGE_JSON": "PASS",
     "INTEGRATION_TESTS": "PASS",
     "BUILD": "PASS",
-    "GITHUB_ACTIONS": "PASS"
+    "INTEGRATION_TEST_COUNT": "16/16",
+    "PACKAGE_LOCK": "PASS",
+    "LINT": "PASS",
+    "UNIT_TESTS": "PASS",
+    "TYPECHECK": "PASS",
+    "NPM_CI": "PASS"
   },
-  "details": {
-    "google_sheets": "NOT_CONFIGURED; no credentials, no append",
-    "finished_capture": "Only nonempty parsed source response sets final timestamp; empty, blocked, error remain retryable",
-    "dependencies": "jsdom@29.1.1 and @csstools/css-tokenizer@4.0.2 resolve",
-    "unit_tests": "289/289 passing",
-    "github_actions": "PASS: https://github.com/donozoyout-ux/BETAPPV2/actions/runs/36261390914 for head 8096e99282c39aebfe80334bca9f30004dbf4872 (install, typecheck, lint, unit, PostgreSQL integration, build).",
-    "integration": "Run 36261286611 passed the dedicated Nowgoal PostgreSQL integration suite and existing PostgreSQL repository integration suite.",
-    "npm_ci": "PASS (clean install; 421 packages)"
+  "nowgoal": {
+    "BOOKMAKERS": "PASS",
+    "PARSER": "PASS",
+    "AH": "PASS",
+    "FT": "PASS",
+    "OU": "PASS",
+    "HT": "PASS",
+    "SOURCE_ACCESS": "PASS",
+    "1X2": "PASS",
+    "prior_real_sample": {
+      "observations": 30,
+      "bookmakers": [
+        "Sb",
+        "Bet365",
+        "Sbobet"
+      ],
+      "FT": 23,
+      "OU": 30,
+      "sample_schedule_id": "2993801",
+      "HT": 7,
+      "1X2": 28,
+      "AH": 30,
+      "http_status": 200,
+      "qualifying_analyzed_match_in_v2_2": false
+    },
+    "COLLECTOR_CADENCE": "PASS"
+  },
+  "postgres_ci_fixtures": {
+    "MIGRATION_019": "PASS",
+    "CHANGED_OBSERVATION": "PASS",
+    "INSERT": "PASS",
+    "fixture_only": true,
+    "FINISHED_MATCH_FINAL_CAPTURE": "PASS",
+    "NON_ANALYZED_MATCH_BLOCK": "PASS",
+    "DEDUP": "PASS",
+    "FINISHED_RETRY_BEHAVIOR": "PASS",
+    "PREDICTION_RUNS_FILTER": "PASS"
+  },
+  "google_sheets": {
+    "DEDUP": "PASS",
+    "SPREADSHEET_ACCESS": "NOT_CONFIGURED",
+    "missing_environment_keys": [
+      "GOOGLE_SHEETS_SPREADSHEET_ID",
+      "GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL",
+      "GOOGLE_SHEETS_PRIVATE_KEY"
+    ],
+    "DB_SOURCE_OF_TRUTH": "PASS",
+    "CREDENTIALS": "NOT_CONFIGURED",
+    "GOOGLE_SHEETS": "NOT_CONFIGURED",
+    "GOOGLE_SHEETS_SYNC_MINUTES_default": 5,
+    "CONFIG_VARIABLES": "PASS",
+    "SHEET_FAILURE_HANDLING": "PASS",
+    "LIVE_ODDS_ANALYSIS_TAB": "NOT_CONFIGURED",
+    "REAL_APPEND": "NOT_CONFIGURED",
+    "HEADER": "NOT_CONFIGURED"
+  },
+  "real_e2e": {
+    "REAL_SOURCE_RESPONSE_FOR_ANALYZED_MATCH": "BLOCKED",
+    "REAL_E2E": "BLOCKED",
+    "reason": "No DATABASE_URL/DB_TEST_DATABASE_URL or Google Sheets credentials were present locally; qualifying production match and live rows could not be inspected.",
+    "SHEET_ROWS": "NOT_CONFIGURED",
+    "ANALYZED_MATCH": "BLOCKED",
+    "POSTGRES_ROWS": "BLOCKED",
+    "NOWGOAL_SCHEDULE_ID": "BLOCKED",
+    "FINAL_CAPTURE_FOR_REAL_MATCH": "BLOCKED"
+  },
+  "safety": {
+    "OFFICIAL_PREDICTION_SEMANTICS_CHANGED": "PASS",
+    "NO_FAKE_DATA": "PASS",
+    "PREDICTION_LOGIC_CHANGED": "PASS",
+    "EXECUTION_AUTHORITY": "PASS"
+  },
+  "change_flags": {
+    "PREDICTION_LOGIC_CHANGED": "NO",
+    "OFFICIAL_PREDICTION_SEMANTICS_CHANGED": "NO"
   }
 }

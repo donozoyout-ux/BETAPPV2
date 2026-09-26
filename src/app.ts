@@ -13,6 +13,8 @@ import type { FootballRepository } from './db/repository.js';
 import type { OddsAnalysisRepository } from './db/odds-analysis-repository.js';
 import { renderCornerDetail, renderDashboard } from './dashboard.js';
 import { renderMatchAnalysis } from './match-detail.js';
+import { NowgoalLiveOddsRepository } from './db/nowgoal-live-odds-repository.js';
+import { renderLiveOddsDetail } from './dashboard.js';
 import type { Logger } from './logger.js';
 import type { PredictionRepository } from './predictions/service.js';
 import type { OddsIntelligenceRepository } from './odds-neighbors/repository.js';
@@ -40,7 +42,7 @@ function attachOddsEvidence(rows: Array<Record<string, unknown>>, analyses: Odds
 
 export function buildApp(config: AppConfig, repository: FootballRepository, logger: Logger,
   oddsAnalysis?: OddsAnalysisRepository, predictions?: PredictionRepository, oddsIntelligence?: OddsIntelligenceRepository,
-  controlAudit?: ControlAuditService) {
+    controlAudit?: ControlAuditService, liveOddsRepository?: NowgoalLiveOddsRepository) {
   const app = Fastify({ loggerInstance: logger });
   void app.register(helmet, { contentSecurityPolicy: false });
 
@@ -345,6 +347,11 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
     return analysis ?? { matchId: request.params.matchId, status: 'NOT_GENERATED', analysis: null };
   });
   app.get('/api/predictions/today', async () => ({ predictions: predictions ? await predictions.today() : [] }));
+  app.get<{ Params: { matchId: string } }>('/matches/:matchId/live-odds', async (request, reply) => {
+    const detail = await liveOddsRepository?.matchDetail(request.params.matchId);
+    if (!detail) return reply.code(404).send({ error: 'match_not_found' });
+    return reply.type('text/html; charset=utf-8').send(renderLiveOddsDetail(detail, config.GOOGLE_SHEETS_PUBLIC_URL));
+  });
   app.get('/api/predictions/previews', async () => ({ previews: predictions ? await predictions.previews() : [] }));
   app.get<{ Querystring: { limit?: string; offset?: string } }>('/api/predictions/history', async (request) => ({
     history: predictions ? await predictions.history(Number(request.query.limit ?? 50), Number(request.query.offset ?? 0)) : [],

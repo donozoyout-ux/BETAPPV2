@@ -76,7 +76,7 @@ describe('OpenFootball CC0 historical import', () => {
     expect(config.OPENFOOTBALL_BATCH_SIZE).toBe(150);
     expect(config.OPENFOOTBALL_CURRENT_REFRESH_MS).toBe(86400000);
 
-    const yaml=readFileSync('render.yaml','utf8');
+    const yaml=readFileSync('render.yaml','utf8').replace(/\r\n/g,'\n');
     const worker=yaml.split('name: betapp-v2-collector')[1] ?? '';
     const web=yaml.split('name: betapp-v2-web')[1]?.split('name: betapp-v2-collector')[0] ?? '';
     expect(web).not.toContain('OPENFOOTBALL_IMPORT_ENABLED');

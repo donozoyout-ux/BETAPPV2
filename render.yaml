@@ -35,6 +35,18 @@ services:
         sync: false
       - key: FOTMOB_ENABLED
         value: "true"
+      - key: NOWGOAL_LIVE_ODDS_ENABLED
+        value: "true"
+      - key: NOWGOAL_LIVE_ODDS_INTERVAL_SECONDS
+        value: "30"
+      - key: GOOGLE_SHEETS_SYNC_MINUTES
+        value: "5"
+      - key: GOOGLE_SHEETS_SPREADSHEET_ID
+        sync: false
+      - key: GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL
+        sync: false
+      - key: GOOGLE_SHEETS_PRIVATE_KEY
+        sync: false
       - key: NOWGOAL_ENABLED
         value: "true"
       - key: NOWGOAL_FUTURE_DAYS
@@ -120,6 +132,18 @@ services:
         value: "4"
       - key: FOTMOB_ENABLED
         value: "true"
+      - key: NOWGOAL_LIVE_ODDS_ENABLED
+        value: "true"
+      - key: NOWGOAL_LIVE_ODDS_INTERVAL_SECONDS
+        value: "30"
+      - key: GOOGLE_SHEETS_SYNC_MINUTES
+        value: "5"
+      - key: GOOGLE_SHEETS_SPREADSHEET_ID
+        sync: false
+      - key: GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL
+        sync: false
+      - key: GOOGLE_SHEETS_PRIVATE_KEY
+        sync: false
       - key: NOWGOAL_ENABLED
         value: "true"
       - key: NOWGOAL_FUTURE_DAYS

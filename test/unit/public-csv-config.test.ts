@@ -17,7 +17,7 @@ describe('public CSV import configuration', () => {
   });
 
   it('enables the seed only on the Render worker', () => {
-    const yaml=readFileSync('render.yaml','utf8');
+    const yaml=readFileSync('render.yaml','utf8').replace(/\r\n/g,'\n');
     const worker=yaml.split('name: betapp-v2-collector')[1] ?? '';
     const web=yaml.split('name: betapp-v2-web')[1]?.split('name: betapp-v2-collector')[0] ?? '';
     expect(worker).toContain('key: PUBLIC_CSV_IMPORT_ENABLED\n        value: "false"');

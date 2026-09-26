@@ -49,7 +49,9 @@
     "test:unit": "vitest run test/unit",
     "test:integration": "vitest run test/integration",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "odds:live-audit": "tsx src/odds/live-audit-cli.ts",
+    "odds:live-sheet-smoke": "tsx src/sheets/live-sheet-smoke-cli.ts"
   },
   "dependencies": {
     "@fastify/helmet": "^13.0.2",
@@ -65,10 +67,10 @@
     "@types/node": "^24.10.0",
     "@types/pg": "^8.15.6",
     "eslint": "^9.38.0",
-    "jsdom": "^29.1.1",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.46.2",
-    "vitest": "^4.0.6"
+    "vitest": "^4.0.6",
+    "jsdom": "^29.1.1"
   }
 }

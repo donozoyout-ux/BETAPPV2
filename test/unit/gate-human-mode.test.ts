@@ -13,122 +13,134 @@ const withFailures = (...failures: GateViewItem[]) => {
   const failed = new Map(failures.map(item => [item.key, item]));
   return base.map(item => failed.get(item.key) ?? item);
 };
+const productionFixture = () => withFailures(
+  gate('ODDS_ELIGIBILITY', 'HENÜZ UYGUN DEĞİL', 'UYGUN', false, 'ODDS_NOT_ELIGIBLE'),
+  gate('HISTORICAL_SAMPLE', 2, 30), gate('PREDICTION_SCORE', 36.66, 70), gate('DATA_QUALITY', 25, 50),
+  gate('MODEL_CONFIDENCE', 44, 45), gate('COMPLETE_STATES', { bookmakers: 0, states: 1 }, { bookmakers: 3, states: 2 }),
+  gate('MOVEMENT', 'NEUTRAL', ['SUPPORT','STRONG_SUPPORT']), gate('OFFICIAL_WINDOW', 281, '0–90 dakika', false, 'OFFICIAL_WINDOW_NOT_OPEN'));
 
-describe('Gate Inspector Human Mode', () => {
-  it('renders a primary human summary and hides the technical table in a disclosure', () => {
-    const html = renderGateHumanMode({ status: 'REVIEW', predictionState: 'PREVIEW', gates: withFailures(
-      gate('HISTORICAL_SAMPLE', 1, 30, false, 'INSUFFICIENT_HISTORICAL_SAMPLE')) });
-    expect(html).toContain('Neden henüz resmi tahmin yok?');
-    expect(html).toContain('RESMİ TAHMİN İÇİN VERİ BEKLENİYOR');
+describe('Gate Inspector Human Mode V1.1 priority and severity', () => {
+  it('ranks substantive production blockers ahead of time and near-threshold confidence', () => {
+    const view = buildGateHumanView({ status: 'REVIEW', predictionState: 'PREVIEW', matchStatus: 'scheduled', gates: productionFixture() });
+    expect(view.diagnosis).toBe('MIXED');
+    expect(view.title).toBe('RESMİ TAHMİN İÇİN KOŞULLAR HENÜZ YETERLİ DEĞİL');
+    expect(view.topBlockers.map(item => item.key)).toEqual(['HISTORICAL_SAMPLE','PREDICTION_SCORE','DATA_QUALITY']);
+    expect(view.topBlockers.map(item => item.key)).not.toContain('OFFICIAL_WINDOW');
+    expect(view.additionalBlockers.find(item => item.key === 'MODEL_CONFIDENCE')?.severity).toBe('NEAR_THRESHOLD');
+  });
+
+  it('renders the production timing banner from runtime values', () => {
+    const view = buildGateHumanView({ status: 'REVIEW', matchStatus: 'scheduled', gates: productionFixture() });
+    expect(view.timing).toMatchObject({ value: 'Maça 4 saat 41 dakika var', explanation: 'Resmi tahmin penceresi 3 saat 11 dakika sonra açılacak.', windowMinutes: 90, opensInMinutes: 191 });
+    const html = renderGateHumanMode({ status: 'REVIEW', matchStatus: 'scheduled', gates: productionFixture() });
+    expect(html).toContain('human-timing');
+    expect(html).toContain('Maça 4 saat 41 dakika var');
+    expect(html).toContain('3 saat 11 dakika sonra açılacak');
+  });
+
+  it('makes time the main blocker only in a time-only state', () => {
+    const gates = withFailures(gate('OFFICIAL_WINDOW', 281, '0–90 dakika', false, 'OFFICIAL_WINDOW_NOT_OPEN'));
+    const view = buildGateHumanView({ status: 'WAITING', matchStatus: 'scheduled', gates });
+    expect(view.diagnosis).toBe('TIME_ONLY');
+    expect(view.title).toBe('RESMİ TAHMİN ZAMANI HENÜZ GELMEDİ');
+    expect(view.topBlockers.map(item => item.key)).toEqual(['OFFICIAL_WINDOW']);
+  });
+
+  it('assigns deterministic numeric severities at ratio boundaries', () => {
+    expect(buildGateHumanView({ status: 'REVIEW', gates: withFailures(gate('PREDICTION_SCORE', 34, 70)) }).topBlockers[0]?.severity).toBe('CRITICAL');
+    expect(buildGateHumanView({ status: 'REVIEW', gates: withFailures(gate('PREDICTION_SCORE', 35, 70)) }).topBlockers[0]?.severity).toBe('MAJOR');
+    expect(buildGateHumanView({ status: 'REVIEW', gates: withFailures(gate('PREDICTION_SCORE', 56, 70)) }).topBlockers[0]?.severity).toBe('WAITING');
+    expect(buildGateHumanView({ status: 'REVIEW', gates: withFailures(gate('PREDICTION_SCORE', 67, 70)) }).topBlockers[0]?.severity).toBe('NEAR_THRESHOLD');
+  });
+
+  it('applies the small historical sample critical rule', () => {
+    const view = buildGateHumanView({ status: 'REVIEW', gates: withFailures(gate('HISTORICAL_SAMPLE', 2, 30)) });
+    expect(view.topBlockers[0]).toMatchObject({ key: 'HISTORICAL_SAMPLE', severity: 'CRITICAL' });
+    expect(view.topBlockers[0]?.explanation).toContain('28 uygun geçmiş örnek daha gerekiyor');
+  });
+
+  it('ranks 2/30 historical and 36/70 score ahead of 44/45 confidence', () => {
+    const view = buildGateHumanView({ status: 'REVIEW', gates: withFailures(
+      gate('HISTORICAL_SAMPLE', 2, 30), gate('PREDICTION_SCORE', 36, 70), gate('MODEL_CONFIDENCE', 44, 45)) });
+    expect(view.topBlockers.map(item => item.key)).toEqual(['HISTORICAL_SAMPLE','PREDICTION_SCORE','MODEL_CONFIDENCE']);
+    expect(view.topBlockers[2]?.severity).toBe('NEAR_THRESHOLD');
+  });
+
+  it('ranks 25/50 data quality ahead of the informational time gate', () => {
+    const view = buildGateHumanView({ status: 'REVIEW', gates: withFailures(
+      gate('DATA_QUALITY', 25, 50), gate('OFFICIAL_WINDOW', 281, '0–90 dakika')) });
+    expect(view.topBlockers.map(item => item.key)).toEqual(['DATA_QUALITY']);
+    expect(view.topBlockers[0]?.severity).toBe('MAJOR');
+    expect(view.topBlockers[0]?.explanation).toContain('Hedefin yarısı seviyesinde');
+  });
+
+  it('always puts system safety before substantive blockers', () => {
+    const view = buildGateHumanView({ status: 'REJECTED', gates: withFailures(
+      gate('HISTORICAL_SAMPLE', 1, 30), gate('SELF_AUDIT_GLOBAL', 'PAUSED', 'PAUSE YOK')) });
+    expect(view.diagnosis).toBe('SYSTEM_BLOCKED');
+    expect(view.topBlockers[0]?.key).toBe('SELF_AUDIT_GLOBAL');
+  });
+
+  it('excludes passed gates from blocker ranking', () => {
+    const view = buildGateHumanView({ status: 'REVIEW', gates: withFailures(gate('MOVEMENT', 'NEUTRAL', ['SUPPORT'])) });
+    expect(view.topBlockers).toHaveLength(1);
+    expect(view.passedGates).toHaveLength(13);
+  });
+
+  it('handles invalid numeric values safely as waiting', () => {
+    const view = buildGateHumanView({ status: 'REVIEW', gates: withFailures(gate('DATA_QUALITY', 'unknown', 50)) });
+    expect(view.topBlockers[0]).toMatchObject({ severity: 'WAITING', completionRatio: null });
+    expect(renderGateHumanMode({ status: 'REVIEW', gates: withFailures(gate('DATA_QUALITY', 'unknown', 50)) })).not.toContain('NaN');
+    expect(buildGateHumanView({ status: 'REVIEW', gates: withFailures(gate('DATA_QUALITY', null, 50)) }).topBlockers[0]?.severity).toBe('WAITING');
+  });
+
+  it('shows clear complete-state and market movement explanations', () => {
+    const html = renderGateHumanMode({ status: 'REVIEW', gates: withFailures(
+      gate('COMPLETE_STATES', { bookmakers: 0, states: 1 }, { bookmakers: 3, states: 2 }),
+      gate('MOVEMENT', 'NEUTRAL', ['SUPPORT'])) });
+    expect(html).toContain('Mevcut: 0 şirket · 1 ölçüm. Gereken: 3 şirket · 2 ölçüm.');
+    expect(html).toContain('bookmaker hareketleri mevcut tahmini belirgin biçimde desteklemiyor');
+  });
+
+  it('renders severity with text and visually distinct classes', () => {
+    const html = renderGateHumanMode({ status: 'REVIEW', gates: productionFixture() });
+    expect(html).toContain('data-severity="CRITICAL"');
+    expect(html).toContain('KRİTİK');
+    expect(html).toContain('CİDDİ EKSİK');
+    expect(html).toContain('EŞİĞE YAKIN');
+  });
+
+  it('keeps the technical source-of-truth table collapsed and unchanged in structure', () => {
+    const html = renderGateHumanMode({ status: 'REVIEW', gates: productionFixture() });
     expect(html).toContain('<summary>Teknik detayları göster</summary>');
     expect(html).not.toContain('<details class="technical-gates" open');
     expect(html).toContain('<th>Kontrol</th><th>Mevcut</th><th>Gerekli</th><th>Sonuç</th><th>Açıklama</th>');
   });
 
-  it('selects no more than three top blockers and counts all remaining blockers', () => {
-    const gates = withFailures(
-      gate('HISTORICAL_SAMPLE', 1, 30), gate('PREDICTION_SCORE', 45.85, 70),
-      gate('MODEL_CONFIDENCE', 39, 45), gate('DATA_QUALITY', 47, 50),
-      gate('MOVEMENT', 'NEUTRAL', ['SUPPORT','STRONG_SUPPORT']), gate('OFFICIAL_WINDOW', 495, '0–90 dakika'));
-    const view = buildGateHumanView({ status: 'REVIEW', gates });
-    expect(view.topBlockers).toHaveLength(3);
-    expect(view.additionalBlockers).toHaveLength(3);
-    expect(view.topBlockers.map(item => item.key)).toEqual(['OFFICIAL_WINDOW','HISTORICAL_SAMPLE','PREDICTION_SCORE']);
-    expect(renderGateHumanMode({ status: 'REVIEW', gates })).toContain('+ 3 diğer kontrol');
+  it('still requires LOCKED_PREDICTION for official-ready', () => {
+    expect(buildGateHumanView({ status: 'OFFICIAL', predictionState: 'LOCKED_PREDICTION', gates: base }).diagnosis).toBe('READY');
+    expect(buildGateHumanView({ status: 'OFFICIAL', predictionState: 'PREVIEW', gates: base }).diagnosis).not.toBe('READY');
   });
 
-  it('explains a small historical sample without claiming that data does not exist', () => {
-    const html = renderGateHumanMode({ status: 'REVIEW', gates: withFailures(gate('HISTORICAL_SAMPLE', 1, 30)) });
-    expect(html).toContain('1 benzer maç bulundu; resmi tahmin için 30 gerekiyor.');
-    expect(html).not.toContain('Geçmiş veri yok');
-    expect(html).toContain('sistemdeki tüm geçmiş maçları değil');
+  it('never treats PREVIEW as official-ready', () => {
+    const view = buildGateHumanView({ status: 'WAITING', predictionState: 'PREVIEW', gates: base });
+    expect(view.title).not.toContain('HAZIR');
   });
 
-  it('classifies score-only failure as weak analysis and never calls score probability', () => {
-    const view = buildGateHumanView({ status: 'REVIEW', gates: withFailures(gate('PREDICTION_SCORE', 45.85, 70)) });
-    expect(view.diagnosis).toBe('ANALYSIS_WEAK');
-    expect(view.title).toBe('TAHMİN ŞU AN EŞİK ALTINDA');
-    const html = renderGateHumanMode({ status: 'REVIEW', gates: withFailures(gate('PREDICTION_SCORE', 45.85, 70)) });
-    expect(html).toContain('kazanma olasılığı veya başarı yüzdesi değildir');
-    expect(html).not.toContain('45.85%');
-  });
-
-  it('classifies time-only failure and renders an understandable duration', () => {
-    const gates = withFailures(gate('OFFICIAL_WINDOW', 495, '0–90 dakika', false, 'OFFICIAL_WINDOW_NOT_OPEN'));
-    const view = buildGateHumanView({ status: 'WAITING', gates, matchStatus: 'scheduled' });
-    expect(view.diagnosis).toBe('TIME_ONLY');
-    expect(view.title).toBe('RESMİ TAHMİN ZAMANI HENÜZ GELMEDİ');
-    expect(view.topBlockers[0]?.value).toBe('Maça 8 saat 15 dakika var');
-    expect(view.topBlockers[0]?.explanation).toContain('90 dakika önce açılır');
-    expect(view.nextStep).toContain('otomatik olarak yeniden değerlendirilecek');
-  });
-
-  it('classifies combined data and score failures as mixed', () => {
-    const view = buildGateHumanView({ status: 'REVIEW', gates: withFailures(
-      gate('HISTORICAL_SAMPLE', 12, 30), gate('PREDICTION_SCORE', 60, 70)) });
-    expect(view.diagnosis).toBe('MIXED');
-    expect(view.diagnosisText).toContain('Hem veri miktarı hem mevcut analiz');
-    expect(view.nextStep).not.toContain('oluşturulacak');
-  });
-
-  it('shows official-ready only for a locked prediction with all gates passed', () => {
-    const ready = buildGateHumanView({ status: 'OFFICIAL', predictionState: 'LOCKED_PREDICTION', gates: base });
-    expect(ready.diagnosis).toBe('READY');
-    expect(ready.title).toBe('RESMİ TAHMİN HAZIR');
-    const preview = buildGateHumanView({ status: 'WAITING', predictionState: 'PREVIEW', gates: base });
-    expect(preview.diagnosis).not.toBe('READY');
-    expect(preview.title).not.toContain('HAZIR');
-  });
-
-  it('puts a system safety block before every other blocker', () => {
-    const view = buildGateHumanView({ status: 'REJECTED', gates: withFailures(
-      gate('HISTORICAL_SAMPLE', 1, 30), gate('OFFICIAL_WINDOW', 300, '0–90 dakika'),
-      gate('SELF_AUDIT_GLOBAL', 'PAUSED', 'PAUSE YOK', false, 'SELF_AUDIT_PAUSED')) });
-    expect(view.diagnosis).toBe('SYSTEM_BLOCKED');
-    expect(view.topBlockers[0]?.key).toBe('SELF_AUDIT_GLOBAL');
-    expect(view.title).toBe('SİSTEM GÜVENLİK NEDENİYLE BEKLEMEDE');
-  });
-
-  it('keeps passed rows out of primary blockers and available behind a disclosure', () => {
-    const view = buildGateHumanView({ status: 'REVIEW', gates: withFailures(gate('MOVEMENT', 'NEUTRAL', ['SUPPORT'])) });
-    expect(view.topBlockers).toHaveLength(1);
-    expect(view.passedGates).toHaveLength(13);
-    const html = renderGateHumanMode({ status: 'REVIEW', gates: withFailures(gate('MOVEMENT', 'NEUTRAL', ['SUPPORT'])) });
-    expect(html).toContain('13 geçen kontrolü göster');
-  });
-
-  it('explains model confidence separately from prediction score', () => {
-    const html = renderGateHumanMode({ status: 'REVIEW', gates: withFailures(
-      gate('MODEL_CONFIDENCE', 39, 45), gate('PREDICTION_SCORE', 45.85, 70)) });
-    expect(html).toContain('Model güveni, veri ve model tutarlılığını ölçer');
-    expect(html).toContain('tahmin skoruyla aynı değer değildir');
-  });
-
-  it('describes an existing near-threshold quality value as slightly below target', () => {
-    const view = buildGateHumanView({ status: 'REVIEW', gates: withFailures(gate('DATA_QUALITY', 47, 50)) });
-    expect(view.topBlockers[0]?.explanation).toContain('hedefin biraz altında');
-    expect(view.topBlockers[0]?.explanation).not.toContain('Veri yok');
-  });
-
-  it('does not mutate raw gate values or enum codes', () => {
-    const gates = withFailures(gate('MOVEMENT', 'NEUTRAL', ['SUPPORT','STRONG_SUPPORT'], false, 'MOVEMENT_NOT_SUPPORTED'));
+  it('does not mutate gate state, score, status, or enum values', () => {
+    const gates = productionFixture();
     const before = structuredClone(gates);
-    const html = renderGateHumanMode({ status: 'REVIEW', gates });
+    buildGateHumanView({ status: 'REVIEW', predictionState: 'PREVIEW', gates });
     expect(gates).toEqual(before);
-    expect(html).toContain('Belirgin piyasa desteği yok');
+    expect(gates.find(item => item.key === 'PREDICTION_SCORE')?.current).toBe(36.66);
     expect(gates.find(item => item.key === 'MOVEMENT')?.current).toBe('NEUTRAL');
   });
 
-  it('uses a mobile-first DOM order and keeps the technical table last', () => {
-    const html = renderGateHumanMode({ status: 'REVIEW', gates: withFailures(gate('HISTORICAL_SAMPLE', 1, 30)) });
-    const status = html.indexOf('human-status-card');
-    const blockers = html.indexOf('human-section');
-    const next = html.indexOf('human-next');
-    const progress = html.indexOf('human-progress');
-    const technical = html.indexOf('technical-gates');
-    expect(status).toBeLessThan(blockers);
-    expect(blockers).toBeLessThan(next);
-    expect(next).toBeLessThan(progress);
-    expect(progress).toBeLessThan(technical);
+  it('keeps the compact mobile-first DOM order with timing before next action', () => {
+    const html = renderGateHumanMode({ status: 'REVIEW', gates: productionFixture() });
+    expect(html.indexOf('human-status-card')).toBeLessThan(html.indexOf('human-section'));
+    expect(html.indexOf('human-section')).toBeLessThan(html.indexOf('human-timing'));
+    expect(html.indexOf('human-timing')).toBeLessThan(html.indexOf('human-next'));
+    expect(html.indexOf('human-progress')).toBeLessThan(html.indexOf('technical-gates'));
   });
 });

@@ -17,6 +17,7 @@ export type GateHumanModeInput = {
 };
 
 export type HumanGateGroup = 'SYSTEM' | 'TIME' | 'CRITICAL' | 'WAITING_FOR_DATA' | 'MARKET_CONFIRMATION';
+export type HumanGateSeverity = 'CRITICAL' | 'MAJOR' | 'WAITING' | 'NEAR_THRESHOLD' | 'INFO';
 export type HumanGateItem = {
   key: string;
   label: string;
@@ -24,7 +25,16 @@ export type HumanGateItem = {
   explanation: string;
   group: HumanGateGroup;
   priority: number;
-  tone: 'critical' | 'waiting' | 'info';
+  severity: HumanGateSeverity;
+  severityText: string;
+  completionRatio: number | null;
+};
+
+export type HumanTiming = {
+  value: string;
+  explanation: string;
+  windowMinutes: number | null;
+  opensInMinutes: number | null;
 };
 
 export type GateHumanView = {
@@ -38,6 +48,7 @@ export type GateHumanView = {
   totalCount: number;
   topBlockers: HumanGateItem[];
   additionalBlockers: HumanGateItem[];
+  timing: HumanTiming | null;
   passedGates: GateViewItem[];
   lastEvaluatedText: string | null;
 };
@@ -47,7 +58,12 @@ const escapeHtml = (value: unknown): string => String(value ?? '—')
   .replaceAll('"', '&quot;').replaceAll("'", '&#039;');
 
 const keyOf = (gate: GateViewItem): string => String(gate.key ?? 'UNKNOWN');
-const finite = (value: unknown): number | null => Number.isFinite(Number(value)) ? Number(value) : null;
+const finite = (value: unknown): number | null => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string' || value.trim() === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+};
 const displayNumber = (value: unknown): string => {
   const number = finite(value);
   return number == null ? String(value ?? '—') : Number.isInteger(number) ? String(number) : String(Number(number.toFixed(2)));
@@ -76,18 +92,18 @@ const valuePair = (gate: GateViewItem): string => `${presentationValue(gate.curr
 const gateMeta: Record<string, { group: HumanGateGroup; priority: number; label: string }> = {
   SELF_AUDIT_GLOBAL: { group: 'SYSTEM', priority: 1, label: 'Sistem güvenliği' },
   SELF_AUDIT_SEGMENT: { group: 'SYSTEM', priority: 2, label: 'Lig ve market güvenliği' },
-  OFFICIAL_WINDOW: { group: 'TIME', priority: 10, label: 'Resmi tahmin zamanı' },
-  ODDS_ELIGIBILITY: { group: 'CRITICAL', priority: 20, label: 'Oran verisinin uygunluğu' },
-  HISTORICAL_SAMPLE: { group: 'CRITICAL', priority: 30, label: 'Benzer geçmiş maç' },
-  PREDICTION_SCORE: { group: 'CRITICAL', priority: 40, label: 'Tahmin skoru' },
-  DATA_QUALITY: { group: 'WAITING_FOR_DATA', priority: 50, label: 'Veri kalitesi' },
+  PREDICTION_SCORE: { group: 'CRITICAL', priority: 10, label: 'Tahmin skoru' },
+  HISTORICAL_SAMPLE: { group: 'CRITICAL', priority: 20, label: 'Benzer geçmiş maç' },
+  ODDS_ELIGIBILITY: { group: 'CRITICAL', priority: 30, label: 'Oran verisinin uygunluğu' },
+  DATA_QUALITY: { group: 'WAITING_FOR_DATA', priority: 40, label: 'Veri kalitesi' },
+  COMPLETE_STATES: { group: 'WAITING_FOR_DATA', priority: 50, label: 'Oran geçmişi' },
   MODEL_CONFIDENCE: { group: 'WAITING_FOR_DATA', priority: 60, label: 'Model güveni' },
-  COMPLETE_STATES: { group: 'WAITING_FOR_DATA', priority: 70, label: 'Oran geçmişi' },
-  BOOKMAKERS: { group: 'WAITING_FOR_DATA', priority: 71, label: 'Bahis şirketi kapsamı' },
+  BOOKMAKERS: { group: 'WAITING_FOR_DATA', priority: 70, label: 'Bahis şirketi kapsamı' },
   MOVEMENT: { group: 'MARKET_CONFIRMATION', priority: 80, label: 'Piyasa hareketi' },
-  CORNER_MODEL_CONFLICT: { group: 'MARKET_CONFIRMATION', priority: 81, label: 'Korner modeli uyumu' },
+  CORNER_MODEL_CONFLICT: { group: 'MARKET_CONFIRMATION', priority: 90, label: 'Korner modeli uyumu' },
   ODDS_ANALYSIS: { group: 'WAITING_FOR_DATA', priority: 90, label: 'Oran analizi' },
   PREDICTION_RUN: { group: 'WAITING_FOR_DATA', priority: 91, label: 'Maç değerlendirmesi' },
+  OFFICIAL_WINDOW: { group: 'TIME', priority: 100, label: 'Resmi tahmin zamanı' },
 };
 
 function durationText(minutes: number): string {
@@ -99,49 +115,110 @@ function durationText(minutes: number): string {
   return `${remainder} dakika`;
 }
 
-function timeExplanation(gate: GateViewItem, matchStatus: unknown): string {
-  const minutes = finite(gate.current);
-  const windowMinutes = typeof gate.required === 'string'
-    ? finite(String(gate.required).match(/(\d+)\s*dakika/i)?.[1]) : null;
-  if (String(gate.current) === 'KİLİTLENDİ') return 'Resmi tahmin kilitlendi.';
-  if (String(matchStatus).toLowerCase() === 'finished') return 'Maç tamamlandı.';
-  if (String(matchStatus).toLowerCase() === 'live' || (minutes != null && minutes <= 0)) return 'Maç başladı; maç öncesi resmi tahmin penceresi kapandı.';
-  if (gate.passed === true) return 'Resmi tahmin penceresi açık.';
-  if (minutes == null) return 'Resmi tahmin zamanlaması henüz hesaplanamadı.';
-  return `Maça ${durationText(minutes)} var. Resmi tahmin penceresi maçtan ${windowMinutes ?? 'tanımlı süre'} dakika önce açılır.`;
+function officialWindowMinutes(required: unknown): number | null {
+  if (typeof required === 'number') return finite(required);
+  if (typeof required === 'string') {
+    const values = required.match(/\d+(?:[.,]\d+)?/g)?.map(value => Number(value.replace(',', '.'))).filter(Number.isFinite) ?? [];
+    return values.length ? Math.max(...values) : null;
+  }
+  if (required && typeof required === 'object' && !Array.isArray(required)) {
+    const item = required as Record<string, unknown>;
+    return finite(item.maxMinutes ?? item.windowMinutes ?? item.max);
+  }
+  return null;
 }
 
-function timeValue(gate: GateViewItem, matchStatus: unknown): string {
+function timing(gate: GateViewItem | undefined, matchStatus: unknown): HumanTiming | null {
+  if (!gate) return null;
   const minutes = finite(gate.current);
-  if (String(gate.current) === 'KİLİTLENDİ') return 'Tahmin kilitlendi';
-  if (String(matchStatus).toLowerCase() === 'finished') return 'Maç tamamlandı';
-  if (String(matchStatus).toLowerCase() === 'live' || (minutes != null && minutes <= 0)) return 'Maç başladı';
-  if (gate.passed === true) return 'Resmi tahmin penceresi açık';
-  return minutes == null ? 'Zaman bilgisi bekleniyor' : `Maça ${durationText(minutes)} var`;
+  const windowMinutes = officialWindowMinutes(gate.required);
+  const opensInMinutes = minutes != null && windowMinutes != null ? Math.max(0, minutes - windowMinutes) : null;
+  if (String(gate.current) === 'KİLİTLENDİ') return { value: 'Tahmin kilitlendi', explanation: 'Resmi tahmin kilitlendi.', windowMinutes, opensInMinutes: 0 };
+  if (String(matchStatus).toLowerCase() === 'finished') return { value: 'Maç tamamlandı', explanation: 'Maç öncesi resmi tahmin dönemi tamamlandı.', windowMinutes, opensInMinutes: null };
+  if (String(matchStatus).toLowerCase() === 'live' || (minutes != null && minutes <= 0)) return { value: 'Maç başladı', explanation: 'Maç öncesi resmi tahmin penceresi kapandı.', windowMinutes, opensInMinutes: null };
+  if (gate.passed === true || opensInMinutes === 0) return { value: minutes == null ? 'Resmi tahmin penceresi açık' : `Maça ${durationText(minutes)} var`, explanation: 'Resmi tahmin penceresi açık.', windowMinutes, opensInMinutes: 0 };
+  if (minutes == null) return { value: 'Zaman bilgisi bekleniyor', explanation: 'Resmi tahmin zamanlaması henüz hesaplanamadı.', windowMinutes, opensInMinutes: null };
+  const explanation = opensInMinutes == null
+    ? `Resmi tahmin penceresi maçtan ${windowMinutes ?? 'tanımlı süre'} dakika önce açılır.`
+    : `Resmi tahmin penceresi ${durationText(opensInMinutes)} sonra açılacak.`;
+  return { value: `Maça ${durationText(minutes)} var`, explanation, windowMinutes, opensInMinutes };
+}
+
+function numericRatio(gate: GateViewItem): number | null {
+  const current = finite(gate.current);
+  const required = finite(gate.required);
+  if (current == null || required == null || required <= 0) return null;
+  return Math.max(0, Math.min(1, current / required));
+}
+
+function completeStatesRatio(gate: GateViewItem): number | null {
+  if (!gate.current || !gate.required || typeof gate.current !== 'object' || typeof gate.required !== 'object'
+    || Array.isArray(gate.current) || Array.isArray(gate.required)) return null;
+  const current = gate.current as Record<string, unknown>;
+  const required = gate.required as Record<string, unknown>;
+  const bookmakerRatio = finite(current.bookmakers) != null && finite(required.bookmakers) != null && Number(required.bookmakers) > 0
+    ? Number(current.bookmakers) / Number(required.bookmakers) : null;
+  const stateRatio = finite(current.states) != null && finite(required.states) != null && Number(required.states) > 0
+    ? Number(current.states) / Number(required.states) : null;
+  const ratios = [bookmakerRatio, stateRatio].filter((value): value is number => value != null && Number.isFinite(value));
+  return ratios.length ? Math.max(0, Math.min(1, Math.min(...ratios))) : null;
+}
+
+function severityFor(gate: GateViewItem): { severity: HumanGateSeverity; ratio: number | null } {
+  const key = keyOf(gate);
+  if (key.startsWith('SELF_AUDIT')) return { severity: 'CRITICAL', ratio: null };
+  if (key === 'OFFICIAL_WINDOW') return { severity: 'INFO', ratio: null };
+  if (key === 'ODDS_ELIGIBILITY' || key === 'MOVEMENT' || key === 'CORNER_MODEL_CONFLICT') return { severity: 'WAITING', ratio: null };
+  if (key === 'COMPLETE_STATES') return { severity: 'MAJOR', ratio: completeStatesRatio(gate) };
+  const ratio = numericRatio(gate);
+  if (key === 'HISTORICAL_SAMPLE') {
+    const current = finite(gate.current);
+    if (current != null && (current <= 2 || (ratio != null && ratio < 0.25))) return { severity: 'CRITICAL', ratio };
+  }
+  if (ratio == null) return { severity: 'WAITING', ratio: null };
+  if (ratio < 0.5) return { severity: 'CRITICAL', ratio };
+  if (ratio < 0.8) return { severity: 'MAJOR', ratio };
+  if (ratio < 0.95) return { severity: 'WAITING', ratio };
+  return { severity: 'NEAR_THRESHOLD', ratio };
+}
+
+const severityText: Record<HumanGateSeverity, string> = {
+  CRITICAL: 'KRİTİK', MAJOR: 'CİDDİ EKSİK', WAITING: 'VERİ BEKLENİYOR', NEAR_THRESHOLD: 'EŞİĞE YAKIN', INFO: 'BİLGİ',
+};
+
+function numericGapText(gate: GateViewItem): string | null {
+  const current = finite(gate.current);
+  const required = finite(gate.required);
+  if (current == null || required == null || required <= current) return null;
+  const gap = required - current;
+  if (keyOf(gate) === 'HISTORICAL_SAMPLE') return `${displayNumber(Math.ceil(gap))} uygun geçmiş örnek daha gerekiyor.`;
+  if (keyOf(gate) === 'DATA_QUALITY' && current / required === 0.5) return 'Hedefin yarısı seviyesinde.';
+  if (current / required >= 0.95) return `Eşiğe çok yakın: yalnızca ${displayNumber(gap)} puan eksik.`;
+  return `Eşiğe ${displayNumber(gap)} puan var.`;
 }
 
 function explanation(gate: GateViewItem, matchStatus: unknown): string {
   const key = keyOf(gate);
   const current = finite(gate.current);
   const required = finite(gate.required);
-  if (key === 'OFFICIAL_WINDOW') return timeExplanation(gate, matchStatus);
+  if (key === 'OFFICIAL_WINDOW') return timing(gate, matchStatus)?.explanation ?? 'Resmi tahmin zamanlaması henüz hesaplanamadı.';
   if (key === 'HISTORICAL_SAMPLE' && current != null && required != null) {
-    return current === 1
+    const summary = current === 1
       ? `1 benzer maç bulundu; resmi tahmin için ${displayNumber(required)} gerekiyor.`
       : `${displayNumber(current)} benzer maç bulundu; resmi tahmin için ${displayNumber(required)} gerekiyor.`;
+    return `${summary} ${numericGapText(gate) ?? ''}`.trim();
   }
-  if (key === 'PREDICTION_SCORE') return 'Mevcut analiz puanı resmi tahmin eşiğinin altında.';
+  if (key === 'PREDICTION_SCORE') return `Mevcut analiz puanı resmi tahmin eşiğinin altında. ${numericGapText(gate) ?? ''}`.trim();
   if (key === 'DATA_QUALITY' && current != null && required != null) {
-    const closeToTarget = required - current > 0 && required - current <= Math.max(5, required * 0.1);
-    return current > 0 ? `Veri kalitesi hedefin ${closeToTarget ? 'biraz ' : ''}altında; yeni verilerle tekrar değerlendirilecek.` : 'Yeterli veri kalitesi henüz ölçülemedi.';
+    return current > 0 ? `Veri kalitesi hedefin altında. ${numericGapText(gate) ?? ''}`.trim() : 'Yeterli veri kalitesi henüz ölçülemedi.';
   }
   if (key === 'MODEL_CONFIDENCE' && current != null && required != null) {
-    return current > 0 ? 'Model güveni hedefin altında; tahmin skorundan ayrı bir veri tutarlılığı ölçümüdür.' : 'Model güvenini ölçmek için yeterli veri henüz birikmedi.';
+    return current > 0 ? `Model güveni hedefin altında. ${numericGapText(gate) ?? ''}`.trim() : 'Model güvenini ölçmek için yeterli veri henüz birikmedi.';
   }
-  if (key === 'COMPLETE_STATES') return 'Açılış ve güncel oranları karşılaştırmak için yeterli şirket ve ölçüm henüz birikmedi.';
+  if (key === 'COMPLETE_STATES') return `Yeterli açılış/güncel oran karşılaştırması yok. Mevcut: ${presentationValue(gate.current)}. Gereken: ${presentationValue(gate.required)}.`;
   if (key === 'BOOKMAKERS') return 'Yeterli sayıda bahis şirketinden güncel oran doğrulaması bekleniyor.';
-  if (key === 'ODDS_ELIGIBILITY') return 'Oran verisi resmi değerlendirme için henüz yeterli değil.';
-  if (key === 'MOVEMENT') return 'Piyasa hareketi tahmini henüz desteklemiyor.';
+  if (key === 'ODDS_ELIGIBILITY') return 'Oran verisi henüz resmi tahmin için kullanılabilir seviyeye gelmedi.';
+  if (key === 'MOVEMENT') return 'Şu anda bookmaker hareketleri mevcut tahmini belirgin biçimde desteklemiyor.';
   if (key.startsWith('SELF_AUDIT')) return 'Sistem güvenlik kontrolü normale dönmeden resmi tahmin oluşturulmaz.';
   if (key === 'ODDS_ANALYSIS') return 'Oran analizi oluştuğunda maç yeniden değerlendirilecek.';
   if (key === 'PREDICTION_RUN') return 'Prediction V1 değerlendirmesi henüz tamamlanmadı.';
@@ -151,9 +228,10 @@ function explanation(gate: GateViewItem, matchStatus: unknown): string {
 function humanGate(gate: GateViewItem, matchStatus: unknown): HumanGateItem {
   const key = keyOf(gate);
   const meta = gateMeta[key] ?? { group: 'WAITING_FOR_DATA' as const, priority: 99, label: String(gate.label ?? 'Kontrol') };
-  return { key, label: meta.label, value: key === 'OFFICIAL_WINDOW' ? timeValue(gate, matchStatus) : valuePair(gate), explanation: explanation(gate, matchStatus),
-    group: meta.group, priority: meta.priority,
-    tone: meta.group === 'SYSTEM' || meta.group === 'CRITICAL' ? 'critical' : meta.group === 'TIME' || meta.group === 'WAITING_FOR_DATA' ? 'waiting' : 'info' };
+  const severity = severityFor(gate);
+  return { key, label: meta.label, value: key === 'OFFICIAL_WINDOW' ? timing(gate, matchStatus)?.value ?? 'Zaman bilgisi bekleniyor' : valuePair(gate),
+    explanation: explanation(gate, matchStatus), group: meta.group, priority: meta.priority,
+    severity: severity.severity, severityText: severityText[severity.severity], completionRatio: severity.ratio };
 }
 
 function formattedEvaluation(value: unknown): string | null {
@@ -164,8 +242,8 @@ function formattedEvaluation(value: unknown): string | null {
 }
 
 export function buildGateHumanView(input: GateHumanModeInput): GateHumanView {
-  const failed = input.gates.filter(item => item.passed !== true).map(item => humanGate(item, input.matchStatus))
-    .sort((left, right) => left.priority - right.priority);
+  const severityRank: Record<HumanGateSeverity, number> = { CRITICAL: 0, MAJOR: 1, WAITING: 2, NEAR_THRESHOLD: 3, INFO: 4 };
+  const failed = input.gates.filter(item => item.passed !== true).map(item => humanGate(item, input.matchStatus));
   const passedGates = input.gates.filter(item => item.passed === true);
   const failedKeys = new Set(failed.map(item => item.key));
   const systemBlocked = failed.some(item => item.group === 'SYSTEM');
@@ -182,15 +260,21 @@ export function buildGateHumanView(input: GateHumanModeInput): GateHumanView {
     READY: 'Bütün güvenlik kontrolleri tamamlandı ve tahmin kilitlendi.',
     DATA_LIMITED: 'Bu maç için yeterli geçmiş ve oran verisi henüz birikmedi.',
     ANALYSIS_WEAK: 'Veri mevcut, ancak mevcut analiz resmi tahmin eşiklerini karşılamıyor.',
-    MIXED: 'Hem veri miktarı hem mevcut analiz henüz resmi tahmin için yeterli değil.',
+    MIXED: 'Hem veri miktarı hem mevcut analiz resmi tahmin koşullarını henüz karşılamıyor.',
     TIME_ONLY: 'Koşullar uygun olabilir ancak resmi tahmin penceresi henüz açılmadı.',
     SYSTEM_BLOCKED: 'Sistem güvenlik kontrolü nedeniyle yeni resmi tahminler beklemede.',
   };
   const title = ready ? 'RESMİ TAHMİN HAZIR' : systemBlocked ? 'SİSTEM GÜVENLİK NEDENİYLE BEKLEMEDE'
     : diagnosis === 'TIME_ONLY' ? 'RESMİ TAHMİN ZAMANI HENÜZ GELMEDİ'
-      : diagnosis === 'ANALYSIS_WEAK' ? 'TAHMİN ŞU AN EŞİK ALTINDA' : 'RESMİ TAHMİN İÇİN VERİ BEKLENİYOR';
-  const names = failed.slice(0, 2).map(item => item.label.toLocaleLowerCase('tr-TR')).join(' ve ');
-  const subtitle = ready ? 'Tüm kontroller geçti.' : `${failed.length} kontrol tamamlanmadı.${names ? ` En önemli eksikler: ${names}.` : ''}`;
+      : diagnosis === 'ANALYSIS_WEAK' ? 'MEVCUT ANALİZ RESMİ EŞİK ALTINDA'
+        : diagnosis === 'MIXED' ? 'RESMİ TAHMİN İÇİN KOŞULLAR HENÜZ YETERLİ DEĞİL' : 'RESMİ TAHMİN İÇİN VERİ YETERSİZ';
+  const substantive = failed.filter(item => item.group !== 'TIME').sort((left, right) => {
+    const systemDifference = Number(right.group === 'SYSTEM') - Number(left.group === 'SYSTEM');
+    if (systemDifference) return systemDifference;
+    return severityRank[left.severity] - severityRank[right.severity] || left.priority - right.priority;
+  });
+  const ranked = diagnosis === 'TIME_ONLY' ? failed.filter(item => item.group === 'TIME') : substantive;
+  const subtitle = ready ? 'Tüm kontroller geçti.' : `${failed.length} kontrol tamamlanmadı.`;
   const nextStep = ready ? 'Tahmin kilitlendi; mevcut resmi kayıt değişmeden gösterilir.'
     : systemBlocked ? 'Sistem güvenlik kontrolü normale dönmeden resmi tahmin oluşturulmaz.'
       : diagnosis === 'TIME_ONLY' ? 'Resmi tahmin penceresi açıldığında maç otomatik olarak yeniden değerlendirilecek.'
@@ -199,17 +283,18 @@ export function buildGateHumanView(input: GateHumanModeInput): GateHumanView {
             : 'Sistem yeni oran ve geçmiş veri geldikçe maçı otomatik olarak tekrar değerlendirecek.';
   return { title, subtitle, diagnosis, diagnosisText: diagnosisText[diagnosis], nextStep,
     passedCount: passedGates.length, pendingCount: failed.length, totalCount: input.gates.length,
-    topBlockers: failed.slice(0, 3), additionalBlockers: failed.slice(3), passedGates,
+    topBlockers: ranked.slice(0, 3), additionalBlockers: ranked.slice(3), timing: timing(input.gates.find(item => keyOf(item) === 'OFFICIAL_WINDOW'), input.matchStatus), passedGates,
     lastEvaluatedText: formattedEvaluation(input.lastEvaluatedAt) };
 }
 
 function renderBlocker(item: HumanGateItem, index?: number): string {
-  const groupLabels: Record<HumanGateGroup, string> = { SYSTEM: 'Sistem', TIME: 'Zaman', CRITICAL: 'Kritik',
-    WAITING_FOR_DATA: 'Veri bekleniyor', MARKET_CONFIRMATION: 'Piyasa doğrulaması' };
-  const icon = item.tone === 'critical' ? '!' : item.group === 'TIME' ? '◷' : '…';
-  return `<article class="human-blocker ${item.tone}" data-blocker-key="${escapeHtml(item.key)}">
+  const groupLabels: Record<HumanGateGroup, string> = { SYSTEM: 'Sistem', TIME: 'Zaman', CRITICAL: 'Tahmin koşulu',
+    WAITING_FOR_DATA: 'Veri koşulu', MARKET_CONFIRMATION: 'Piyasa doğrulaması' };
+  const icon = item.severity === 'CRITICAL' || item.severity === 'MAJOR' ? '!' : item.group === 'TIME' ? '◷' : '…';
+  const severityClass = item.severity.toLowerCase().replace('_', '-');
+  return `<article class="human-blocker ${severityClass}" data-blocker-key="${escapeHtml(item.key)}" data-severity="${item.severity}">
     <span class="human-blocker-icon" aria-hidden="true">${icon}</span><div><small>${escapeHtml(groupLabels[item.group])}</small>
-    <h4>${index == null ? '' : `${index}. `}${escapeHtml(item.label)}</h4><strong>${escapeHtml(item.value)}</strong>
+    <div class="human-blocker-heading"><h4>${index == null ? '' : `${index}. `}${escapeHtml(item.label)}</h4><span class="severity-badge ${severityClass}">${escapeHtml(item.severityText)}</span></div><strong>${escapeHtml(item.value)}</strong>
     <p>${escapeHtml(item.explanation)}</p>${item.key === 'HISTORICAL_SAMPLE' ? '<p class="human-info">Bu sayı sistemdeki tüm geçmiş maçları değil, bu tahmin için market, seçim, oran ve uygunluk filtrelerinden geçen benzer maçları gösterir.</p>' : ''}
     ${item.key === 'PREDICTION_SCORE' ? '<p class="human-info">Tahmin skoru, resmi tahmin oluşturmak için kullanılan analiz puanıdır; kazanma olasılığı veya başarı yüzdesi değildir.</p>' : ''}
     ${item.key === 'MODEL_CONFIDENCE' ? '<p class="human-info">Model güveni, veri ve model tutarlılığını ölçer; tahmin skoruyla aynı değer değildir.</p>' : ''}
@@ -245,6 +330,7 @@ export function renderGateHumanMode(input: GateHumanModeInput): string {
       <div class="human-blockers">${view.topBlockers.map((item, index) => renderBlocker(item, index + 1)).join('')}</div>
       ${view.additionalBlockers.length ? `<details class="additional-blockers"><summary>+ ${view.additionalBlockers.length} diğer kontrol</summary><div class="details-body human-blockers">${view.additionalBlockers.map(item => renderBlocker(item)).join('')}</div></details>` : ''}</section>`
       : `<section class="human-section human-ready-copy"><h3>Neden resmi tahmin hazır?</h3><p>Bütün kontroller tamamlandı ve tahmin kilitlendi.</p></section>`}
+    ${view.timing ? `<section class="human-timing"><span class="human-timing-icon" aria-hidden="true">◷</span><div><small>Zamanlama</small><h3>Resmi tahmin zamanı</h3><strong>${escapeHtml(view.timing.value)}</strong><p>${escapeHtml(view.timing.explanation)}</p></div></section>` : ''}
     <section class="human-next"><span aria-hidden="true">→</span><div><h3>Şimdi ne olacak?</h3><p>${escapeHtml(view.nextStep)}</p></div></section>
     <section class="human-progress" aria-label="Gate kontrollerinin tamamlanma özeti"><div><h3>${view.passedCount} / ${view.totalCount} kontrol tamamlandı</h3><span>${view.pendingCount} kontrol bekliyor</span></div>
       <div class="progress-track" role="progressbar" aria-label="Tamamlanan gate kontrolleri; tahmin güveni değildir" aria-valuenow="${view.passedCount}" aria-valuemin="0" aria-valuemax="${view.totalCount}"><i style="width:${progress}%"></i></div>

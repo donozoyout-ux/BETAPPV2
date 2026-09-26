@@ -14,16 +14,16 @@ const absent = async () => null;
 const humanModeGates = [
   { key: 'ODDS_ANALYSIS', label: 'Oran analizi', current: 'VAR', required: 'VAR', passed: true, reason: null, reasonCode: null },
   { key: 'PREDICTION_RUN', label: 'Prediction V1 değerlendirmesi', current: 'VAR', required: 'VAR', passed: true, reason: null, reasonCode: null },
-  { key: 'ODDS_ELIGIBILITY', label: 'Oran analizi uygunluğu', current: 'UYGUN', required: 'UYGUN', passed: true, reason: null, reasonCode: null },
-  { key: 'BOOKMAKERS', label: 'Bahis şirketi', current: 2, required: 3, passed: false, reason: 'Yeterli sayıda bahis şirketinden veri yok.', reasonCode: 'INSUFFICIENT_BOOKMAKERS' },
-  { key: 'COMPLETE_STATES', label: 'Açılış / güncel oran ölçümü', current: { bookmakers: 2, states: 1 }, required: { bookmakers: 3, states: 2 }, passed: false, reason: 'Açılış ve güncel oranı karşılaştırmak için yeterli ölçüm yok.', reasonCode: 'INSUFFICIENT_COMPLETE_STATES' },
-  { key: 'DATA_QUALITY', label: 'Veri kalitesi', current: 47, required: 50, passed: false, reason: 'Veri kalitesi resmi tahmin için yeterli değil.', reasonCode: 'LOW_DATA_QUALITY' },
-  { key: 'MODEL_CONFIDENCE', label: 'Model güveni', current: 39, required: 45, passed: false, reason: 'Model güveni yeterli değil.', reasonCode: 'LOW_MODEL_CONFIDENCE' },
+  { key: 'ODDS_ELIGIBILITY', label: 'Oran analizi uygunluğu', current: 'HENÜZ UYGUN DEĞİL', required: 'UYGUN', passed: false, reason: 'Oran analizi henüz resmi tahmine uygun değil.', reasonCode: 'ODDS_NOT_ELIGIBLE' },
+  { key: 'BOOKMAKERS', label: 'Bahis şirketi', current: 3, required: 3, passed: true, reason: null, reasonCode: null },
+  { key: 'COMPLETE_STATES', label: 'Açılış / güncel oran ölçümü', current: { bookmakers: 0, states: 1 }, required: { bookmakers: 3, states: 2 }, passed: false, reason: 'Açılış ve güncel oranı karşılaştırmak için yeterli ölçüm yok.', reasonCode: 'INSUFFICIENT_COMPLETE_STATES' },
+  { key: 'DATA_QUALITY', label: 'Veri kalitesi', current: 25, required: 50, passed: false, reason: 'Veri kalitesi resmi tahmin için yeterli değil.', reasonCode: 'LOW_DATA_QUALITY' },
+  { key: 'MODEL_CONFIDENCE', label: 'Model güveni', current: 44, required: 45, passed: false, reason: 'Model güveni yeterli değil.', reasonCode: 'LOW_MODEL_CONFIDENCE' },
   { key: 'MOVEMENT', label: 'Oran hareketi', current: 'NEUTRAL', required: ['SUPPORT','STRONG_SUPPORT'], passed: false, reason: 'Bookmakerlarda yeterli oran hareketi oluşmadı.', reasonCode: 'MOVEMENT_NOT_SUPPORTED' },
-  { key: 'HISTORICAL_SAMPLE', label: 'Geçmiş benzer maç', current: 1, required: 30, passed: false, reason: 'Benzer geçmiş maç sayısı yetersiz.', reasonCode: 'INSUFFICIENT_HISTORICAL_SAMPLE' },
-  { key: 'PREDICTION_SCORE', label: 'Tahmin skoru', current: 45.85, required: 70, passed: false, reason: 'Tahmin skoru resmi eşik altında.', reasonCode: 'LOW_PREDICTION_SCORE' },
+  { key: 'HISTORICAL_SAMPLE', label: 'Geçmiş benzer maç', current: 2, required: 30, passed: false, reason: 'Benzer geçmiş maç sayısı yetersiz.', reasonCode: 'INSUFFICIENT_HISTORICAL_SAMPLE' },
+  { key: 'PREDICTION_SCORE', label: 'Tahmin skoru', current: 36.66, required: 70, passed: false, reason: 'Tahmin skoru resmi eşik altında.', reasonCode: 'LOW_PREDICTION_SCORE' },
   { key: 'CORNER_MODEL_CONFLICT', label: 'Korner modeli çelişkisi', current: 'UYGULANMAZ', required: 'UYGULANMAZ', passed: true, reason: null, reasonCode: null },
-  { key: 'OFFICIAL_WINDOW', label: 'Resmi tahmin zamanı', current: 495, required: '0–90 dakika', passed: false, reason: 'Resmi tahmin penceresi henüz açılmadı.', reasonCode: 'OFFICIAL_WINDOW_NOT_OPEN' },
+  { key: 'OFFICIAL_WINDOW', label: 'Resmi tahmin zamanı', current: 281, required: '0–90 dakika', passed: false, reason: 'Resmi tahmin penceresi henüz açılmadı.', reasonCode: 'OFFICIAL_WINDOW_NOT_OPEN' },
   { key: 'SELF_AUDIT_GLOBAL', label: 'Self-Audit genel güvenlik', current: 'AKTİF', required: 'PAUSE YOK', passed: true, reason: null, reasonCode: null },
   { key: 'SELF_AUDIT_SEGMENT', label: 'Self-Audit lig / market güvenliği', current: 'AKTİF', required: 'PAUSE YOK', passed: true, reason: null, reasonCode: null },
 ];
@@ -38,7 +38,7 @@ const predictions = {
   history: rows, performance: absent, latestSelfAudit: absent, latestSegmentSelfAudits: rows,
   latestRootCauseAudits: rows, latestAdaptiveRuleProposals: rows, oddsSimilarityShowcase: rows, diagnostics: absent,
   gates: async (id: string) => id === 'ui-0' ? { overallStatus: 'WAITING', gates: humanModeGates,
-    candidate: { predictionScore: 45.85, historical: { settledSampleSize: 1 } }, summary: 'Resmi tahmin koşulları henüz tamamlanmadı.' }
+    candidate: { predictionScore: 36.66, historical: { settledSampleSize: 2 } }, summary: 'Resmi tahmin koşulları henüz tamamlanmadı.' }
     : data.predictionPreviews.find(p => p.match_id === id)?.predictionGate ?? data.predictionReviewCandidates.find(p => p.matchId === id)?.predictionGate ?? null,
   detail: async () => ({ state: 'PREVIEW', runs: [{ generated_at: new Date().toISOString() }], journal: null }),
   csvStageResearch: async () => ({ summary: { total: 0, researchEligible: 0, matches: 0, competitions: 0, invalidOfficial: 0, invalidTimingKnown: 0 }, groups: [] }),

@@ -86,7 +86,8 @@ Yerel doğrulama:
 - `npm run lint`: PASS
 - `npm run test:unit`: 269 PASS
 - `npm run build`: PASS
-- `npm test`: Unit testler geçti. Yerel makinede Docker/container runtime bulunmadığı için 11 PostgreSQL entegrasyon testi başlatılamadı; push sonrasında GitHub CI üzerinde çalıştırılacak.
+- `npm test`: Unit testler geçti. Yerel makinede Docker/container runtime bulunmadığı için 11 PostgreSQL entegrasyon testi yerelde başlatılamadı.
+- GitHub Actions `BETAPP CI` run [#519](https://github.com/donozoyout-ux/BETAPPV2/actions/runs/36228848105): PASS. Typecheck, lint, 269 birim testi, 11 PostgreSQL entegrasyon testi ve build başarılı.
 
 ## Görsel doğrulama
 
@@ -113,4 +114,3 @@ Tarayıcı kontrollerinde sayfa içerik üretti, framework hata overlay'i ve kon
 - Son değerlendirme zamanı eski prediction kayıtlarında timestamp alanı yoksa gösterilmez.
 - Human Mode mevcut gate sonuçlarının kalitesiyle sınırlıdır; yeni açıklama metadata'sı veya backend durumu üretmez.
 - Görsel doğrulama Chromium ve sentetik fixture ile yapıldı. Üretim DB verisi bu görevde okunmadı veya değiştirilmedi.
-- CI sonucu push sonrasında bu rapora eklenecektir.

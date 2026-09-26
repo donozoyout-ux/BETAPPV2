@@ -11,7 +11,7 @@ permissions:
 jobs:
   smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - name: Verify live BETAPP UI and APIs
         shell: bash
@@ -25,23 +25,35 @@ jobs:
           health="$(mktemp)"
           dash="$(mktemp)"
 
-          for attempt in 1 2 3 4 5 6; do
+          ui_ready="false"
+          for attempt in 1 2 3 4 5 6 7 8; do
             code="$(curl -L -sS -o "$html" -w '%{http_code}' --connect-timeout 20 --max-time 90 "$ROOT" || true)"
-            [[ "$code" == "200" ]] && break
-            echo "root not ready: HTTP $code attempt $attempt/6"
-            sleep 15
+            echo "ROOT_HTTP=$code attempt=$attempt/8"
+            if [[ "$code" == "200" ]]               && grep -Fq "Maç Analizine Hazır mısın?" "$html"               && grep -Fq "Bugünün Maçları" "$html"               && grep -Fq "Resmi Tahminler" "$html"               && grep -Fq "betapp_onboarding_completed" "$html"; then
+              ui_ready="true"
+              break
+            fi
+            echo "New UI markers not present yet."
+            printf 'MARKERS: '
+            for marker in "Maç Analizine Hazır mısın?" "Ana Sayfa" "Bugünün Maçları" "Resmi Tahminler" "betapp_onboarding_completed"; do
+              if grep -Fq "$marker" "$html"; then printf '[yes:%s] ' "$marker"; else printf '[no:%s] ' "$marker"; fi
+            done
+            echo
+            echo "PAGE_TITLE=$(grep -oE '<title>[^<]+' "$html" | head -1 | sed 's/<title>//' || true)"
+            sleep 20
           done
-          echo "ROOT_HTTP=$code"
-          test "$code" = "200"
 
-          grep -Fq "Maç Analizine Hazır mısın?" "$html"
+          test "$code" = "200"
+          if [[ "$ui_ready" != "true" ]]; then
+            echo "LIVE_UI_MARKERS=FAIL"
+            echo "The public site is reachable but is not serving the merged redesign yet."
+            exit 2
+          fi
+
           grep -Fq "Ana Sayfa" "$html"
-          grep -Fq "Bugünün Maçları" "$html"
-          grep -Fq "Resmi Tahminler" "$html"
           grep -Fq "İnceleme" "$html"
           grep -Fq "Geçmiş Veriler" "$html"
           grep -Fq "Ayarlar" "$html"
-          grep -Fq "betapp_onboarding_completed" "$html"
           echo "LIVE_UI_MARKERS=PASS"
 
           health_code="$(curl -L -sS -o "$health" -w '%{http_code}' --connect-timeout 20 --max-time 60 "$HEALTH" || true)"

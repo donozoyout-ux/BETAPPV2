@@ -66,7 +66,8 @@ Hash navigasyonu aktif menüyü ve görünür paneli birlikte değiştirir. Geri
 - Yerel `npx tsx scripts/ui-preview.ts` gerçek Fastify uygulamasını sentetik repository fixture'larıyla açar; hiçbir DB veya sağlayıcı bağlantısı kurmaz. Çalışan uygulama agent-browser ile kontrol edildi.
 - Ana sayfanın altı görünümü ve detayın altı bölümü 1440, 1024 ve 390px genişlikte kontrol edildi: sayfa scrollWidth değerleri viewport genişliğine eşit, her navigasyonda tek panel görünür.
 - Onboarding tıklama/yenileme, mobil menü, resmi boş durum, inceleme açıklaması, geçmiş komşular ve teknik gate ekranı tarayıcıda kontrol edildi. Görüntüler sentetik test verisi içerir; üretim maçları veya performans sonuçları değildir.
-- CI sonucu: branch push sonrasında takip edilecek.
+- GitHub Actions CI run `36189699408`: PASS. Linux/Node 22 üzerinde install, typecheck, lint,
+  256 unit test, 11 PostgreSQL entegrasyon testi ve build adımlarının tamamı geçti.
 
 ## Bilinen sınırlar
 

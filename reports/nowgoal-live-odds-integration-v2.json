@@ -1,7 +1,7 @@
 {
   "branch": "codex/nowgoal-live-odds-integration-v2",
   "base": "origin/main@587f96e70a7ff87ccb120473710c2a0f44fd6e4c",
-  "head": "7e3be3fbc8cde90a0550dbccb33f569356f3b1ae",
+  "head": "8096e99282c39aebfe80334bca9f30004dbf4872",
   "generated_at": "2026-09-26",
   "statuses": {
     "PACKAGE_JSON_REGRESSION": "PASS",
@@ -31,7 +31,7 @@
     "finished_capture": "Only nonempty parsed source response sets final timestamp; empty, blocked, error remain retryable",
     "dependencies": "jsdom@29.1.1 and @csstools/css-tokenizer@4.0.2 resolve",
     "unit_tests": "289/289 passing",
-    "github_actions": "PASS: https://github.com/donozoyout-ux/BETAPPV2/actions/runs/36261286611 (install, typecheck, lint, unit, PostgreSQL integration, build).",
+    "github_actions": "PASS: https://github.com/donozoyout-ux/BETAPPV2/actions/runs/36261390914 for head 8096e99282c39aebfe80334bca9f30004dbf4872 (install, typecheck, lint, unit, PostgreSQL integration, build).",
     "integration": "Run 36261286611 passed the dedicated Nowgoal PostgreSQL integration suite and existing PostgreSQL repository integration suite.",
     "npm_ci": "PASS (clean install; 421 packages)"
   }

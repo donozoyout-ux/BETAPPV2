@@ -1,8 +1,9 @@
 import { topNavigation, matchDetailTabs } from './ui/components.js';
+import { renderGateHumanMode } from './ui/gate-human-mode.js';
 import { renderHistoricalNeighbors, historicalRateText } from './odds-neighbors/reliability-view.js';
 import type { HistoricalNeighbors } from './odds-neighbors/reliability.js';
 import { liveSection } from './live/view.js';
-import { escapeHtml, formatDate, gateValue, objectValue, optionalOdds, shell,
+import { escapeHtml, formatDate, objectValue, optionalOdds, shell,
   translateGrade, translateMarket, translateSelection } from './dashboard.js';
 
 export type MatchAnalysisPageData = {
@@ -59,14 +60,6 @@ function renderOneXTwo(odds: Array<Record<string, unknown>>): string {
   };
   return `<section class="odds-strip" aria-label="Gerçek 1 X 2 oranları"><div><span class="section-kicker">1 / X / 2</span>
     <small>${selected ? escapeHtml(selected[0]) : 'Gerçek oran henüz yok'}</small></div>${cell('HOME','1')}${cell('DRAW','X')}${cell('AWAY','2')}</section>`;
-}
-
-function renderGateTable(gates: Array<Record<string, unknown>>): string {
-  if (!gates.length) return renderEmpty('Gate bilgisi henüz yok', 'Prediction V1 değerlendirmesi oluştuğunda kontroller burada gösterilecek.');
-  return `<div class="scroll"><table class="gate-table"><thead><tr><th>Kontrol</th><th>Mevcut</th><th>Gerekli</th><th>Durum</th><th>Açıklama</th></tr></thead><tbody>${gates.map((item) =>
-    `<tr><td><strong>${escapeHtml(item.label)}</strong></td><td>${escapeHtml(gateValue(item.current))}</td>
-      <td>${escapeHtml(gateValue(item.required))}</td><td><span class="gate-result ${item.passed ? 'pass' : 'fail'}">${item.passed ? '✓ GEÇTİ' : '× GEÇMEDİ'}</span></td>
-      <td>${escapeHtml(item.reason ?? (item.passed ? 'Koşul karşılandı.' : 'Açıklama henüz mevcut değil.'))}</td></tr>`).join('')}</tbody></table></div>`;
 }
 
 function renderOddsRoute(intelligence: Record<string, unknown> | null): string {
@@ -168,6 +161,10 @@ export function renderMatchAnalysis(data: MatchAnalysisPageData): string {
   const mainMarket = candidate ? `${translateMarket(candidate.marketType)}${candidate.line == null ? '' : ` ${candidate.line}`} · ${translateSelection(candidate.selection)}` : null;
   const detail = data.predictionDetail ?? {};
   const runCount = Array.isArray(detail.runs) ? detail.runs.length : 0;
+  const latestRun = Array.isArray(detail.runs) && detail.runs[0] && typeof detail.runs[0] === 'object'
+    ? detail.runs[0] as Record<string, unknown> : null;
+  const humanGateMode = renderGateHumanMode({ status, predictionState: detail.state, matchStatus: match.status,
+    gates, lastEvaluatedAt: latestRun?.generated_at ?? latestRun?.generatedAt });
   const safetyGates = gates.filter((item) => ['SELF_AUDIT_GLOBAL','SELF_AUDIT_SEGMENT'].includes(String(item.key)));
 
   return shell(`${topNavigation(true)}<main class="product-main detail-content"><div class="page-heading"><div><h1>Maç Analizi</h1><p>${escapeHtml(match.league)}</p></div><a class="text-link" href="/#today">← Bugünün Maçları</a></div>${matchDetailTabs()}
@@ -184,10 +181,11 @@ export function renderMatchAnalysis(data: MatchAnalysisPageData): string {
           ${candidateMetric('Geçmiş başarı', percentText(historical?.historicalHitRate))}${candidateMetric('Oran hareketi', ({ SUPPORT: 'Destekliyor', NEUTRAL: 'Nötr', AGAINST: 'Ters yönde', CONFLICT: 'Çelişiyor' } as Record<string, string>)[String(candidate.movementClass)] ?? '—')}
           ${candidateMetric('Bookmaker', candidate.bookmakerCount)}${candidateMetric('Veri kalitesi', translateGrade(candidate.dataQualityGrade))}${candidateMetric('Model güveni', translateGrade(candidate.confidenceGrade))}</div>`
         : renderEmpty('Henüz resmi aday hesaplanmadı', 'Oran analizi ve Prediction V1 değerlendirmesi tamamlandığında ana aday burada görünecek.')}</article>
-        <article class="detail-panel why-panel"><div class="why-head"><div><span class="section-kicker">NEDEN?</span><h2>${passed} / ${gates.length} geçti</h2></div><span class="badge ${statusClasses[status] ?? 'neutral'}">${escapeHtml(statusLabels[status] ?? status)}</span></div>
-          <div class="why-list">${gates.length ? gates.map((item) => `<div><span>${item.passed ? '✓' : '×'} ${escapeHtml(item.label)}<small>Mevcut: ${escapeHtml(gateValue(item.current))} · Gerekli: ${escapeHtml(gateValue(item.required))}</small></span><b>${item.passed ? 'GEÇTİ' : 'GEÇMEDİ'}</b></div>`).join('') : '<p>Gate değerlendirmesi henüz oluşmadı.</p>'}</div></article></section>
+        <article class="detail-panel why-panel"><div class="why-head"><div><span class="section-kicker">KONTROL ÖZETİ</span><h2>${passed} / ${gates.length} kontrol tamamlandı</h2></div><span class="badge ${statusClasses[status] ?? 'neutral'}">${escapeHtml(statusLabels[status] ?? status)}</span></div>
+          <p>${escapeHtml(status === 'WAITING' && gate?.overallStatus === 'OFFICIAL' ? 'Tahmin henüz kilitlenmedi.' : gate?.summary ?? 'Gate değerlendirmesi henüz oluşmadı.')}</p>
+          <a class="analysis-link" href="#gates">Nedenini anlaşılır biçimde gör →</a></article></section>
 
-      </section><section data-detail="gates" id="gates" hidden><h2>Gate Inspector</h2><article class="detail-panel wide" id="gate-inspector"><div class="detail-title"><div><span class="section-kicker">PREDICTION V1</span><h2>Prediction Gate Inspector</h2></div><span>${passed} / ${gates.length} geçti</span></div>${renderGateTable(gates)}</article>      <details class="technical-records"><summary>Teknik Prediction V1 kayıtları</summary><div class="details-body"><div class="analysis-summary">
+      </section><section data-detail="gates" id="gates" hidden><div class="gate-page-heading"><span class="section-kicker">PREDICTION V1</span><h2>Gate Inspector</h2><p>Resmi tahmin durumunu ve sistemin beklediği koşulları anlaşılır biçimde incele.</p></div><article class="detail-panel wide" id="gate-inspector">${humanGateMode}</article><details class="technical-records"><summary>Teknik Prediction V1 kayıtları</summary><div class="details-body"><div class="analysis-summary">
         <span>Durum <b>${escapeHtml(detail.state ?? 'NOT_GENERATED')}</b></span><span>Run sayısı <b>${runCount}</b></span><span>Journal <b>${detail.journal ? 'VAR' : 'YOK'}</b></span>
         <span>Execution authority <b>FALSE</b></span><span>AI prediction authority <b>FALSE</b></span></div></div></details>
 </section>

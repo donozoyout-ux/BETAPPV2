@@ -1,7 +1,7 @@
 {
   "branch": "codex/nowgoal-live-odds-integration-v2",
   "base": "origin/main@587f96e70a7ff87ccb120473710c2a0f44fd6e4c",
-  "head": null,
+  "head": "pending",
   "generated_at": "2026-09-26",
   "statuses": {
     "NOWGOAL_LIVE_SOURCE": "PASS",
@@ -37,11 +37,26 @@
     "CI": "BLOCKED"
   },
   "details": {
-    "nowgoal_sample": {"http_status": 200, "observations": 30, "bookmakers": 3, "ft": 23, "ht": 7, "markets": ["AH", "1X2", "OVER_UNDER"]},
+    "nowgoal_sample": {
+      "http_status": 200,
+      "observations": 30,
+      "bookmakers": 3,
+      "ft": 23,
+      "ht": 7,
+      "markets": [
+        "AH",
+        "1X2",
+        "OVER_UNDER"
+      ]
+    },
     "migration": "019_nowgoal_live_odds_analysis_v1.sql; migration 016 is already occupied on current main",
     "sheets": "Credentialless smoke reported SYNC_DISABLED; no sheet access or append occurred.",
     "database_error": "Local PostgreSQL unavailable at 127.0.0.1:5432; container runtime unavailable.",
-    "unit_failures": ["Existing Render YAML LF-only assertions fail under Windows CRLF", "Existing jsdom CSS transitive dependency @csstools/css-tokenizer unavailable", "3 Nowgoal Sheets mocked tests currently failing due fixture URL behavior"],
+    "unit_failures": [
+      "Existing Render YAML assertions compare LF-only snippets; Windows checkout contains CRLF",
+      "Dashboard test cannot import missing @csstools/css-tokenizer dependency",
+      "Nowgoal Sheets sync test file passes 5/5"
+    ],
     "ci": "GitHub Actions workflow includes PostgreSQL integration job; remote run not yet queried."
   }
 }

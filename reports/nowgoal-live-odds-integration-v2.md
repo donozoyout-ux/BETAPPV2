@@ -46,4 +46,4 @@
 | BUILD | PASS |
 | CI | BLOCKED (not yet run on remote branch) |
 
-Unit-suite notes: current-main Windows runs have unrelated LF-only YAML assertions and a missing jsdom CSS transitive package; 3 V2 mocked Sheets tests also currently fail and require follow-up. Targeted parser and collector tests pass.
+Unit-suite notes: current-main Windows runs have unrelated LF-only YAML assertions and a missing jsdom CSS transitive package; Nowgoal Sheets sync unit tests pass (5/5); source endpoint parser and collector tests pass. The full unit suite still reports three failures caused by LF-only YAML assertions under Windows CRLF and an unavailable `@csstools/css-tokenizer` package.

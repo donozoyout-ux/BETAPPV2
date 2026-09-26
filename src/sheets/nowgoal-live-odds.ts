@@ -7,6 +7,7 @@ const HEADER=['match_id','nowgoal_match_id','source_url','captured_at','match_mi
   'ah_initial_home','ah_initial_line','ah_initial_away','ah_live_home','ah_live_line','ah_live_away',
   'one_x_two_initial_home','one_x_two_initial_draw','one_x_two_initial_away','one_x_two_live_home','one_x_two_live_draw','one_x_two_live_away',
   'ou_initial_over','ou_initial_line','ou_initial_under','ou_live_over','ou_live_line','ou_live_under','parser_version','raw_hash','observation_identity'];
+const range=(a1:string)=>encodeURIComponent("'"+TAB+"'!")+a1.replace(':','%3A');
 type SheetResult={status:'SYNCED'|'SYNC_DISABLED'|'SYNC_ERROR';appended:number;error?:string};
 type SheetApiResponse={sheets?:Array<{properties:{title:string;sheetId:number}}>};
 function dateSerial(value:unknown):number|null { const date=new Date(String(value)); return Number.isNaN(date.getTime())?null:date.getTime()/86_400_000+25_569; }
@@ -36,15 +37,15 @@ export class GoogleLiveOddsSheetSync {
       if(!sheet){await this.request(root+':batchUpdate',{method:'POST',headers,body:JSON.stringify({requests:[{addSheet:{properties:{title:TAB}}}]})});
         const refreshed=await this.request(root+'?fields=sheets.properties',{headers});sheet=refreshed.sheets?.find((item)=>item.properties.title===TAB);}
       if(!sheet)throw new Error('Unable to create or resolve Live_Odds_Analysis tab');
-      const encoded=encodeURIComponent("'"+TAB+"'");
-      const existing=await this.request(root+'/values/'+encoded+'!A:AD',{headers}) as SheetApiResponse & {values?:unknown[][]};
+      const encoded=range('A:AD');
+      const existing=await this.request(root+'/values/'+encoded,{headers}) as SheetApiResponse & {values?:unknown[][]};
       const rows=existing.values??[];
-      if(!rows.length||!rows[0]?.length)await this.request(root+'/values/'+encoded+'!A1?valueInputOption=RAW',{method:'PUT',headers,body:JSON.stringify({values:[HEADER]})});
+      if(!rows.length||!rows[0]?.length)await this.request(root+'/values/'+range('A1')+'?valueInputOption=RAW',{method:'PUT',headers,body:JSON.stringify({values:[HEADER]})});
       else if(JSON.stringify(rows[0])!==JSON.stringify(HEADER))throw new Error('Existing Live_Odds_Analysis headers do not match expected schema');
       const known=new Set(rows.slice(1).map((row)=>String(row[29]??'')));
       const pending=await this.repository.unsynced(5000);
       const toAppend=pending.filter((row)=>!known.has(identity(row)));
-      if(appendRealRows&&toAppend.length)await this.request(root+'/values/'+encoded+'!A:AD:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',{
+      if(appendRealRows&&toAppend.length)await this.request(root+'/values/'+encoded+':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',{
         method:'POST',headers,body:JSON.stringify({values:toAppend.map(rowValues)})});
       if(appendRealRows&&pending.length)await this.repository.markSheetSynced(pending.map((row)=>String(row.id)));
       return {status:'SYNCED',appended:appendRealRows?toAppend.length:0,wouldAppend:toAppend.length,configured:true};
@@ -66,13 +67,13 @@ export class GoogleLiveOddsSheetSync {
         sheet=refreshed.sheets?.find((item)=>item.properties.title===TAB);
       }
       if(!sheet)throw new Error('Unable to create or resolve Live_Odds_Analysis tab');
-      const encoded=encodeURIComponent("'"+TAB+"'");
-      const existing=await this.request(root+'/values/'+encoded+'!A:AD',{headers}) as SheetApiResponse & {values?:unknown[][]};
+      const encoded=range('A:AD');
+      const existing=await this.request(root+'/values/'+encoded,{headers}) as SheetApiResponse & {values?:unknown[][]};
       const existingRows=(existing.values??[]) as unknown[][];
       const known=new Set(existingRows.slice(1).map((row)=>String(row[29]??'')));
       const toAppend=pending.filter((row)=>!known.has(identity(row)));
       if(!existingRows.length||!existingRows[0]?.length){
-        await this.request(root+'/values/'+encoded+'!A1?valueInputOption=RAW',{method:'PUT',headers,body:JSON.stringify({values:[HEADER]})});
+        await this.request(root+'/values/'+range('A1')+'?valueInputOption=RAW',{method:'PUT',headers,body:JSON.stringify({values:[HEADER]})});
       } else if(JSON.stringify(existingRows[0])!==JSON.stringify(HEADER)) {
         throw new Error('Existing Live_Odds_Analysis headers do not match expected schema');
       }
@@ -82,7 +83,7 @@ export class GoogleLiveOddsSheetSync {
         {repeatCell:{range:{sheetId:sheet.properties.sheetId,startRowIndex:0,endRowIndex:1},cell:{userEnteredFormat:{textFormat:{bold:true},wrapStrategy:'WRAP'}},fields:'userEnteredFormat(textFormat,wrapStrategy)'}},
         {repeatCell:{range:{sheetId:sheet.properties.sheetId,startRowIndex:1,startColumnIndex:3,endColumnIndex:4},cell:{userEnteredFormat:{numberFormat:{type:'DATE_TIME',pattern:'yyyy-mm-dd hh:mm:ss'}}},fields:'userEnteredFormat.numberFormat'}},
       ]})});
-      if(toAppend.length)await this.request(root+'/values/'+encoded+'!A:AD:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',{
+      if(toAppend.length)await this.request(root+'/values/'+encoded+':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',{
         method:'POST',headers,body:JSON.stringify({values:toAppend.map(rowValues)})});
       await this.repository.markSheetSynced(pending.map((row)=>String(row.id)));
       return {status:'SYNCED',appended:toAppend.length};
@@ -112,7 +113,3 @@ export class GoogleLiveOddsSheetSync {
     throw error instanceof Error?error:new Error(String(error));
   }
 }
-
-
-
-

@@ -84,4 +84,11 @@ describe('Nowgoal live HTTP behavior',()=>{
     const result=await provider(1).getHistory('2993801');
     expect(fetch).toHaveBeenCalledTimes(2);expect(result.observations).toHaveLength(2);
   });
+  it('distinguishes an empty successful response from an invalid source body',async()=>{
+    const fetch=vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ErrCode:0,Data:''}),{status:200}))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ErrCode:1,Data:'blocked'}),{status:200}));
+    vi.stubGlobal('fetch',fetch);
+    await expect(provider().getHistory('2993801')).resolves.toMatchObject({observations:[]});
+    await expect(provider().getHistory('2993801')).rejects.toThrow('Invalid Nowgoal live odds source response');
+  });
 });

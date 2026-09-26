@@ -37,8 +37,10 @@ try{
       reportedNowgoalMatchId=match.nowgoalMatchId;
       try{
         sourceResult=await provider.getHistory(match.nowgoalMatchId);
-        captureRows=await repository.saveObservations(match.matchId,sourceResult.observations);
-        if(match.status==='finished')await repository.markFinishedCapture(match.matchId,sourceResult.observations.length?'AVAILABLE':'NO_DATA');
+        if(sourceResult.observations.length){
+          captureRows=await repository.saveObservations(match.matchId,sourceResult.observations);
+          if(match.status==='finished')await repository.markFinishedCapture(match.matchId);
+        }else await repository.markSourceSuccessNoData(match.matchId);
         report.matchesCaptured=captureRows?1:0;sheetResult=await sheets.sync();
       }catch(error){databaseError=error instanceof Error?error.message:String(error);}
     }

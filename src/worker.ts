@@ -180,10 +180,6 @@ async function runCycle(): Promise<void> {
     try { await oddsCollector?.runCycle(); }
     catch (error) { logger.error({ err: error }, 'Odds collector cycle failed'); }
   }
-  if (!stopped && liveOddsCollector) {
-    try { await liveOddsCollector.runCycle(); }
-    catch (error) { logger.error({ err: error }, 'Nowgoal live odds collection failed; continuing'); }
-  }
   if (!stopped) {
     try { await predictionService.refreshPreviewsAndLocks(); }
     catch (error) { logger.error({ err: error }, 'Prediction preview/lock cycle failed; continuing'); }

@@ -24,15 +24,16 @@ export class NowgoalLiveOddsRepository {
   async trackingCandidates(config: AppConfig): Promise<{ configured: boolean; analyzedMatches:number|null; matches: LiveOddsCandidate[] }> {
     const available = await this.pool.query<{ available: boolean }>("SELECT to_regclass('prediction_runs') IS NOT NULL AS available");
     if (!available.rows[0]?.available) return { configured: false, analyzedMatches:null, matches: [] };
-    const analyzedMatches=Number((await this.pool.query<{count:number}>('SELECT count(DISTINCT match_id)::integer count FROM prediction_runs')).rows[0]?.count??0);
+    const analyzedMatches=Number((await this.pool.query<{count:number}>('SELECT count(DISTINCT match_id)::integer count FROM prediction_runs WHERE decision=\'PREDICT\'')).rows[0]?.count??0);
     const rows = await this.pool.query<LiveOddsCandidate>(`SELECT DISTINCT ON(m.id) m.id match_id,os.provider_match_id nowgoal_match_id,
         m.status,l.name competition,ht.name home_team,at.name away_team,m.kickoff_at
-      FROM prediction_runs pr JOIN matches m ON m.id=pr.match_id AND pr.decision='PREDICT'
+      FROM prediction_runs pr JOIN matches m ON m.id=pr.match_id
       JOIN leagues l ON l.id=m.league_id JOIN teams ht ON ht.id=m.home_team_id JOIN teams at ON at.id=m.away_team_id
       JOIN odds_snapshots os ON os.match_id=m.id AND os.provider LIKE 'nowgoal:%'
       JOIN provider_entities pe ON pe.provider=split_part(os.provider,':',1) AND pe.entity_type='match' AND pe.external_id=os.provider_match_id AND pe.internal_id=m.id
       LEFT JOIN nowgoal_live_match_tracking tr ON tr.match_id=m.id
       WHERE m.kickoff_at<=now() AND m.status IN ('scheduled','live','finished')
+        AND pr.decision='PREDICT'
         AND (m.status<>'finished' OR tr.finished_final_capture_at IS NULL)
         AND os.provider_match_id ~ '^[0-9]+$'
       ORDER BY m.id,os.captured_at DESC`);
@@ -61,10 +62,10 @@ export class NowgoalLiveOddsRepository {
         inserted += result.rowCount ?? 0;
       }
       const duplicates=observations.length-inserted;
-      const status=observations.length?'AVAILABLE':'NO_DATA';
+      const status=observations.length?'SOURCE_SUCCESS_WITH_DATA':'SOURCE_SUCCESS_NO_DATA';
       await client.query(`INSERT INTO nowgoal_live_match_tracking(match_id,last_capture_at,last_status,last_error,duplicates_blocked,updated_at)
         VALUES($1,now(),$3,NULL,$2,now()) ON CONFLICT(match_id) DO UPDATE SET
-        last_capture_at=excluded.last_capture_at,last_status=$3,last_error=NULL,
+        last_capture_at=excluded.last_capture_at,last_status=excluded.last_status,last_error=NULL,
         duplicates_blocked=nowgoal_live_match_tracking.duplicates_blocked+$2,updated_at=now()`,[matchId,duplicates,status]);
       await client.query('COMMIT');
       return inserted;
@@ -72,20 +73,26 @@ export class NowgoalLiveOddsRepository {
     finally { client.release(); }
   }
 
-  async markFinishedCapture(matchId: string,status:'AVAILABLE'|'NO_DATA'='AVAILABLE') {
+  async markFinishedCapture(matchId: string) {
     await this.pool.query(`INSERT INTO nowgoal_live_match_tracking(match_id,finished_final_capture_at,last_capture_at,last_status,updated_at)
-      VALUES($1,now(),now(),$2,now()) ON CONFLICT(match_id) DO UPDATE SET
-      finished_final_capture_at=now(),last_capture_at=now(),last_status=$2,last_error=NULL,updated_at=now()`,[matchId,status]);
+      VALUES($1,now(),now(),'SOURCE_SUCCESS_WITH_DATA',now()) ON CONFLICT(match_id) DO UPDATE SET
+      finished_final_capture_at=now(),last_capture_at=now(),last_status='SOURCE_SUCCESS_WITH_DATA',last_error=NULL,updated_at=now()
+      WHERE nowgoal_live_match_tracking.finished_final_capture_at IS NULL`,[matchId]);
   }
-  async markCaptureFailure(matchId: string,status: string,error: unknown) {
+  async markCaptureFailure(matchId: string,status: 'SOURCE_BLOCKED'|'SOURCE_ERROR',error: unknown) {
     const detail=(error instanceof Error?error.message:String(error)).slice(0,1000);
     await this.pool.query(`INSERT INTO nowgoal_live_match_tracking(match_id,last_capture_at,last_status,last_error,updated_at)
       VALUES($1,now(),$2,$3,now()) ON CONFLICT(match_id) DO UPDATE SET last_capture_at=now(),last_status=$2,last_error=$3,updated_at=now()`,[matchId,status,detail]);
   }
+  async markSourceSuccessNoData(matchId: string) {
+    await this.pool.query(`INSERT INTO nowgoal_live_match_tracking(match_id,last_capture_at,last_status,last_error,updated_at)
+      VALUES($1,now(),'SOURCE_SUCCESS_NO_DATA',NULL,now()) ON CONFLICT(match_id) DO UPDATE SET
+      last_capture_at=now(),last_status='SOURCE_SUCCESS_NO_DATA',last_error=NULL,updated_at=now()`,[matchId]);
+  }
   async latestStatus() {
     const result=await this.pool.query(`SELECT count(*)::integer tracked,
-      count(*) FILTER(WHERE last_status='AVAILABLE')::integer available,
-      count(*) FILTER(WHERE last_status='BLOCKED')::integer blocked,
+      count(*) FILTER(WHERE last_status='SOURCE_SUCCESS_WITH_DATA')::integer available,
+      count(*) FILTER(WHERE last_status='SOURCE_BLOCKED')::integer blocked,
       max(last_capture_at) last_capture_at,
       (SELECT count(*)::integer FROM nowgoal_live_odds_snapshots WHERE captured_at>=now()-interval '1 hour')::integer recent_observations
       FROM nowgoal_live_match_tracking`);

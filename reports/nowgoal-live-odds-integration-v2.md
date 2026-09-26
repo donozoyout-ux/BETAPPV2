@@ -1,51 +1,40 @@
-# Nowgoal Live Odds Analysis Integration V2 audit
+# Nowgoal Live Odds Analysis Integration V2.1 audit
 
 - Branch: `codex/nowgoal-live-odds-integration-v2`
-- Base: current `origin/main` at `587f96e70a7ff87ccb120473710c2a0f44fd6e4c` (Prediction V1, Gate Inspector Human Mode, dashboard and odds-neighbor work present)
-- Migration: `019_nowgoal_live_odds_analysis_v1.sql`; `016` is already used by current main, so schema ordering is preserved by adding the next available migration.
-- Nowgoal structured endpoint: HTTP 200 from `/Ajax/SoccerAjax?type=4&id=<ScheduleID>&p=<timestamp>`; 30 real source observations; 3 bookmakers; FT 23; HT 7; AH, 1X2, O/U parsed.
-- Candidate filter: SQL is fail-closed on `prediction_runs`, supported competition, kickoff, status, and numeric Nowgoal provider ID. PostgreSQL-backed A/B/C integration scenarios are not confirmed locally.
-- Poll cadence: separate serialized Nowgoal collector timer, default 30 seconds; Sheets sync is independently throttled to 5 minutes.
-- Google Sheets: credentials are absent. `npm run odds:live-sheet-smoke` returned `SYNC_DISABLED`, with no fabricated rows or append.
-- PostgreSQL: BLOCKED locally; local port 5432 refused and no container runtime is available. CI workflow has the PostgreSQL integration job, but branch CI has not yet completed.
-- Prediction logic and official semantics are unchanged; no AI or execution authority was added.
+- Base: `origin/main` at `587f96e70a7ff87ccb120473710c2a0f44fd6e4c`
+- Migration: `019_nowgoal_live_odds_analysis_v1.sql`
+- Package scripts restored from `origin/main`; V2 Nowgoal audit and Sheet smoke scripts retained.
+- Dependency lock regenerated with npm; clean `npm ci` passed. `jsdom@29.1.1` and `@csstools/css-tokenizer@4.0.2` resolve.
+- Live collector scheduling: exactly one execution path in normal service (`runForever`, configured 30 seconds); `--once` runs one explicit cycle.
+- Finished match: a non-empty parsed response persists observations and may mark final capture. Empty successful response records `SOURCE_SUCCESS_NO_DATA` and remains eligible; blocked/error states are separately stored and retryable.
+- Candidate filter remains fail-closed on `prediction_runs.decision='PREDICT'`, supported competition, kickoff <= now, scheduled/live/finished status, numeric Nowgoal provider ID linked by provider entity, and finished final-capture absence.
+- Google Sheets remains a PostgreSQL mirror at a five-minute cadence. Render documents optional ID/service-account variables without credentials; credentials are not configured in this environment.
+- Prediction logic, official semantics, Gate Inspector, thresholds, and execution/AI authority were not modified.
 
-## Requested status matrix
+## Audit matrix
 
 | Check | Status |
 |---|---|
-| NOWGOAL_LIVE_SOURCE | PASS |
-| LIVE_ODDS_PARSER | PASS |
-| AH | PASS |
-| 1X2 | PASS |
-| OVER_UNDER | PASS |
-| FT | PASS |
-| HT | PASS |
-| MULTI_BOOKMAKER | PASS |
-| HISTORY_ROWS | PASS |
-| PREDICTION_RUNS_FILTER | PARTIAL |
-| ANALYZED_MATCH_CAPTURE | BLOCKED |
-| NON_ANALYZED_MATCH_BLOCK | PARTIAL |
+| PACKAGE_JSON_REGRESSION | PASS |
+| PACKAGE_LOCK | PASS |
+| NPM_CI | PASS |
+| NOWGOAL_DOUBLE_COLLECTION | PASS |
+| PREDICTION_RUNS_FILTER | PASS |
 | POSTGRES | BLOCKED |
-| DEDUPLICATION | PARTIAL |
+| POSTGRES_INSERT | BLOCKED |
+| POSTGRES_DEDUP | BLOCKED |
+| NON_ANALYZED_MATCH_BLOCK | BLOCKED |
 | FINISHED_MATCH_FINAL_CAPTURE | PARTIAL |
-| LIVE_COLLECTION_INTERVAL | PASS |
+| FINISHED_RETRY_BEHAVIOR | PASS (unit logic; database integration pending) |
 | GOOGLE_SHEETS | NOT_CONFIGURED |
-| SHEET_TAB | PARTIAL |
-| SHEET_BATCH_SYNC | PARTIAL |
-| SHEET_DUPLICATION_PROTECTION | PARTIAL |
 | NO_FAKE_DATA | PASS |
-| PREDICTION_LOGIC_CHANGED | PASS (no change) |
-| OFFICIAL_PREDICTION_SEMANTICS_CHANGED | PASS (no change) |
-| EXECUTION_AUTHORITY | PASS (none added) |
-| AI_PREDICTION_AUTHORITY | PASS (none added) |
+| PREDICTION_LOGIC_CHANGED | PASS |
+| OFFICIAL_PREDICTION_SEMANTICS_CHANGED | PASS |
 | TYPECHECK | PASS |
 | LINT | PASS |
-| UNIT_TESTS | PARTIAL |
-| POSTGRES_TESTS | BLOCKED |
+| UNIT_TESTS | PASS (289/289) |
+| INTEGRATION_TESTS | BLOCKED (container runtime unavailable locally) |
 | BUILD | PASS |
-| CI | BLOCKED (not yet run on remote branch) |
+| GITHUB_ACTIONS | BLOCKED (run starts after push; not yet checked) |
 
-Unit-suite notes: current-main Windows runs have unrelated LF-only YAML assertions and a missing jsdom CSS transitive package; Nowgoal Sheets sync unit tests pass (5/5); source endpoint parser and collector tests pass. The full unit suite still reports three failures caused by LF-only YAML assertions under Windows CRLF and an unavailable `@csstools/css-tokenizer` package.
-
-- Pushed head: `9525f3d5c3535b634363ca104c765649617db3a3`. GitHub Actions status could not be queried because GitHub CLI is not authenticated in this environment.
+PostgreSQL integration suite uses deterministic Nowgoal parser fixtures only inside an isolated PostgreSQL Testcontainer. Local run could not start because this Windows host has no working container runtime. CI is configured to run all integration suites on PostgreSQL 16 through Testcontainers.

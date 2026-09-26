@@ -19,17 +19,22 @@ export class NowgoalLiveOddsCollector {
     if(!this.config.NOWGOAL_LIVE_ODDS_ENABLED)return;
     const {configured,matches}=await this.repository.trackingCandidates(this.config);
     if(!configured){this.logger.info({status:'NOT_CONFIGURED'},'Live odds collector requires prediction_runs');}
-    let inserted=0;let captured=0;let blocked=0;let failures=0;
+    let inserted=0;let captured=0;let blocked=0;let failures=0;let empty=0;
     for(const match of matches){
       if(this.stopped)break;
       try{
         const result=await this.provider.getHistory(match.nowgoalMatchId);
+        if(!result.observations.length){
+          await this.repository.markSourceSuccessNoData(match.matchId);
+          empty++;
+          continue;
+        }
         inserted+=await this.repository.saveObservations(match.matchId,result.observations);
-        if(match.status==='finished')await this.repository.markFinishedCapture(match.matchId,result.observations.length?'AVAILABLE':'NO_DATA');
         captured++;
+        if(match.status==='finished')await this.repository.markFinishedCapture(match.matchId);
       }catch(error){
         const status=nowgoalLiveErrorStatus(error);if(status==='BLOCKED')blocked++;else failures++;
-        await this.repository.markCaptureFailure(match.matchId,status,error);
+        await this.repository.markCaptureFailure(match.matchId,status==='BLOCKED'?'SOURCE_BLOCKED':'SOURCE_ERROR',error);
         this.logger.warn({matchId:match.matchId,nowgoalMatchId:match.nowgoalMatchId,status,error:error instanceof Error?error.message:String(error)},
           status==='BLOCKED'?'LIVE_ODDS_SOURCE_BLOCKED':'Nowgoal live odds capture failed');
       }
@@ -40,9 +45,9 @@ export class NowgoalLiveOddsCollector {
       catch(error){ this.logger.warn({err:error},'Google Sheets sync failed; Nowgoal data is retained in PostgreSQL'); }
       this.lastSheetSyncAt=Date.now();
     }
-    this.logger.info({configured,tracked:matches.length,captured,newObservations:inserted,blocked,failures,sheet:sheet.status,sheetRows:sheet.appended},
+    this.logger.info({configured,tracked:matches.length,captured,newObservations:inserted,empty,blocked,failures,sheet:sheet.status,sheetRows:sheet.appended},
       'Nowgoal live odds cycle completed');
-    return {configured,tracked:matches.length,captured,newObservations:inserted,blocked,failures,sheet};
+    return {configured,tracked:matches.length,captured,newObservations:inserted,empty,blocked,failures,sheet};
     } finally { this.running=false; }
   }
   async runForever(){

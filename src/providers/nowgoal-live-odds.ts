@@ -112,6 +112,8 @@ export class NowgoalLiveOddsProvider implements QualifiableProvider {
     responseUrl.searchParams.set('type','4'); responseUrl.searchParams.set('id',nowgoalMatchId);
     responseUrl.searchParams.set('p',String(capturedAt.getTime()));
     const payload = await this.http.getJson<unknown>(`${responseUrl.pathname}${responseUrl.search}`);
+    if(!payload||typeof payload!=='object'||!('ErrCode' in payload)||!('Data' in payload)||typeof payload.Data!=='string'
+      ||(payload.ErrCode!==0&&payload.ErrCode!=='0'))throw new Error('Invalid Nowgoal live odds source response');
     return { sourceUrl, payload, observations: parseNowgoalLiveOdds(payload,{ sourceUrl, capturedAt, nowgoalMatchId }) };
   }
   async qualify(matchId=this.config.NOWGOAL_LIVE_SMOKE_MATCH_ID):Promise<ProviderQualification>{

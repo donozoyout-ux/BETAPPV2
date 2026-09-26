@@ -1,7 +1,7 @@
 {
   "branch": "codex/nowgoal-live-odds-integration-v2",
   "base": "origin/main@587f96e70a7ff87ccb120473710c2a0f44fd6e4c",
-  "head": "8221f2b20390e24ebf22585653f5e1585379cca5",
+  "head": "7e3be3fbc8cde90a0550dbccb33f569356f3b1ae",
   "generated_at": "2026-09-26",
   "statuses": {
     "PACKAGE_JSON_REGRESSION": "PASS",
@@ -9,11 +9,11 @@
     "NPM_CI": "PASS",
     "NOWGOAL_DOUBLE_COLLECTION": "PASS",
     "PREDICTION_RUNS_FILTER": "PASS",
-    "POSTGRES": "FAIL",
+    "POSTGRES": "PASS",
     "POSTGRES_INSERT": "PASS",
     "POSTGRES_DEDUP": "PASS",
-    "NON_ANALYZED_MATCH_BLOCK": "FAIL",
-    "FINISHED_MATCH_FINAL_CAPTURE": "PARTIAL",
+    "NON_ANALYZED_MATCH_BLOCK": "PASS",
+    "FINISHED_MATCH_FINAL_CAPTURE": "PASS",
     "FINISHED_RETRY_BEHAVIOR": "PASS",
     "GOOGLE_SHEETS": "NOT_CONFIGURED",
     "NO_FAKE_DATA": "PASS",
@@ -22,17 +22,17 @@
     "TYPECHECK": "PASS",
     "LINT": "PASS",
     "UNIT_TESTS": "PASS",
-    "INTEGRATION_TESTS": "FAIL",
+    "INTEGRATION_TESTS": "PASS",
     "BUILD": "PASS",
-    "GITHUB_ACTIONS": "FAIL"
+    "GITHUB_ACTIONS": "PASS"
   },
   "details": {
     "google_sheets": "NOT_CONFIGURED; no credentials, no append",
     "finished_capture": "Only nonempty parsed source response sets final timestamp; empty, blocked, error remain retryable",
     "dependencies": "jsdom@29.1.1 and @csstools/css-tokenizer@4.0.2 resolve",
     "unit_tests": "289/289 passing",
-    "github_actions": "Run 36261080920 failed in the integration stage: fixture erroneously marked as eligible; correcting and rerunning.",
-    "integration": "CI executed with PostgreSQL; discovered fixture flaw in unsupported/skip fixture; other annotated tests passed.",
+    "github_actions": "PASS: https://github.com/donozoyout-ux/BETAPPV2/actions/runs/36261286611 (install, typecheck, lint, unit, PostgreSQL integration, build).",
+    "integration": "Run 36261286611 passed the dedicated Nowgoal PostgreSQL integration suite and existing PostgreSQL repository integration suite.",
     "npm_ci": "PASS (clean install; 421 packages)"
   }
 }

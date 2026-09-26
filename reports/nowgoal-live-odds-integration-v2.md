@@ -47,3 +47,5 @@
 | CI | BLOCKED (not yet run on remote branch) |
 
 Unit-suite notes: current-main Windows runs have unrelated LF-only YAML assertions and a missing jsdom CSS transitive package; Nowgoal Sheets sync unit tests pass (5/5); source endpoint parser and collector tests pass. The full unit suite still reports three failures caused by LF-only YAML assertions under Windows CRLF and an unavailable `@csstools/css-tokenizer` package.
+
+- Pushed head: `9525f3d5c3535b634363ca104c765649617db3a3`. GitHub Actions status could not be queried because GitHub CLI is not authenticated in this environment.

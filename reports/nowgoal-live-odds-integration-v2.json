@@ -1,7 +1,7 @@
 {
   "branch": "codex/nowgoal-live-odds-integration-v2",
   "base": "origin/main@587f96e70a7ff87ccb120473710c2a0f44fd6e4c",
-  "head": "pending",
+  "head": "9525f3d5c3535b634363ca104c765649617db3a3",
   "generated_at": "2026-09-26",
   "statuses": {
     "NOWGOAL_LIVE_SOURCE": "PASS",
@@ -57,6 +57,6 @@
       "Dashboard test cannot import missing @csstools/css-tokenizer dependency",
       "Nowgoal Sheets sync test file passes 5/5"
     ],
-    "ci": "GitHub Actions workflow includes PostgreSQL integration job; remote run not yet queried."
+    "ci": "Branch pushed; GitHub CLI authentication unavailable, so workflow status could not be queried."
   }
 }

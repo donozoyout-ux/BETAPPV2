@@ -25,8 +25,8 @@ export class NowgoalLiveOddsRepository {
     const available = await this.pool.query<{ available: boolean }>("SELECT to_regclass('prediction_runs') IS NOT NULL AS available");
     if (!available.rows[0]?.available) return { configured: false, analyzedMatches:null, matches: [] };
     const analyzedMatches=Number((await this.pool.query<{count:number}>('SELECT count(DISTINCT match_id)::integer count FROM prediction_runs WHERE decision=\'PREDICT\'')).rows[0]?.count??0);
-    const rows = await this.pool.query<LiveOddsCandidate>(`SELECT DISTINCT ON(m.id) m.id match_id,os.provider_match_id nowgoal_match_id,
-        m.status,l.name competition,ht.name home_team,at.name away_team,m.kickoff_at
+    const rows = await this.pool.query<LiveOddsCandidate>(`SELECT DISTINCT ON(m.id) m.id AS "matchId",os.provider_match_id AS "nowgoalMatchId",
+        m.status,l.name competition,ht.name AS "homeTeam",at.name AS "awayTeam",m.kickoff_at AS "kickoffAt"
       FROM prediction_runs pr JOIN matches m ON m.id=pr.match_id
       JOIN leagues l ON l.id=m.league_id JOIN teams ht ON ht.id=m.home_team_id JOIN teams at ON at.id=m.away_team_id
       JOIN odds_snapshots os ON os.match_id=m.id AND os.provider LIKE 'nowgoal:%'

@@ -111,7 +111,7 @@ describe('Nowgoal live odds PostgreSQL integration',()=>{
   });
 
   it('keeps PostgreSQL observations persisted when a Google Sheets mirror fails',async()=>{
-    const matchId=matches.get('eligible')!;
+    const matchId=matches.get('skip-competition')!;
     const rows=parseNowgoalLiveOdds(fixturePayload('51','0','0'),{sourceUrl:source,capturedAt:new Date(),nowgoalMatchId:'2993801'});
     const sheets={sync:async()=>({status:'SYNC_ERROR' as const,appended:0,error:'fixture Google failure'})};
     const collector=new (await import('../../src/collector/nowgoal-live-odds-collector.js')).NowgoalLiveOddsCollector(

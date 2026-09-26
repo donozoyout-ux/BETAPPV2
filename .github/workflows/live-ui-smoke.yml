@@ -1,0 +1,64 @@
+name: Live UI Smoke Check
+
+on:
+  push:
+    branches:
+      - chore/live-ui-smoke-20260926
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify live BETAPP UI and APIs
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="https://betappv2.onrender.com/"
+          HEALTH="https://betappv2.onrender.com/health"
+          DASH="https://betappv2.onrender.com/api/dashboard"
+
+          html="$(mktemp)"
+          health="$(mktemp)"
+          dash="$(mktemp)"
+
+          for attempt in 1 2 3 4 5 6; do
+            code="$(curl -L -sS -o "$html" -w '%{http_code}' --connect-timeout 20 --max-time 90 "$ROOT" || true)"
+            [[ "$code" == "200" ]] && break
+            echo "root not ready: HTTP $code attempt $attempt/6"
+            sleep 15
+          done
+          echo "ROOT_HTTP=$code"
+          test "$code" = "200"
+
+          grep -Fq "Maç Analizine Hazır mısın?" "$html"
+          grep -Fq "Ana Sayfa" "$html"
+          grep -Fq "Bugünün Maçları" "$html"
+          grep -Fq "Resmi Tahminler" "$html"
+          grep -Fq "İnceleme" "$html"
+          grep -Fq "Geçmiş Veriler" "$html"
+          grep -Fq "Ayarlar" "$html"
+          grep -Fq "betapp_onboarding_completed" "$html"
+          echo "LIVE_UI_MARKERS=PASS"
+
+          health_code="$(curl -L -sS -o "$health" -w '%{http_code}' --connect-timeout 20 --max-time 60 "$HEALTH" || true)"
+          echo "HEALTH_HTTP=$health_code"
+          test "$health_code" = "200"
+          jq -c '{status,databaseStatus:.database.status,worker,providers}' "$health"
+
+          dash_code="$(curl -L -sS -o "$dash" -w '%{http_code}' --connect-timeout 20 --max-time 60 "$DASH" || true)"
+          echo "DASHBOARD_HTTP=$dash_code"
+          test "$dash_code" = "200"
+          jq -c '{
+            matches: ((.matches // []) | length),
+            predictions: ((.predictions // []) | length),
+            predictionPreviews: ((.predictionPreviews // []) | length),
+            predictionHistory: ((.predictionHistory // []) | length),
+            oddsAnalyses: ((.oddsAnalyses // []) | length),
+            recentFinishedMatches: ((.recentFinishedMatches // []) | length)
+          }' "$dash"
+
+          echo "LIVE_SMOKE=PASS"

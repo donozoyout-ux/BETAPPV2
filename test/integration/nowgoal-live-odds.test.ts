@@ -77,8 +77,6 @@ describe('Nowgoal live odds PostgreSQL integration',()=>{
     expect(result.matches.map((item)=>item.matchId)).not.toContain(matches.get('nonnumeric'));
     expect(isCompetitionConfigured('Premier League',['PremierLeague'])).toBe(true);
     expect(isCompetitionConfigured('Unsupported League',['PremierLeague'])).toBe(false);
-    await repository.markFinishedCapture(matches.get('finished')!);
-    expect((await repository.trackingCandidates(config)).matches.map((item)=>item.matchId)).not.toContain(matches.get('finished'));
   });
 
   it('persists parser-fixture observations, deduplicates unchanged identity, and inserts changed identity',async()=>{

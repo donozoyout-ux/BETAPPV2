@@ -88,7 +88,8 @@ Yerel sonuçlar:
 - `npm run lint`: PASS
 - `npm run test:unit`: 273 PASS
 - `npm run build`: PASS
-- `npm test`: 273 PASS; yerel makinede container runtime bulunmadığı için 11 PostgreSQL testi başlatılamadı. CI'da PostgreSQL servisiyle doğrulanacak.
+- `npm test`: 273 PASS; yerel makinede container runtime bulunmadığı için 11 PostgreSQL testi yerelde başlatılamadı.
+- GitHub Actions `BETAPP CI` run [#524](https://github.com/donozoyout-ux/BETAPPV2/actions/runs/36230243948): PASS. Typecheck, lint, 273 birim testi, 11 PostgreSQL entegrasyon testi ve build başarılı.
 
 ## Görsel doğrulama
 

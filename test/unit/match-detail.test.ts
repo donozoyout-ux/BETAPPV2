@@ -24,7 +24,7 @@ const gates = [
 
 const page = (overallStatus: string, overrides: Partial<MatchAnalysisPageData> = {}): MatchAnalysisPageData => ({
   match, predictionGate: { overallStatus, summary: 'İnsan tarafından okunabilir gate özeti.', candidate, gates },
-  predictionDetail: { state: 'PREVIEW', runs: [{}], journal: null }, ...overrides,
+  predictionDetail: { state: overallStatus === 'OFFICIAL' ? 'LOCKED_PREDICTION' : 'PREVIEW', runs: [{}], journal: null }, ...overrides,
 });
 
 describe('match analysis detail renderer', () => {

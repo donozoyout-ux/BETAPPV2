@@ -29,6 +29,8 @@ import { NowgoalLiveOddsCollector } from './collector/nowgoal-live-odds-collecto
 import { NowgoalLiveOddsRepository } from './db/nowgoal-live-odds-repository.js';
 import { NowgoalLiveOddsProvider } from './providers/nowgoal-live-odds.js';
 import { GoogleLiveOddsSheetSync } from './sheets/nowgoal-live-odds.js';
+import { smokeGoogleSheets } from './sheets/google-sheets-smoke.js';
+import { runGoogleSheetsStartupSmoke } from './sheets/google-sheets-startup-smoke.js';
 
 const config = loadConfig();
 const logger = createLogger(config, 'betapp-worker');
@@ -207,6 +209,8 @@ async function waitForNextCycle(): Promise<void> {
 }
 
 try {
+  await runGoogleSheetsStartupSmoke(config.GOOGLE_SHEETS_SMOKE_ON_STARTUP,
+    () => smokeGoogleSheets(config), (line) => logger.info(line));
   if (process.argv.includes('--once')) {
     await runCycle();
     await secondaryRefresh.runCycle();

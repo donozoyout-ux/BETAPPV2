@@ -49,6 +49,26 @@ describe('Google Sheets real-connection smoke path',()=>{
     expect(JSON.stringify(result)).not.toContain(secret);
   });
 
+  it('classifies a token service 5xx as an API error without leaking response details',async()=>{
+    const secret='TOKEN-SERVICE-SECRET';
+    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response(JSON.stringify({error:secret}),{status:503})));
+    const result=await new GoogleLiveOddsSheetSync(createConfig()).smoke();
+    expect(result.status).toBe('GOOGLE_SHEETS_API_ERROR');
+    expect(JSON.stringify(result)).not.toContain(secret);
+  });
+
+  it('classifies a Sheets API 5xx as an API error without leaking response details',async()=>{
+    const secret='SHEETS-API-SECRET';
+    const fetch=vi.fn(async(input:RequestInfo|URL)=>{
+      const url=new URL(String(input));
+      if(url.hostname==='oauth2.googleapis.com')return new Response(JSON.stringify({access_token:'mock-token',expires_in:3600}),{status:200});
+      return new Response(JSON.stringify({error:{message:secret}}),{status:500});
+    });vi.stubGlobal('fetch',fetch);
+    const result=await new GoogleLiveOddsSheetSync(createConfig()).smoke();
+    expect(result.status).toBe('GOOGLE_SHEETS_API_ERROR');
+    expect(JSON.stringify(result)).not.toContain(secret);
+  });
+
   it('classifies Google metadata 403 as a permission error without leaking response details',async()=>{
     const secret='ACCESS-TOKEN-OR-SECRET';
     const fetch=vi.fn(async(input:RequestInfo|URL)=>{

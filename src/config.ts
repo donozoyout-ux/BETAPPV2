@@ -93,6 +93,7 @@ const schema = z.object({
   GOOGLE_SHEETS_PUBLIC_URL: optionalUrl,
   GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL: optionalEmail,
   GOOGLE_SHEETS_PRIVATE_KEY: optionalText,
+  GOOGLE_SHEETS_SMOKE_ON_STARTUP: booleanFromString.default(false),
   NOWGOAL_LIVE_ODDS_INTERVAL_SECONDS: z.coerce.number().int().min(5).max(3600).default(30),
   GOOGLE_SHEETS_SYNC_MINUTES: z.coerce.number().int().min(1).max(1440).default(5),
   NOWGOAL_ENABLED: booleanFromString.default(true),

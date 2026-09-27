@@ -37,7 +37,12 @@ export class GoogleLiveOddsSheetSync {
     if(!id||!email||!key)return {status:'GOOGLE_SHEETS_NOT_CONFIGURED'};
     let token:string;
     try { token=await this.accessToken(email,key); }
-    catch { return {status:'GOOGLE_SHEETS_AUTH_ERROR',error:'Google service-account authentication failed.'}; }
+    catch(error) {
+      const message=error instanceof Error?error.message:'';
+      if(/Google token exchange HTTP 5\d\d\b/.test(message)||/fetch failed|network|timed out/i.test(message))
+        return {status:'GOOGLE_SHEETS_API_ERROR',error:'Google token service could not be reached.'};
+      return {status:'GOOGLE_SHEETS_AUTH_ERROR',error:'Google service-account authentication failed.'};
+    }
     const headers={'authorization':'Bearer '+token,'content-type':'application/json'};
     const root='https://sheets.googleapis.com/v4/spreadsheets/'+encodeURIComponent(id);
     try {

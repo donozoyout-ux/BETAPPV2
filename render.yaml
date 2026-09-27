@@ -144,6 +144,9 @@ services:
         sync: false
       - key: GOOGLE_SHEETS_PRIVATE_KEY
         sync: false
+      # Opt in on the production worker to run one credential-safe Sheets check at process startup.
+      - key: GOOGLE_SHEETS_SMOKE_ON_STARTUP
+        value: "false"
       - key: NOWGOAL_ENABLED
         value: "true"
       - key: NOWGOAL_FUTURE_DAYS

@@ -29,9 +29,12 @@ import { NowgoalLiveOddsCollector } from './collector/nowgoal-live-odds-collecto
 import { NowgoalLiveOddsRepository } from './db/nowgoal-live-odds-repository.js';
 import { NowgoalLiveOddsProvider } from './providers/nowgoal-live-odds.js';
 import { GoogleLiveOddsSheetSync } from './sheets/nowgoal-live-odds.js';
+import { configureGoogleSheetsLogger, toPredictionSheetRow } from './integrations/google-sheets-logger.js';
+import type { NewlyLockedPredictionJournal } from './predictions/types.js';
 
 const config = loadConfig();
 const logger = createLogger(config, 'betapp-worker');
+const googleSheetsLogger = configureGoogleSheetsLogger(config, logger);
 const pool = createPool({ ...config,
   DB_POOL_MAX: Math.min(config.DB_POOL_MAX, 4),
   DB_CONNECT_TIMEOUT: Math.max(config.DB_CONNECT_TIMEOUT, 15_000),
@@ -74,7 +77,7 @@ const stageHistoricalRepository = new StageHistoricalRepository(pool, logger, co
 const liveOddsRepository = new NowgoalLiveOddsRepository(pool);
 const liveOddsCollector = config.NOWGOAL_LIVE_ODDS_ENABLED ? new NowgoalLiveOddsCollector(config,
   new NowgoalLiveOddsProvider(config, logger), liveOddsRepository,
-  new GoogleLiveOddsSheetSync(config, liveOddsRepository), logger) : null;
+  new GoogleLiveOddsSheetSync(config, liveOddsRepository, googleSheetsLogger), logger) : null;
 const collectors = [...footballCollectors, ...(oddsCollector ? [oddsCollector] : [])];
 const liveRepository = new LiveRepository(pool);
 const apiFootball = new ApiFootballProvider(config);
@@ -181,8 +184,16 @@ async function runCycle(): Promise<void> {
     catch (error) { logger.error({ err: error }, 'Odds collector cycle failed'); }
   }
   if (!stopped) {
-    try { await predictionService.refreshPreviewsAndLocks(); }
+    const newlyLocked: NewlyLockedPredictionJournal[] = [];
+    try { await predictionService.refreshPreviewsAndLocks(undefined, (entry) => newlyLocked.push(entry)); }
     catch (error) { logger.error({ err: error }, 'Prediction preview/lock cycle failed; continuing'); }
+    if (newlyLocked.length) {
+      try {
+        await googleSheetsLogger.appendPredictionJournalRows(newlyLocked.map(toPredictionSheetRow));
+      } catch (error) {
+        logger.warn({ err: error, rows: newlyLocked.length }, 'Prediction journal Sheets append failed; immutable PostgreSQL journal is unchanged');
+      }
+    }
   }
   if (!stopped) {
     try {

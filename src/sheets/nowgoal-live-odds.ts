@@ -1,6 +1,7 @@
 import { sign } from 'node:crypto';
 import type { AppConfig } from '../config.js';
 import type { NowgoalLiveOddsRepository } from '../db/nowgoal-live-odds-repository.js';
+import { GoogleSheetsLogger, resolveGoogleSheetsCredentials, toLiveOddsSheetRow } from '../integrations/google-sheets-logger.js';
 
 const TAB='Live_Odds_Analysis';
 const HEADER=['match_id','nowgoal_match_id','source_url','captured_at','match_minute','minute_label','score','period','bookmaker',
@@ -10,25 +11,17 @@ const HEADER=['match_id','nowgoal_match_id','source_url','captured_at','match_mi
 const range=(a1:string)=>encodeURIComponent("'"+TAB+"'!")+a1.replace(':','%3A');
 type SheetResult={status:'SYNCED'|'SYNC_DISABLED'|'SYNC_ERROR';appended:number;error?:string};
 type SheetApiResponse={sheets?:Array<{properties:{title:string;sheetId:number}}>};
-function dateSerial(value:unknown):number|null { const date=new Date(String(value)); return Number.isNaN(date.getTime())?null:date.getTime()/86_400_000+25_569; }
 function identity(row:Record<string,unknown>):string {
   return [row.match_id,row.nowgoal_match_id,row.match_minute??'',row.score_home??'',row.score_away??'',row.period,row.bookmaker??'',row.raw_hash].join('|');
 }
-function rowValues(row:Record<string,unknown>) {
-  const odds=[row.ah_initial_home,row.ah_initial_line,row.ah_initial_away,row.ah_live_home,row.ah_live_line,row.ah_live_away,
-    row.one_x_two_initial_home,row.one_x_two_initial_draw,row.one_x_two_initial_away,row.one_x_two_live_home,row.one_x_two_live_draw,row.one_x_two_live_away,
-    row.ou_initial_over,row.ou_initial_line,row.ou_initial_under,row.ou_live_over,row.ou_live_line,row.ou_live_under]
-    .map((value)=>value==null?'':Number(value));
-  return [row.match_id,row.nowgoal_match_id,row.source_url,dateSerial(row.captured_at),row.match_minute,row.minute_label,
-    row.score_text??(row.score_home==null||row.score_away==null?'':String(row.score_home)+':'+String(row.score_away)),row.period,row.bookmaker,
-    ...odds,row.parser_version,row.raw_hash,identity(row)];
-}
 export class GoogleLiveOddsSheetSync {
   private token:{value:string;expires:number}|null=null;
-  constructor(private readonly config:AppConfig,private readonly repository:NowgoalLiveOddsRepository) {}
+  constructor(private readonly config:AppConfig,private readonly repository:NowgoalLiveOddsRepository,
+    private readonly sheetLogger=new GoogleSheetsLogger(config)) {}
   async inspect(appendRealRows = false): Promise<SheetResult & {wouldAppend?:number;configured:boolean}> {
-    const id=this.config.GOOGLE_SHEETS_SPREADSHEET_ID,email=this.config.GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL,key=this.config.GOOGLE_SHEETS_PRIVATE_KEY;
-    if(!id||!email||!key)return {status:'SYNC_DISABLED',appended:0,configured:false};
+    const credentials=resolveGoogleSheetsCredentials(this.config);
+    const {spreadsheetId:id,serviceAccountEmail:email,privateKey:key}=credentials;
+    if(!credentials.configured)return {status:'SYNC_DISABLED',appended:0,configured:false};
     try {
       const headers={'authorization':'Bearer '+await this.accessToken(email,key),'content-type':'application/json'};
       const root='https://sheets.googleapis.com/v4/spreadsheets/'+encodeURIComponent(id);
@@ -45,15 +38,16 @@ export class GoogleLiveOddsSheetSync {
       const known=new Set(rows.slice(1).map((row)=>String(row[29]??'')));
       const pending=await this.repository.unsynced(5000);
       const toAppend=pending.filter((row)=>!known.has(identity(row)));
-      if(appendRealRows&&toAppend.length)await this.request(root+'/values/'+encoded+':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',{
-        method:'POST',headers,body:JSON.stringify({values:toAppend.map(rowValues)})});
+      if(appendRealRows&&toAppend.length&&!await this.sheetLogger.appendLiveOddsRows(toAppend.map(toLiveOddsSheetRow)))
+        throw new Error('Google Sheets append failed; observations remain pending in PostgreSQL');
       if(appendRealRows&&pending.length)await this.repository.markSheetSynced(pending.map((row)=>String(row.id)));
       return {status:'SYNCED',appended:appendRealRows?toAppend.length:0,wouldAppend:toAppend.length,configured:true};
     }catch(error){return {status:'SYNC_ERROR',appended:0,configured:true,error:error instanceof Error?error.message:String(error)};}
   }
   async sync():Promise<SheetResult> {
-    const id=this.config.GOOGLE_SHEETS_SPREADSHEET_ID,email=this.config.GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL,key=this.config.GOOGLE_SHEETS_PRIVATE_KEY;
-    if(!id||!email||!key)return {status:'SYNC_DISABLED',appended:0};
+    const credentials=resolveGoogleSheetsCredentials(this.config);
+    const {spreadsheetId:id,serviceAccountEmail:email,privateKey:key}=credentials;
+    if(!credentials.configured)return {status:'SYNC_DISABLED',appended:0};
     try {
       const pending=await this.repository.unsynced();
       if(!pending.length)return {status:'SYNCED',appended:0};
@@ -83,8 +77,8 @@ export class GoogleLiveOddsSheetSync {
         {repeatCell:{range:{sheetId:sheet.properties.sheetId,startRowIndex:0,endRowIndex:1},cell:{userEnteredFormat:{textFormat:{bold:true},wrapStrategy:'WRAP'}},fields:'userEnteredFormat(textFormat,wrapStrategy)'}},
         {repeatCell:{range:{sheetId:sheet.properties.sheetId,startRowIndex:1,startColumnIndex:3,endColumnIndex:4},cell:{userEnteredFormat:{numberFormat:{type:'DATE_TIME',pattern:'yyyy-mm-dd hh:mm:ss'}}},fields:'userEnteredFormat.numberFormat'}},
       ]})});
-      if(toAppend.length)await this.request(root+'/values/'+encoded+':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',{
-        method:'POST',headers,body:JSON.stringify({values:toAppend.map(rowValues)})});
+      if(toAppend.length&&!await this.sheetLogger.appendLiveOddsRows(toAppend.map(toLiveOddsSheetRow)))
+        throw new Error('Google Sheets append failed; observations remain pending in PostgreSQL');
       await this.repository.markSheetSynced(pending.map((row)=>String(row.id)));
       return {status:'SYNCED',appended:toAppend.length};
     }catch(error){return {status:'SYNC_ERROR',appended:0,error:error instanceof Error?error.message:String(error)};}

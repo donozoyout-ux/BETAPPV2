@@ -1,0 +1,112 @@
+{
+  "report": "BETAPPV2_PRODUCTION_DATA_COVERAGE_AUDIT_V2",
+  "status": "BLOCKED",
+  "generated_at": "2026-09-27",
+  "branch": "codex/nowgoal-live-odds-integration-v2",
+  "commit_before_audit": "b0fb6f8a1bf0588a8b289c91d3f5a75242cab781",
+  "database_access": {
+    "production_database_url_available": false,
+    "checkout_environment_url_available": false,
+    "primary_workspace_env_file_available": false,
+    "production_connection_attempted": false,
+    "database_queries_executed": 0,
+    "write_queries_executed": 0,
+    "read_only_statement": "No production connection was possible, so no SQL was run. The planned coverage queries are SELECT-only; no INSERT, UPDATE, or DELETE was run.",
+    "required_access": "Provide production DATABASE_URL and DATABASE_SSL through a secure environment/secrets channel for this run, or export the existing /api/data-coverage and /api/predictions/diagnostics responses from production. Do not paste credentials into chat or commit them."
+  },
+  "GENERAL": {
+    "total_matches": null,
+    "settled_completed_matches": null,
+    "upcoming_matches": null,
+    "cancelled_postponed_matches": null,
+    "competitions": null,
+    "countries": null,
+    "seasons": null,
+    "earliest_event_time": null,
+    "latest_event_time": null,
+    "status": "BLOCKED"
+  },
+  "HISTORICAL": {
+    "settled_binary_result_count": null,
+    "historical_candidate_count": null,
+    "same_competition_candidate_count": null,
+    "cross_competition_candidate_count": null,
+    "matches_with_30_plus_settled_compatible_candidates": null,
+    "matches_with_20_plus_settled_compatible_candidates": null,
+    "matches_with_10_plus_settled_compatible_candidates": null,
+    "matches_with_1_to_9_candidates": null,
+    "matches_with_zero_candidates": null,
+    "sample_count_buckets": [
+      {"sample_count_bucket":"0","match_count":null},
+      {"sample_count_bucket":"1-9","match_count":null},
+      {"sample_count_bucket":"10-19","match_count":null},
+      {"sample_count_bucket":"20-29","match_count":null},
+      {"sample_count_bucket":"30-49","match_count":null},
+      {"sample_count_bucket":"50-99","match_count":null},
+      {"sample_count_bucket":"100+","match_count":null}
+    ],
+    "status": "BLOCKED"
+  },
+  "ODDS": {
+    "matches_with_prematch_odds": null,
+    "matches_without_prematch_odds": null,
+    "bookmaker_count_distribution": null,
+    "complete_bookmaker_state_distribution": null,
+    "matches_with_odds_movement": null,
+    "matches_with_fair_probability": null,
+    "status": "BLOCKED"
+  },
+  "METADATA": {
+    "team_metadata_coverage": null,
+    "competition_metadata_coverage": null,
+    "market_coverage": null,
+    "missing_field_counts": null,
+    "status": "BLOCKED"
+  },
+  "PREDICTION_READINESS": {
+    "method": "Would classify current eligible matches using existing stored odds analysis and the existing prediction evidence/gate implementation; no production prediction evaluation or state change was executed.",
+    "categories": {
+      "READY_FOR_PREDICTION": null,
+      "WAITING_FOR_SAMPLE": null,
+      "WAITING_FOR_ODDS": null,
+      "WAITING_FOR_METADATA": null,
+      "BLOCKED_BY_GATE": null,
+      "NO_HISTORICAL_DATA": null
+    },
+    "status": "BLOCKED"
+  },
+  "COMPETITION_COVERAGE": {
+    "columns": ["competition","settled_matches","matches_with_odds","30_plus_sample","20_plus_sample","zero_sample"],
+    "rows": null,
+    "status": "BLOCKED"
+  },
+  "SEASON_COVERAGE": {
+    "columns": ["season","settled_matches","matches_with_odds","30_plus_sample","20_plus_sample","zero_sample"],
+    "rows": null,
+    "status": "BLOCKED"
+  },
+  "HISTORICAL_LEAKAGE": {
+    "candidate_time_rule": "historical_event_time < prediction_event_time",
+    "future_or_equal_time_candidates_included": null,
+    "status": "PARTIAL",
+    "evidence": "The existing Prediction V1 evaluator filters historical kickoffAt strictly earlier than target kickoffAt. This is a code-path property; production candidate rows could not be inspected without DB access."
+  },
+  "DATA_GAPS_RANKED_BY_COUNT": {
+    "rows": null,
+    "status": "BLOCKED",
+    "note": "No ranking by qualitative priority is applied. Numeric gap counts are unavailable without production data."
+  },
+  "BACKFILL": {
+    "recommendation": null,
+    "status": "BLOCKED",
+    "reason": "The request requires measured current coverage before estimating 1/2/3-season impact. No current coverage was available, so no interval is recommended.",
+    "candidate_season_windows": ["1 season","2 seasons","3 seasons"],
+    "potentially_affected_tables_after_separate_approval": ["matches","leagues","teams","provider_entities","odds_snapshots","prediction_historical_examples","historical_csv_imports","historical_market_odds","openfootball_imports"],
+    "tables_changed_by_this_audit": []
+  },
+  "TESTS": {
+    "new_tests_needed": false,
+    "reason": "No runtime code or prediction behavior changed; this change contains only the blocked audit reports.",
+    "status": "PASS"
+  }
+}

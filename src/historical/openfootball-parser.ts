@@ -74,6 +74,8 @@ export function parseOpenFootballDataset(payload: unknown, dataset: OpenFootball
   const rows=Array.isArray(root.matches) ? root.matches as OpenFootballMatch[] : [];
   let skippedUnfinished=0;
   let skippedUnsafeTime=0;
+  let skippedFuture=0;
+  let skippedBeforeCutoff=0;
   let invalidResult=0;
   const matches: ParsedOpenFootballMatch[]=[];
   rows.forEach((row,index)=>{
@@ -84,6 +86,8 @@ export function parseOpenFootballDataset(payload: unknown, dataset: OpenFootball
     if (!ft) { invalidResult+=1; return; }
     const kickoff=openFootballKickoff(row.date,row.time,dataset.timeZone);
     if (!kickoff) { skippedUnsafeTime+=1; return; }
+    if(kickoff<new Date('2024-01-01T00:00:00.000Z')){skippedBeforeCutoff+=1;return;}
+    if(kickoff>fetchedAt){skippedFuture+=1;return;}
     const externalId='of-'+createHash('sha256').update([
       dataset.sourceKey,String(row.date),String(row.time),normalizeTeamAlias(home),normalizeTeamAlias(away)
     ].join('|')).digest('hex').slice(0,32);
@@ -102,5 +106,5 @@ export function parseOpenFootballDataset(payload: unknown, dataset: OpenFootball
     matches.push({rowNumber:index+1,match,statistics:{matchProviderExternalId:externalId,statistics:[],sourceUpdatedAt:fetchedAt,raw}});
   });
   return {name:String(root.name ?? ''),totalMatches:rows.length,finishedRows:matches.length,skippedUnfinished,skippedUnsafeTime,
-    invalidResult,matches};
+    skippedFuture,skippedBeforeCutoff,invalidResult,matches};
 }

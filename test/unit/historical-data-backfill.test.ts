@@ -2,6 +2,7 @@ import {describe,expect,it,vi} from 'vitest';
 import {dryRunHistoricalBackfill,plannedBackfillSources} from '../../src/historical/data-backfill-dry-run.js';
 import {openFootballLeagueSources} from '../../src/historical/openfootball-source.js';
 import {parseOpenFootballDataset} from '../../src/historical/openfootball-parser.js';
+import {historicalBatchWindow} from '../../src/historical/openfootball-importer.js';
 
 const source=openFootballLeagueSources.find(item=>item.configKey==='PremierLeague')!;
 const dataset={...source,season:'2024-25',sourceKey:'openfootball:2024-25:en.1.json',
@@ -10,6 +11,11 @@ const match=(date:string,time:string,ft?:[number,number])=>({date,time,team1:'Ar
   ...(ft?{score:{ft}}:{})});
 
 describe('historical data backfill dry-run',()=>{
+  it('caps each import batch at 150 and resumes from the saved cursor',()=>{
+    expect(historicalBatchWindow(400,0,500,150)).toEqual({start:0,end:150});
+    expect(historicalBatchWindow(400,150,500,150)).toEqual({start:150,end:300});
+    expect(historicalBatchWindow(400,350,500,150)).toEqual({start:350,end:400});
+  });
   it('keeps repeat dry-runs deterministic and performs no writes',async()=>{
     const fetcher=vi.fn(async()=>({matches:[match('2025-01-01','15:00',[1,0]),match('2025-01-02','15:00',[2,1])]}));
     const input={competitionKey:'PremierLeague',baseUrl:'https://example.test',seasons:['2024-25'],fetcher};

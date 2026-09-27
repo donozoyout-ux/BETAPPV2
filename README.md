@@ -97,6 +97,9 @@ npm run historical:backfill -- --provider=fotmob --competition=PremierLeague --s
 # Açık OpenFootball sonuç arşivinin yalnız-okunur dry-run raporu (DB bağlantısı yok, yazma yok)
 npm run historical:data:backfill -- --dry-run --competition=all --seasons=2024-25,2025-26,2026-27
 
+# Production verisi varsa SELECT-only duplicate reconciliation (DATABASE_URL + NODE_ENV=production; DB rolü read-only olmalı)
+npm run historical:data:backfill -- --dry-run --competition=all --seasons=2024-25,2025-26,2026-27 --reconcile-production
+
 # Provider-independent kapsama yüzdeleri
 npm run historical:audit
 

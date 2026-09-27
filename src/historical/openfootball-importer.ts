@@ -10,6 +10,12 @@ import { currentOpenFootballSeason, openFootballDatasets, openFootballInternatio
 
 const FAILURE_COOLDOWN_MS=6*60*60_000;
 
+export function historicalBatchWindow(total:number,cursor:number,configuredBatch:number,maxPerRun:number){
+  const start=Math.min(Math.max(0,Math.trunc(cursor)),Math.max(0,Math.trunc(total)));
+  const batchSize=Math.min(Math.max(1,Math.trunc(configuredBatch)),Math.max(1,Math.trunc(maxPerRun)));
+  return {start,end:Math.min(Math.max(0,Math.trunc(total)),start+batchSize)};
+}
+
 export class OpenFootballHistoricalImporter {
   private stopped=false;
   private running=false;
@@ -90,8 +96,9 @@ export class OpenFootballHistoricalImporter {
           await this.imports.complete(dataset.sourceKey);
           return {state:'DATASET_COMPLETED' as const,sourceKey:dataset.sourceKey,imported:0};
         }
-        const batch=parsed.matches.slice(start,start+Math.min(this.config.OPENFOOTBALL_BATCH_SIZE,
-          this.config.DATA_BACKFILL_MAX_MATCHES_PER_RUN));
+        const window=historicalBatchWindow(parsed.matches.length,start,this.config.OPENFOOTBALL_BATCH_SIZE,
+          this.config.DATA_BACKFILL_MAX_MATCHES_PER_RUN);
+        const batch=parsed.matches.slice(window.start,window.end);
         let imported=0,inserted=0,updated=0,duplicates=0;
         for(const item of batch){
           if(this.stopped) break;

@@ -75,6 +75,18 @@ describe('OpenFootball CC0 historical import', () => {
     expect(openFootballKickoff('2025-10-26','01:30','Europe/London')).toBeNull();
   });
 
+  it('rejects pre-2024 and future fixtures from the official historical import set',()=>{
+    const dataset=openFootballDatasets('https://raw.githubusercontent.com/openfootball/football.json/master',
+      ['2024-25'],['PremierLeague'])[0]!;
+    const parsed=parseOpenFootballDataset({matches:[
+      {date:'2023-12-31',time:'20:00',team1:'Old A',team2:'Old B',score:{ft:[1,0]}},
+      {date:'2026-10-01',time:'20:00',team1:'Future A',team2:'Future B',score:{ft:[1,0]}},
+    ]},dataset,new Date('2026-09-27T12:00:00Z'));
+    expect(parsed.matches).toHaveLength(0);
+    expect(parsed.skippedBeforeCutoff).toBe(1);
+    expect(parsed.skippedFuture).toBe(1);
+  });
+
   it('keeps historical imports behind the global opt-in and leaves Football-Data automation disabled', () => {
     const config=loadConfig({DATABASE_URL:'postgresql://localhost/test'});
     expect(config.OPENFOOTBALL_IMPORT_ENABLED).toBe(false);
@@ -115,6 +127,25 @@ describe('OpenFootball CC0 historical import', () => {
       expect(football.upsertMatch).not.toHaveBeenCalled();
       expect(historical.save).not.toHaveBeenCalled();
       expect(imports.checked).toHaveBeenCalledOnce();
+    } finally { globalThis.fetch=originalFetch; }
+  });
+
+  it('isolates a failed import batch and leaves it resumable',async()=>{
+    const payload={matches:[{date:'2026-08-21',time:'20:00',team1:'Arsenal FC',team2:'Coventry City FC',score:{ft:[3,0]}}]};
+    const text=JSON.stringify(payload);
+    const config=loadConfig({DATABASE_URL:'postgresql://localhost/test',SUPPORTED_COMPETITIONS:'PremierLeague',
+      OPENFOOTBALL_IMPORT_ENABLED:'true',OPENFOOTBALL_IMPORT_SEASONS:'2026-27'});
+    const imports={ensureDatasets:vi.fn(async()=>undefined),state:vi.fn().mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({status:'RUNNING',cursor_row:0}),markRunning:vi.fn(async()=>undefined),
+      fail:vi.fn(async()=>undefined),markProgress:vi.fn(async()=>undefined)};
+    const football={upsertMatch:vi.fn(async()=>{throw new Error('isolated fixture failure');})};
+    const historical={save:vi.fn()};const logger={info:vi.fn(),warn:vi.fn()};
+    const importer=new OpenFootballHistoricalImporter(config,football as never,historical as never,imports as never,logger as never);
+    const originalFetch=globalThis.fetch;globalThis.fetch=vi.fn(async()=>new Response(text,{status:200})) as typeof fetch;
+    try {
+      await expect(importer.runCycle()).resolves.toMatchObject({state:'ERROR'});
+      expect(imports.fail).toHaveBeenCalledOnce();
+      expect(imports.markProgress).not.toHaveBeenCalled();
     } finally { globalThis.fetch=originalFetch; }
   });
 });

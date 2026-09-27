@@ -10,13 +10,16 @@ export const initialBackfillCompetitions = [
 
 export type BackfillDatasetResult = {
   source:string; competition:string; season:string; url:string; discovered:number; eligible:number; inserted:number; imported:number;
-  duplicate:number|null; skipped:number; unsafe_time:number; invalid_result:number; errors:number;
+  duplicate:number|null; ambiguous:number|null; new_insertable:number|null; invalid:number;
+  skipped:number; unsafe_time:number; future:number; before_cutoff:number; invalid_result:number; errors:number;
   databaseDuplicateEstimate:'UNAVAILABLE_READ_ONLY_DATABASE_NOT_CONFIGURED'|'NOT_CHECKED';
+  eligibleMatches:Array<{providerExternalId:string;competition:string;season:string;homeTeam:string;awayTeam:string;kickoffAt:string}>;
 };
 
 export type BackfillCompetitionResult = {
   competition:string; targetFinishedMatches:80; discovered:number; eligible:number; inserted:number; imported:number; duplicate:number|null;
-  skipped:number; unsafe_time:number; invalid_result:number; errors:number; seasons:BackfillDatasetResult[];
+  ambiguous:number|null; new_insertable:number|null; invalid:number;
+  skipped:number; unsafe_time:number; future:number; before_cutoff:number; invalid_result:number; errors:number; seasons:BackfillDatasetResult[];
 };
 
 export async function dryRunHistoricalBackfill(input:{competitionKey:string;baseUrl:string;seasons:readonly string[];
@@ -39,12 +42,18 @@ export async function dryRunHistoricalBackfill(input:{competitionKey:string;base
       const total=Array.isArray(root.matches)?root.matches.length:0;
       results.push({source:'OpenFootball CC0',competition:dataset.competition,season:dataset.season,url:dataset.url,
         discovered:total,eligible:parsed.matches.length,inserted:0,imported:0,duplicate:null,skipped:parsed.skippedUnfinished,
-        unsafe_time:parsed.skippedUnsafeTime,invalid_result:parsed.invalidResult,errors:0,
-        databaseDuplicateEstimate:'UNAVAILABLE_READ_ONLY_DATABASE_NOT_CONFIGURED'});
+        ambiguous:null,new_insertable:null,invalid:parsed.skippedUnfinished+parsed.skippedUnsafeTime+parsed.skippedFuture
+          +parsed.skippedBeforeCutoff+parsed.invalidResult,
+        unsafe_time:parsed.skippedUnsafeTime,future:parsed.skippedFuture,before_cutoff:parsed.skippedBeforeCutoff,
+        invalid_result:parsed.invalidResult,errors:0,databaseDuplicateEstimate:'UNAVAILABLE_READ_ONLY_DATABASE_NOT_CONFIGURED',
+        eligibleMatches:parsed.matches.map(({match})=>({providerExternalId:match.providerExternalId,
+          competition:dataset.competition,season:dataset.season,homeTeam:match.homeTeam.name,awayTeam:match.awayTeam.name,
+          kickoffAt:match.kickoffAt.toISOString()}))});
     }catch{
       results.push({source:'OpenFootball CC0',competition:dataset.competition,season:dataset.season,url:dataset.url,
-        discovered:0,eligible:0,inserted:0,imported:0,duplicate:null,skipped:0,unsafe_time:0,invalid_result:0,errors:1,
-        databaseDuplicateEstimate:'UNAVAILABLE_READ_ONLY_DATABASE_NOT_CONFIGURED'});
+        discovered:0,eligible:0,inserted:0,imported:0,duplicate:null,ambiguous:null,new_insertable:null,invalid:0,
+        skipped:0,unsafe_time:0,future:0,before_cutoff:0,invalid_result:0,errors:1,
+        databaseDuplicateEstimate:'UNAVAILABLE_READ_ONLY_DATABASE_NOT_CONFIGURED',eligibleMatches:[]});
     }
   }
   return aggregateCompetition(competition.name,results);
@@ -53,7 +62,9 @@ export async function dryRunHistoricalBackfill(input:{competitionKey:string;base
 function aggregateCompetition(competition:string,seasons:BackfillDatasetResult[]):BackfillCompetitionResult{
   return {competition,targetFinishedMatches:80,discovered:seasons.reduce((sum,row)=>sum+row.discovered,0),
     eligible:seasons.reduce((sum,row)=>sum+row.eligible,0),inserted:0,imported:0,duplicate:null,
+    ambiguous:null,new_insertable:null,invalid:seasons.reduce((sum,row)=>sum+row.invalid,0),
     skipped:seasons.reduce((sum,row)=>sum+row.skipped,0),unsafe_time:seasons.reduce((sum,row)=>sum+row.unsafe_time,0),
+    future:seasons.reduce((sum,row)=>sum+row.future,0),before_cutoff:seasons.reduce((sum,row)=>sum+row.before_cutoff,0),
     invalid_result:seasons.reduce((sum,row)=>sum+row.invalid_result,0),errors:seasons.reduce((sum,row)=>sum+row.errors,0),seasons};
 }
 

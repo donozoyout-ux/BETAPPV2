@@ -13,7 +13,7 @@ import { evaluateRootCauses, selfAuditV3Config,
   type RootCauseConfig, type RootCauseRecord, type RootCauseStatus } from './self-audit-v3.js';
 import { adaptiveRuleConfigHash, adaptiveRuleEvaluationInputHash, generateAdaptiveRuleProposals, selfAuditV4Config,
   type AdaptiveRuleConfig } from './self-audit-v4.js';
-import type { HistoricalExample, PredictionEvaluation, PredictionTarget, SettlementOutcome } from './types.js';
+import type { HistoricalExample, NewlyLockedPredictionJournal, PredictionEvaluation, PredictionTarget, SettlementOutcome } from './types.js';
 import { inspectPredictionRow } from './gate-inspector.js';
 import { isCompetitionConfigured } from '../matching/competition.js';
 import { wilsonInterval } from './similarity.js';
@@ -158,16 +158,19 @@ export class PredictionRepository {
 
   async loadTargets(whereSql = "m.status='scheduled' AND m.kickoff_at>now()", params: unknown[] = []): Promise<PredictionTarget[]> {
     const result = await this.pool.query(`SELECT m.id match_id,m.league_id competition_id,m.kickoff_at,l.name competition_name,
+      ht.name home_team_name,at.name away_team_name,
       r.input_hash odds_input_hash,COALESCE(jsonb_agg(to_jsonb(i) ORDER BY i.score DESC)
       FILTER(WHERE i.id IS NOT NULL),'[]'::jsonb) items
       FROM matches m JOIN leagues l ON l.id=m.league_id
+      JOIN teams ht ON ht.id=m.home_team_id JOIN teams at ON at.id=m.away_team_id
       JOIN LATERAL(SELECT * FROM odds_analysis_runs ar WHERE ar.match_id=m.id
         ORDER BY ar.created_at DESC,ar.id DESC LIMIT 1) r ON true
       LEFT JOIN odds_analysis_items i ON i.run_id=r.id WHERE ${whereSql}
-      GROUP BY m.id,l.name,r.id,r.input_hash ORDER BY m.kickoff_at`, params);
+      GROUP BY m.id,l.name,ht.name,at.name,r.id,r.input_hash ORDER BY m.kickoff_at`, params);
     return result.rows.filter((row) => this.competitionAllowed(row.competition_name)).map((row) => ({
       matchId: row.match_id, competitionId: row.competition_id,
       kickoffAt: new Date(row.kickoff_at), oddsInputHash: row.odds_input_hash,
+      competitionName: row.competition_name, homeTeamName: row.home_team_name, awayTeamName: row.away_team_name,
       oddsItems: (row.items as Array<Record<string, unknown>>).map(analysisItem) }));
   }
 
@@ -1130,7 +1133,7 @@ export class PredictionService {
     };
   }
 
-  async refreshPreviewsAndLocks(now = new Date()) {
+  async refreshPreviewsAndLocks(now = new Date(), onJournalLocked?: (entry: NewlyLockedPredictionJournal) => void) {
     const [targets, examples, selfAudit, segmentAudits] = await Promise.all([
       this.repository.loadTargets(), this.repository.loadHistoricalExamples(), this.repository.latestSelfAudit(this.config),
       this.repository.latestSegmentSelfAudits(this.config),
@@ -1148,7 +1151,10 @@ export class PredictionService {
             skipReasons: [...new Set([...evaluation.skipReasons, 'LOCK_WINDOW_MISSED' as const])],
           }, 'LOCK_WINDOW_MISSED');
           const runId = await this.repository.saveRun(evaluation, this.config);
-          if (target.kickoffAt > now && await this.repository.lock(evaluation, runId, now, window.minutesToKickoff, this.config)) lockedSkips += 1;
+          if (target.kickoffAt > now && await this.repository.lock(evaluation, runId, now, window.minutesToKickoff, this.config)) {
+            lockedSkips += 1;
+            onJournalLocked?.({ target, evaluation, lockedAt: now });
+          }
           missed += 1;
           continue;
         }
@@ -1177,6 +1183,7 @@ export class PredictionService {
         previews += 1;
         if (window.eligible && await this.repository.lock(evaluation, runId, now, window.minutesToKickoff, this.config)) {
           if (evaluation.decision === 'PREDICT') lockedPredictions += 1; else lockedSkips += 1;
+          onJournalLocked?.({ target, evaluation, lockedAt: now });
         }
       } catch (error) {
         targetErrors += 1;

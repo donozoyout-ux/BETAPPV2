@@ -61,7 +61,10 @@ export type PredictionEvaluation = {
 
 export type PredictionTarget = {
   matchId: string; competitionId: string; kickoffAt: Date; oddsInputHash: string; oddsItems: AnalysisItem[];
+  competitionName?: string; homeTeamName?: string; awayTeamName?: string;
 };
+
+export type NewlyLockedPredictionJournal = { target: PredictionTarget; evaluation: PredictionEvaluation; lockedAt: Date };
 
 export type PredictionBacktestTarget = {
   matchId: string; competitionId: string; kickoffAt: Date; snapshots: OddsSnapshot[];

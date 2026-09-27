@@ -1,6 +1,7 @@
 import {generateKeyPairSync} from 'node:crypto';
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import type {AppConfig} from '../../src/config.js';
+import {GoogleSheetsLogger} from '../../src/integrations/google-sheets-logger.js';
 import {GoogleLiveOddsSheetSync} from '../../src/sheets/nowgoal-live-odds.js';
 
 function row(index:number){
@@ -12,13 +13,17 @@ function row(index:number){
     ou_live_over:'0.73',ou_live_line:'1',ou_live_under:'1.08',parser_version:'1',raw_hash:'hash-'+index};
 }
 const identity=(item:ReturnType<typeof row>)=>[item.match_id,item.nowgoal_match_id,item.match_minute,item.score_home,item.score_away,item.period,item.bookmaker,item.raw_hash].join('|');
-function setup(options:{configured?:boolean;count?:number}={}){
+function setup(options:{configured?:boolean;count?:number;appendError?:boolean}={}){
   const {privateKey}=generateKeyPairSync('rsa',{modulusLength:2048,privateKeyEncoding:{type:'pkcs8',format:'pem'},publicKeyEncoding:{type:'spki',format:'pem'}});
   const config={GOOGLE_SHEETS_SPREADSHEET_ID:options.configured===false?undefined:'sheet-id',
     GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL:options.configured===false?undefined:'bot@example.com',GOOGLE_SHEETS_PRIVATE_KEY:privateKey.replace(/\n/g,'\\n')} as unknown as AppConfig;
   const repository={unsynced:vi.fn().mockResolvedValue(Array.from({length:options.count??10},(_,index)=>row(index))),
     markSheetSynced:vi.fn().mockResolvedValue(undefined)};
-  return {sync:new GoogleLiveOddsSheetSync(config,repository as never),repository};
+  const state:{appendedRows:unknown[][]}={appendedRows:[]};
+  const append=vi.fn(async(input:{requestBody:{values:unknown[][]}})=>{state.appendedRows=input.requestBody.values;return {};});
+  if(options.appendError)append.mockRejectedValue(new Error('Google Sheets API unavailable'));
+  const sheetsLogger=new GoogleSheetsLogger(config,{warn:vi.fn()} as never,()=>({spreadsheets:{values:{append}}} as never));
+  return {sync:new GoogleLiveOddsSheetSync(config,repository as never,sheetsLogger),repository,append,state};
 }
 
 describe('Google live odds sheet mirror',()=>{
@@ -28,50 +33,48 @@ describe('Google live odds sheet mirror',()=>{
     expect(await sync.sync()).toMatchObject({status:'SYNC_DISABLED',appended:0});expect(fetch).not.toHaveBeenCalled();
   });
   it('creates the tab and headers then batch appends 10 rows in one request',async()=>{
-    const {sync,repository}=setup();let metadataCalls=0;let appendCalls=0;let headerWrites=0;let appendedRows:unknown[][]=[];
-    const fetch=vi.fn(async(input:RequestInfo|URL,init?:RequestInit)=>{
+    const {sync,repository,append,state}=setup();let metadataCalls=0;let headerWrites=0;
+    const fetch=vi.fn(async(input:RequestInfo|URL)=>{
       const parsed=new URL(String(input));const url=parsed.href;
       if(parsed.hostname==='oauth2.googleapis.com')return new Response(JSON.stringify({access_token:'token',expires_in:3600}),{status:200});
       if(parsed.searchParams.has('fields')){metadataCalls++;return new Response(JSON.stringify({sheets:metadataCalls===1?[]:[{properties:{title:'Live_Odds_Analysis',sheetId:6}}]}),{status:200});}
       if(parsed.pathname.endsWith(':batchUpdate'))return new Response('{}',{status:200});
       if(parsed.pathname.includes('/values/') && parsed.pathname.endsWith('!A%3AAD'))return new Response(JSON.stringify({}),{status:200});
       if(parsed.pathname.includes('/values/') && parsed.pathname.endsWith('!A1') && parsed.searchParams.has('valueInputOption')){headerWrites++;return new Response('{}',{status:200});}
-      if(parsed.pathname.endsWith(':append')){appendCalls++;appendedRows=(JSON.parse(String(init?.body)).values as unknown[][]);return new Response('{}',{status:200});}
       throw new Error('Unexpected URL '+url);
     });
     vi.stubGlobal('fetch',fetch);
     const result=await sync.sync();expect(result).toMatchObject({status:'SYNCED',appended:10});
-    expect(metadataCalls).toBe(2);expect(headerWrites).toBe(1);expect(appendCalls).toBe(1);expect(appendedRows).toHaveLength(10);
-    expect(appendedRows[0]).toHaveLength(30);expect(typeof appendedRows[0]?.[9]).toBe('number');expect(repository.markSheetSynced).toHaveBeenCalledWith(Array.from({length:10},(_,i)=>'id-'+i));
+    expect(metadataCalls).toBe(2);expect(headerWrites).toBe(1);expect(append).toHaveBeenCalledTimes(1);expect(state.appendedRows).toHaveLength(10);
+    expect(state.appendedRows[0]).toHaveLength(30);expect(state.appendedRows[0]?.[9]).toBe(0.95);
+    expect(repository.markSheetSynced).toHaveBeenCalledWith(Array.from({length:10},(_,i)=>'id-'+i));
   });
   it('skips identities already present in the sheet and retains numeric odds',async()=>{
-    const {sync,repository}=setup();let appendedRows:unknown[][]=[];
-    const fetch=vi.fn(async(input:RequestInfo|URL,init?:RequestInit)=>{
+    const {sync,repository,append,state}=setup();
+    const fetch=vi.fn(async(input:RequestInfo|URL)=>{
       const parsed=new URL(String(input));const url=parsed.href;
       if(parsed.hostname==='oauth2.googleapis.com')return new Response(JSON.stringify({access_token:'token',expires_in:3600}),{status:200});
       if(parsed.searchParams.has('fields'))return new Response(JSON.stringify({sheets:[{properties:{title:'Live_Odds_Analysis',sheetId:1}}]}),{status:200});
       if(parsed.pathname.includes('/values/') && parsed.pathname.endsWith('!A%3AAD'))return new Response(JSON.stringify({values:[['match_id','nowgoal_match_id','source_url','captured_at','match_minute','minute_label','score','period','bookmaker','ah_initial_home','ah_initial_line','ah_initial_away','ah_live_home','ah_live_line','ah_live_away','one_x_two_initial_home','one_x_two_initial_draw','one_x_two_initial_away','one_x_two_live_home','one_x_two_live_draw','one_x_two_live_away','ou_initial_over','ou_initial_line','ou_initial_under','ou_live_over','ou_live_line','ou_live_under','parser_version','raw_hash','observation_identity'],[...Array(29).fill('x'),identity(row(0))]]}),{status:200});
       if(parsed.pathname.endsWith(':batchUpdate'))return new Response('{}',{status:200});
-      if(parsed.pathname.endsWith(':append')){appendedRows=JSON.parse(String(init?.body)).values as unknown[][];return new Response('{}',{status:200});}
       throw new Error('Unexpected URL '+url);
     });vi.stubGlobal('fetch',fetch);
     const result=await sync.sync();expect(result).toMatchObject({status:'SYNCED',appended:9});
-    expect(appendedRows).toHaveLength(9);expect(repository.markSheetSynced).toHaveBeenCalledTimes(1);
-    expect(appendedRows[0]?.[3]).toEqual(expect.any(Number));expect(appendedRows[0]?.[9]).toBe(0.95);
+    expect(append).toHaveBeenCalledTimes(1);expect(state.appendedRows).toHaveLength(9);expect(repository.markSheetSynced).toHaveBeenCalledTimes(1);
+    expect(state.appendedRows[0]?.[3]).toBe('2026-01-01T00:00:00.000Z');expect(state.appendedRows[0]?.[9]).toBe(0.95);
   });
   it('reports Google API failures without marking DB rows synced',async()=>{
-    const {sync,repository}=setup({count:1});
+    const {sync,repository,append}=setup({count:1,appendError:true});
     const fetch=vi.fn(async(input:RequestInfo|URL)=>{
       const parsed=new URL(String(input));const url=parsed.href;
       if(parsed.hostname==='oauth2.googleapis.com')return new Response(JSON.stringify({access_token:'token',expires_in:3600}),{status:200});
       if(parsed.searchParams.has('fields'))return new Response(JSON.stringify({sheets:[{properties:{title:'Live_Odds_Analysis',sheetId:1}}]}),{status:200});
       if(parsed.pathname.includes('/values/') && parsed.pathname.endsWith('!A%3AAD'))return new Response(JSON.stringify({values:[['match_id','nowgoal_match_id','source_url','captured_at','match_minute','minute_label','score','period','bookmaker','ah_initial_home','ah_initial_line','ah_initial_away','ah_live_home','ah_live_line','ah_live_away','one_x_two_initial_home','one_x_two_initial_draw','one_x_two_initial_away','one_x_two_live_home','one_x_two_live_draw','one_x_two_live_away','ou_initial_over','ou_initial_line','ou_initial_under','ou_live_over','ou_live_line','ou_live_under','parser_version','raw_hash','observation_identity']]}),{status:200});
       if(parsed.pathname.endsWith(':batchUpdate'))return new Response('{}',{status:200});
-      if(parsed.pathname.endsWith(':append'))return new Response('temporarily unavailable',{status:503});
       throw new Error('Unexpected URL '+url);
     });vi.stubGlobal('fetch',fetch);
     expect(await sync.sync()).toMatchObject({status:'SYNC_ERROR',appended:0});
-    expect(fetch.mock.calls.filter(([url])=>String(url).includes(':append'))).toHaveLength(3);
+    expect(append).toHaveBeenCalledTimes(1);
     expect(repository.markSheetSynced).not.toHaveBeenCalled();
   });
   it('reports invalid service-account credentials as a sync error',async()=>{

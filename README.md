@@ -237,6 +237,14 @@ DB_TEST_SCHEMA=betapp_test_integration npm run test:integration:db
 | `NOWGOAL_BASE_URL` | public proxy URL | Nowgoal web istemcisinin kullandığı, değiştirilebilir odds proxy adresi |
 | `PROVIDER_CIRCUIT_FAILURE_THRESHOLD` | `3` | Circuit açılmadan önce hata sayısı |
 | `PROVIDER_CIRCUIT_COOLDOWN_MS` | `300000` | Yeniden deneme bekleme süresi |
+| `GOOGLE_SHEETS_ID` | boş | Google spreadsheet ID; mevcut Render kurulumlarında `GOOGLE_SHEETS_SPREADSHEET_ID` de desteklenir |
+| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | boş | Sheet'e Editor olarak eklenmiş servis hesabı e-postası |
+| `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` | boş | Servis hesabı private key'i; secret olarak tutulmalı |
+| `GOOGLE_SHEETS_SYNC_MINUTES` | `5` | PostgreSQL'deki yeni Nowgoal live odds gözlemlerinin Sheet'e aktarım aralığı |
+
+Google Sheets logger, canlı oran gözlemlerini `Live_Odds_Analysis` sekmesine PostgreSQL kuyruğundan batch olarak aktarır; yeni kilitlenen `PREDICT` ve `SKIP` kayıtlarını da `Predictions_Journal` sekmesine best-effort yazar. Servis hesabını hedef Sheet'te Editor olarak paylaşın ve kimlik bilgilerini Render'daki **worker** servisinin secret environment variables alanına ekleyin. Eski `GOOGLE_SHEETS_SPREADSHEET_ID`, `GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL` ve `GOOGLE_SHEETS_PRIVATE_KEY` adları geriye dönük desteklenir.
+
+`Predictions_Journal` sekmesini ve kolon başlığını elle başlatmak için deploy edilen worker environment değişkenleriyle bir kez `npm run sheets:init` çalıştırın. Worker bu sekmeyi ilk yeni journal satırını yazmadan önce de oluşturur.
 
 ## Test ve kalite
 

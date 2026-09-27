@@ -51,11 +51,13 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "odds:live-audit": "tsx src/odds/live-audit-cli.ts",
-    "odds:live-sheet-smoke": "tsx src/sheets/live-sheet-smoke-cli.ts"
+    "odds:live-sheet-smoke": "tsx src/sheets/live-sheet-smoke-cli.ts",
+    "sheets:init": "tsx src/sheets/init-cli.ts"
   },
   "dependencies": {
     "@fastify/helmet": "^13.0.2",
     "fastify": "^5.6.2",
+    "googleapis": "^182.0.0",
     "pg": "^8.16.3",
     "pino": "^9.14.0",
     "zod": "^4.1.12"
@@ -67,10 +69,10 @@
     "@types/node": "^24.10.0",
     "@types/pg": "^8.15.6",
     "eslint": "^9.38.0",
+    "jsdom": "^29.1.1",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.46.2",
-    "vitest": "^4.0.6",
-    "jsdom": "^29.1.1"
+    "vitest": "^4.0.6"
   }
 }

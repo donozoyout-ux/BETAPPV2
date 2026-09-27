@@ -1,0 +1,72 @@
+{
+  "report": "PREDICTION_SCORE_DATA_AUDIT_V1",
+  "generated_at": "2026-09-27",
+  "branch": "codex/nowgoal-live-odds-integration-v2",
+  "overall_status": "PARTIAL",
+  "PREDICTION_SCORE": {
+    "status": "PASS",
+    "formula_source": "src/predictions/scoring.ts:scorePrediction",
+    "formula": "round2(sum of seven weighted contributions)",
+    "score_range": "0..100, assuming normalized source features and configured weights sum to 100",
+    "decision_source": "src/predictions/engine.ts:evaluatePrediction and src/predictions/prediction-gates.ts:officialCandidateBlockers",
+    "decision": "Candidates are sorted by score descending after all blockers pass. A candidate is PREDICT only when at least one candidate passes every official blocker; otherwise decision is SKIP.",
+    "ui_api_source": "Journal API returns prediction_journal.prediction_score; candidate preview/gate API exposes selected_candidate/candidate.predictionScore. UI prioritizes gate candidate predictionScore and falls back to persisted journal prediction_score.",
+    "ui_api_consistent": true,
+    "ui_api_evidence": "src/predictions/service.ts persists item.predictionScore and scoreComponents from the evaluation into prediction_journal; preview/gate serialization preserves candidate.predictionScore; src/app.ts maps prediction.prediction_score to predictionScore; src/dashboard.ts selects candidate predictionScore first and journal prediction_score as fallback.",
+    "score_zero_fallback": "No blanket score=0 fallback in scorePrediction. Missing historical hit rate and sample size contribute 0 to their weighted components. Odds-analysis missing market returns an empty analysis and prediction evaluation returns SKIP with NO_ODDS_ANALYSIS; the gate inspector may display 0 as a presentation-only current value when candidate is absent.",
+    "weight_sum": 100
+  },
+  "SCORE_FORMULA": {
+    "status": "PASS",
+    "components": [
+      {"name":"marketProbability","formula":"currentFairProbability * 20","weight":20,"units":"0..20"},
+      {"name":"oddsSignal","formula":"clamp(max(probabilityDeltaPp,0)/5,0,1) * 20","weight":20,"units":"0..20"},
+      {"name":"historicalEvidence","formula":"(historicalHitRate ?? 0) * 25","weight":25,"units":"0..25"},
+      {"name":"historicalSampleReliability","formula":"min(1,settledSampleSize/100) * 15","weight":15,"units":"0..15"},
+      {"name":"bookmakerAgreement","formula":"movementAgreementRatio * 10","weight":10,"units":"0..10"},
+      {"name":"dataQuality","formula":"dataQuality.score/100 * 5","weight":5,"units":"0..5"},
+      {"name":"modelConfidence","formula":"modelConfidence.score/100 * 5","weight":5,"units":"0..5"}
+    ],
+    "rounding": "Each component and final total rounded to 2 decimal places; no further normalization. Probability fields use 0..1 fractions.",
+    "missing": "Null historicalHitRate is treated as zero for score contribution; sample size zero also contributes zero reliability. Missing odds yields no candidates rather than an invented candidate.",
+    "similarity": "Similarity is a hard eligibility/distance filter and tie-order input through nearest-first sample selection; it is not a direct score weight. Average similarity is reported, not weighted into score.",
+    "compatibility": "Market type/name/line/selection must match exactly. Odds/probability/movement/agreement must stay within configured tolerances; incompatible observations are excluded.",
+    "same_competition": "Use same competition examples if at least minimumHistoricalSample=30 settled binary examples remain; otherwise use global supported-competition matches. Global fallback is permitted by current semantics.",
+    "sample": "minimumHistoricalSample=30 settled binary outcomes; targetHistoricalSample=100 for reliability scaling; maximumHistoricalExamples=250. PUSH and VOID are excluded from settled denominator and the minimum settled count.",
+    "thresholds": {"minimumPredictionScore":70,"minimumHistoricalSample":30,"minimumDataQualityScore":50,"minimumConfidenceScore":45,"minimumBookmakerCount":3,"minimumCompleteStateCount":2,"officialWindowStartMinutes":90,"minimumLockLeadMinutes":10}
+  },
+  "SCORE_INPUTS": {
+    "status": "PASS",
+    "odds_analysis_score_is_separate": true,
+    "prediction_inputs": ["currentFairProbability","probabilityDeltaPp","historicalHitRate","settledSampleSize","movementAgreementRatio","dataQuality.score","modelConfidence.score"],
+    "odds_analysis_score_inputs": ["movement","agreement","coverage","freshness","stability"],
+    "odds_analysis_weights": {"movement":30,"agreement":30,"coverage":15,"freshness":15,"stability":10}
+  },
+  "SCORE_THRESHOLD": {"status":"PASS","minimum_score":70,"additional_gates_apply":true},
+  "SCORE_DATA_DEPENDENCIES": {"status":"PASS","tables":["odds_snapshots","odds_analysis_runs","odds_analysis_items","prediction_historical_examples","matches","leagues","teams","prediction_runs","prediction_journal"]},
+  "MISSING_DATA": {
+    "status":"BLOCKED",
+    "reason":"No DATABASE_URL is configured in this checkout; only .env.example is present. No production database connection was attempted with absent credentials.",
+    "counts_by_gap_code": null,
+    "required_codes":["DATA_MISSING","ODDS_MISSING","RESULT_MISSING","TEAM_METADATA_MISSING","LEAGUE_METADATA_MISSING","MARKET_MISSING","SIMILARITY_TOO_LOW","SAMPLE_TOO_SMALL","TIME_WINDOW_TOO_NARROW","CROSS_LEAGUE_BLOCK","OTHER"],
+    "note":"A structured match-level gap count requires a read-only query against the target production database. This report does not fabricate values. Current engine's explicit evaluation reasons include NO_ODDS_ANALYSIS, ODDS_NOT_ELIGIBLE, LOW_DATA_QUALITY, LOW_MODEL_CONFIDENCE, INSUFFICIENT_BOOKMAKERS, INSUFFICIENT_COMPLETE_STATES, MOVEMENT_NOT_SUPPORTED, INSUFFICIENT_HISTORICAL_SAMPLE, LOW_PREDICTION_SCORE, UNSUPPORTED_MARKET, and lock-window conditions."
+  },
+  "HISTORICAL_COVERAGE": {"status":"BLOCKED","total_matches":null,"completed_matches":null,"future_matches":null,"league_country_distribution":null,"result_coverage":null,"team_metadata_coverage":null,"same_competition_eligible_sample":null,"global_fallback_coverage":null,"matches_prediction_ready":null,"matches_insufficient_evidence":null},
+  "ODDS_COVERAGE": {"status":"BLOCKED","snapshot_coverage":null,"pre_kickoff_match_coverage":null,"three_bookmaker_coverage":null,"market_coverage":null,"current_odds_analysis_coverage":null},
+  "SIMILARITY_COVERAGE": {"status":"PARTIAL","candidate_count_limit":250,"neighbor_display_limit":30,"similarity_score_threshold":null,"reason":"Prediction evidence keeps at most 250 compatible historical examples; current prediction formula does not apply a separate numeric similarity threshold. A configured tolerance box filters candidates. The 30 neighbor display value belongs to a separate odds-intelligence UI path and is not the prediction evidence sample size."},
+  "SAMPLE_COVERAGE": {"status":"BLOCKED","minimum_settled_examples":30,"target_reliability_examples":100,"maximum_examples":250,"matches_meeting_minimum":null},
+  "LOOKAHEAD_PROTECTION": {"status":"PASS","historical_examples_require":"historical kickoff_at < target kickoff_at","historical_feature_cutoff":"historical kickoff_at minus officialWindowStartMinutes (90 minutes)","odds_snapshots_require":"captured_at < match kickoff_at and captured_at <= generated_at","safety_note":"Historically imported public CSV data without verified exact observation timestamps is marked research-only and is not eligible for official predictions."},
+  "DATA_BACKFILL_RECOMMENDATION": {
+    "status":"PARTIAL",
+    "recommendation":"Do not choose one global season window without DB coverage measurements. Produce per-league/market rolling 1-, 2-, and 3-season reports first; enable a window only where historical observations have verified pre-kickoff timing, exact market identity, settled result, and useful neighbor distance. Prefer same-competition matches; keep cross-competition fallback explicit and audit its share.",
+    "available_sources":["OpenFootball results/fixtures and competition/team metadata","Nowgoal fixtures and pre-match odds snapshots","ODDS_V1/provider odds snapshots","football-data.co.uk CSV results and market odds","prediction_historical_examples built from time-safe odds and settled outcomes","competition/team metadata from FotMob and provider entity maps"],
+    "proposed_tables":[{"source":"OpenFootball","tables":"matches, leagues, teams, provider_entities","fields":["competition/season","home/away team","kickoff","status","final score"],"use":"Fixture/result coverage; no odds features."},{"source":"Nowgoal and odds providers","tables":"odds_snapshots then odds_analysis_runs/items","fields":["provider/bookmaker","market identity","line","selection","decimal odds","captured_at"],"use":"Only snapshots captured strictly before target feature cutoff."},{"source":"football-data.co.uk CSV","tables":"historical_csv_imports, historical_market_odds and research shadow examples","fields":["season","competition","match result","market/bookmaker odds","source row hash","observation stage/time provenance"],"use":"Research unless exact pre-kickoff observation time is verified; do not promote stage-only records to official features."}],
+    "candidate_windows_to_measure":["1 season","2 seasons","3 seasons"],
+    "selection_rule":"Compare per-market/per-league count >=30, nearest-neighbor distance distribution, same-competition share, time-safe odds coverage, and walk-forward performance; no window selected without those measurements."
+  },
+  "TESTS": {
+    "status":"PASS",
+    "existing_and_added": ["deterministic score and component sum","fixed component weights","no historical data does not fabricate hit rate or reliability","same-competition priority and global fallback","odds market identity and tolerance rejection","mixed settled/PUSH/VOID evidence denominator","future/equal-time historical examples excluded","official score and evidence gates","missing odds produces explicit SKIP","gate/UI source fallback consistency reviewed in code"],
+    "database_coverage_integration_test": "BLOCKED: no target DB credentials in checkout"
+  }
+}

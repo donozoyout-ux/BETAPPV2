@@ -42,6 +42,15 @@ describe('Prediction Gate Inspector V1', () => {
     expect(result.thresholds.minimumPredictionScore).toBe(predictionConfig.minimumPredictionScore);
   });
 
+  it('keeps the preview candidate score, official journal score, and gate score on one value', () => {
+    const value=candidate({predictionScore:82.5});
+    const preview=inspectPredictionGates({decision:'PREDICT',state:'PREVIEW',kickoffAt,now:insideWindow,
+      selectedCandidate:value,candidates:[value],skipReasons:[],metadata:{}});
+    const journal={prediction_score:value.predictionScore};
+    expect(preview.candidate?.predictionScore).toBe(journal.prediction_score);
+    expect(byKey(preview,'PREDICTION_SCORE').current).toBe(journal.prediction_score);
+  });
+
   it('fails incomplete states and reports WAITING instead of weakening the official rule', () => {
     const result = inspect(candidate({ analysisEligible: false, completeStateBookmakerCount: 1,
       minimumCompleteStateCount: 1 }));

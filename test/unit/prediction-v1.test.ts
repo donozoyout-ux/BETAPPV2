@@ -77,6 +77,60 @@ describe('PREDICTION_V1 similarity and scoring', () => {
     expect(Object.values(scored.components).reduce((sum, value) => sum + value, 0)).toBeCloseTo(scored.score);
   });
 
+  it('uses only explicit score features and fixed weights; repeated input is deterministic', () => {
+    const evidence = findHistoricalEvidence(item(), 'league-a', kickoff, [example(1)], looseConfig);
+    const scored = scorePrediction(item(), evidence, looseConfig);
+    expect(scored).toEqual(scorePrediction(item(), evidence, looseConfig));
+    expect(scored.components).toEqual({ marketProbability: 11.2, oddsSignal: 20, historicalEvidence: 25,
+      historicalSampleReliability: 15, bookmakerAgreement: 10, dataQuality: 4.5, modelConfidence: 4.25 });
+    expect(scored.score).toBe(89.95);
+  });
+
+  it('does not fabricate historical confidence when examples or odds are absent', () => {
+    const noEvidence = findHistoricalEvidence(item(), 'league-a', kickoff, [], predictionConfig);
+    const noEvidenceScore = scorePrediction(item(), noEvidence, predictionConfig);
+    expect(noEvidence.historicalHitRate).toBeNull();
+    expect(noEvidence.settledSampleSize).toBe(0);
+    expect(noEvidenceScore.components.historicalEvidence).toBe(0);
+    expect(noEvidenceScore.components.historicalSampleReliability).toBe(0);
+    expect(evaluatePrediction({ matchId: 'no-odds', competitionId: 'league-a', kickoffAt:kickoff,
+      oddsInputHash:'none',oddsItems:[]},[],kickoff).decision).toBe('SKIP');
+  });
+
+  it('keeps local sample priority, explicit cross-competition fallback and odds identity compatibility', () => {
+    const local = Array.from({length:30},(_,index)=>example(index));
+    const global = example(40,{competitionId:'league-b'});
+    expect(findHistoricalEvidence(item(),'league-a',kickoff,[...local,global],predictionConfig).scope).toBe('SAME_COMPETITION');
+    expect(findHistoricalEvidence(item(),'league-c',kickoff,[global],predictionConfig).scope).toBe('GLOBAL_SUPPORTED_COMPETITIONS');
+    const incompatible = findHistoricalEvidence(item({currentOdds:9}),'league-a',kickoff,[example(50)],predictionConfig);
+    expect(incompatible.sampleSize).toBe(0);
+    expect(incompatible.historicalHitRate).toBeNull();
+  });
+
+  it('keeps incomplete historical outcomes in the raw sample but out of settled denominators', () => {
+    const mixed=[example(60,{settlementResult:'WIN'}),example(61,{settlementResult:'PUSH'}),example(62,{settlementResult:'VOID'})];
+    const evidence=findHistoricalEvidence(item(),'league-a',kickoff,mixed,looseConfig);
+    expect(evidence.sampleSize).toBe(3);
+    expect(evidence.settledSampleSize).toBe(1);
+    expect(evidence.historicalHitRate).toBe(1);
+    expect(evidence.status).toBe('SUFFICIENT');
+  });
+
+  it('enforces strict candidate kickoff cutoff and supported-market/score decision gates', () => {
+    const cutoffExample=example(70,{kickoffAt:kickoff});
+    const futureExample=example(71,{kickoffAt:new Date(kickoff.getTime()+1)});
+    const target:PredictionTarget={matchId:'cutoff-target',competitionId:'league-a',kickoffAt:kickoff,oddsInputHash:'hash',oddsItems:[item()]};
+    const result=evaluatePrediction(target,[cutoffExample,futureExample],kickoff,looseConfig);
+    expect(result.candidates[0]?.historical.sampleSize).toBe(0);
+    const blocked=evaluatePrediction({...target,oddsItems:[item({movementClass:'NEUTRAL'})]},
+      Array.from({length:30},(_,index)=>example(index)),kickoff,{...looseConfig,minimumPredictionScore:70});
+    expect(blocked).toMatchObject({decision:'SKIP',selectedCandidate:null});
+    expect(blocked.skipReasons).toContain('MOVEMENT_NOT_SUPPORTED');
+    const unsupported=evaluatePrediction({...target,oddsItems:[item({marketType:'UNKNOWN'})]},
+      Array.from({length:30},(_,index)=>example(index)),kickoff,looseConfig);
+    expect(unsupported.skipReasons).toContain('UNSUPPORTED_MARKET');
+  });
+
   it('selects one deterministic candidate or an explicit SKIP', () => {
     const target: PredictionTarget = { matchId: 'target', competitionId: 'league-a', kickoffAt: kickoff, oddsInputHash: 'input',
       oddsItems: [item({ selection: 'UNDER', probabilityDeltaPp: 5 }), item()] };

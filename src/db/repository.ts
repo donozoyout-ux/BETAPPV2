@@ -1,4 +1,5 @@
 import { DataCoverageService } from '../data/coverage.js';
+import { PredictionCoverageService } from '../data/prediction-coverage.js';
 import { guardPrimary, LiveRepository } from '../live/repository.js';
 import { createHash } from 'node:crypto';
 import type { PoolClient } from 'pg';
@@ -608,10 +609,17 @@ export class FootballRepository {
   }
 
   private coverageServices = new Map<string, DataCoverageService>();
+  private predictionCoverageServices = new Map<string, PredictionCoverageService>();
   async dataCoverage(configured: readonly string[]) {
     const key = [...configured].sort().join(',');
     let service = this.coverageServices.get(key);
     if (!service) { service = new DataCoverageService(this.pool, configured); this.coverageServices.set(key, service); }
+    return service.get();
+  }
+  async predictionCoverage(configured:readonly string[]){
+    const key=[...configured].sort().join(',');
+    let service=this.predictionCoverageServices.get(key);
+    if(!service){service=new PredictionCoverageService(this.pool,configured);this.predictionCoverageServices.set(key,service);}
     return service.get();
   }
 

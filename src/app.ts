@@ -251,10 +251,11 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
   });
 
   app.get('/data-coverage.js', async (_request, reply) => reply.type('application/javascript').send(dataPoolScript));
-  app.get('/api/data-coverage', async (_request, reply) => {
+  app.get<{ Querystring:{detail?:string} }>('/api/data-coverage', async (request, reply) => {
     const data = await repository.dataCoverage(config.SUPPORTED_COMPETITIONS);
     reply.header('Cache-Control', 'private, max-age=300');
-    return { ...data, html: dataPoolCard(data) };
+    return { ...data, ...(request.query.detail==='prediction'
+      ? {predictionCoverage:await repository.predictionCoverage(config.SUPPORTED_COMPETITIONS)} : {}), html: dataPoolCard(data) };
   });
 
   app.get('/health', async (_request, reply) => {

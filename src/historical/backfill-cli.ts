@@ -32,7 +32,9 @@ if (dryRun) {
   if (!seasonArg) throw new Error('A dry run requires --season=YYYY-YYYY so its scope is explicit.');
   console.log(JSON.stringify(await runFotMobDryRun(config, competition, seasonArg, Number(args.get('sample') ?? '12')), null, 2));
 } else {
-  if (!config.BACKFILL_ENABLED) throw new Error('Historical backfill is disabled. Set BACKFILL_ENABLED=true.');
+  if (!config.DATA_BACKFILL_ENABLED || !config.BACKFILL_ENABLED) {
+    throw new Error('Historical backfill is disabled. Set DATA_BACKFILL_ENABLED=true and BACKFILL_ENABLED=true.');
+  }
   const pool = createPool(config); const football = new FootballRepository(pool); const historical = new HistoricalRepository(pool);
   const circuit = new CircuitBreaker(config.PROVIDER_CIRCUIT_FAILURE_THRESHOLD, config.PROVIDER_CIRCUIT_COOLDOWN_MS);
   const pause = () => new Promise<void>((resolve) => setTimeout(resolve, config.HISTORICAL_REQUEST_DELAY_MS));

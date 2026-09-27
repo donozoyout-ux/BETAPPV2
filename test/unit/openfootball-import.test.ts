@@ -3,6 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { loadConfig } from '../../src/config.js';
 import { openFootballKickoff, parseOpenFootballDataset } from '../../src/historical/openfootball-parser.js';
 import { currentOpenFootballSeason, openFootballDatasets, openFootballInternationalDatasets } from '../../src/historical/openfootball-source.js';
+import { OpenFootballHistoricalImporter } from '../../src/historical/openfootball-importer.js';
+import { createHash } from 'node:crypto';
+import { vi } from 'vitest';
 
 describe('OpenFootball CC0 historical import', () => {
   it('uses only verified configured league-season files', () => {
@@ -67,11 +70,16 @@ describe('OpenFootball CC0 historical import', () => {
       .toBe('2026-08-21T19:00:00.000Z');
     expect(openFootballKickoff('2026-08-21',null,'Europe/London')).toBeNull();
     expect(openFootballKickoff('2026-08-21','13:00',null)).toBeNull();
+    expect(openFootballKickoff('2025-02-31','15:00','Europe/London')).toBeNull();
+    expect(openFootballKickoff('2025-03-30','01:30','Europe/London')).toBeNull();
+    expect(openFootballKickoff('2025-10-26','01:30','Europe/London')).toBeNull();
   });
 
-  it('enables OpenFootball and keeps Football-Data automation disabled on the Render worker', () => {
+  it('keeps historical imports behind the global opt-in and leaves Football-Data automation disabled', () => {
     const config=loadConfig({DATABASE_URL:'postgresql://localhost/test'});
     expect(config.OPENFOOTBALL_IMPORT_ENABLED).toBe(false);
+    expect(config.DATA_BACKFILL_ENABLED).toBe(false);
+    expect(config.DATA_BACKFILL_MAX_MATCHES_PER_RUN).toBe(150);
     expect(config.OPENFOOTBALL_IMPORT_SEASONS).toEqual(['2026-27','2025-26','2024-25']);
     expect(config.OPENFOOTBALL_BATCH_SIZE).toBe(150);
     expect(config.OPENFOOTBALL_CURRENT_REFRESH_MS).toBe(86400000);
@@ -82,7 +90,31 @@ describe('OpenFootball CC0 historical import', () => {
     expect(web).not.toContain('OPENFOOTBALL_IMPORT_ENABLED');
     expect(worker).toContain('key: PUBLIC_CSV_IMPORT_ENABLED\n        value: "false"');
     expect(worker).toContain('key: OPENFOOTBALL_IMPORT_ENABLED\n        value: "true"');
+    expect(worker).toContain('key: DATA_BACKFILL_ENABLED\n        value: "false"');
+    expect(worker).toContain('key: DATA_BACKFILL_MAX_MATCHES_PER_RUN\n        value: "150"');
     expect(worker).toContain('key: OPENFOOTBALL_IMPORT_SEASONS\n        value: 2026-27,2025-26,2024-25');
     expect(worker).toContain('key: OPENFOOTBALL_CURRENT_REFRESH_MS\n        value: "86400000"');
+  });
+
+  it('does not reimport an unchanged completed OpenFootball dataset on rerun', async () => {
+    const payload={name:'English Premier League 2026/27',matches:[
+      {date:'2026-08-21',time:'20:00',team1:'Arsenal FC',team2:'Coventry City FC',score:{ft:[3,0]}},
+    ]};
+    const text=JSON.stringify(payload);
+    const config=loadConfig({DATABASE_URL:'postgresql://localhost/test',SUPPORTED_COMPETITIONS:'PremierLeague',
+      OPENFOOTBALL_IMPORT_ENABLED:'true',OPENFOOTBALL_IMPORT_SEASONS:'2026-27'});
+    const imports={ensureDatasets:vi.fn(),state:vi.fn(async()=>({status:'COMPLETED',
+      content_hash:createHash('sha256').update(text).digest('hex')})),checked:vi.fn()};
+    const football={upsertMatch:vi.fn()};const historical={save:vi.fn()};
+    const logger={info:vi.fn(),warn:vi.fn()};
+    const importer=new OpenFootballHistoricalImporter(config,football as never,historical as never,imports as never,logger as never);
+    const originalFetch=globalThis.fetch;
+    globalThis.fetch=vi.fn(async()=>new Response(text,{status:200})) as typeof fetch;
+    try {
+      await expect(importer.runCycle()).resolves.toMatchObject({state:'NO_CHANGE'});
+      expect(football.upsertMatch).not.toHaveBeenCalled();
+      expect(historical.save).not.toHaveBeenCalled();
+      expect(imports.checked).toHaveBeenCalledOnce();
+    } finally { globalThis.fetch=originalFetch; }
   });
 });

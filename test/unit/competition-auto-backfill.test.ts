@@ -23,9 +23,10 @@ describe('automatic competition backfill', () => {
     expect(disabled.COMPETITION_BACKFILL_AUTO_SEASONS).toBe(1);
     expect(disabled.COMPETITION_BACKFILL_AUTO_INTERVAL_MS).toBe(900000);
     const enabled = loadConfig({ DATABASE_URL: 'postgresql://localhost/test',
-      BACKFILL_ENABLED: 'true', COMPETITION_BACKFILL_AUTO_ENABLED: 'true',
+      DATA_BACKFILL_ENABLED:'true', BACKFILL_ENABLED: 'true', COMPETITION_BACKFILL_AUTO_ENABLED: 'true',
       COMPETITION_BACKFILL_AUTO_SEASONS: '2', COMPETITION_BACKFILL_AUTO_INTERVAL_MS: '300000' });
     expect(enabled.BACKFILL_ENABLED).toBe(true);
+    expect(enabled.DATA_BACKFILL_ENABLED).toBe(true);
     expect(enabled.COMPETITION_BACKFILL_AUTO_ENABLED).toBe(true);
     expect(enabled.COMPETITION_BACKFILL_AUTO_SEASONS).toBe(2);
     expect(enabled.COMPETITION_BACKFILL_AUTO_INTERVAL_MS).toBe(300000);
@@ -35,10 +36,11 @@ describe('automatic competition backfill', () => {
       COMPETITION_BACKFILL_AUTO_INTERVAL_MS: '299999' })).toThrow();
   });
 
-  it('enables the safe one-season auto queue only on the Render worker', () => {
+  it('keeps the global historical backfill opt-in disabled in Render by default', () => {
     const yaml = readFileSync('render.yaml', 'utf8').replace(/\r\n/g, '\n');
     const worker = yaml.split('name: betapp-v2-collector')[1] ?? '';
     const web = yaml.split('name: betapp-v2-web')[1]?.split('name: betapp-v2-collector')[0] ?? '';
+    expect(worker).toContain('key: DATA_BACKFILL_ENABLED\n        value: "false"');
     expect(worker).toContain('key: BACKFILL_ENABLED\n        value: "true"');
     expect(worker).toContain('key: COMPETITION_BACKFILL_AUTO_ENABLED\n        value: "true"');
     expect(worker).toContain('key: COMPETITION_BACKFILL_AUTO_SEASONS\n        value: "1"');

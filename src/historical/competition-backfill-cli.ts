@@ -15,7 +15,9 @@ const options = parseExpansionArgs(process.argv.slice(2));
 // Dry-run has no database connection and must not require production credentials.
 const config = loadConfig(options.dryRun ? { ...process.env, DATABASE_URL: 'postgresql://localhost/unused_dry_run' } : process.env);
 if (!config.FOTMOB_ENABLED) throw new Error('FOTMOB_ENABLED=true is required');
-if (!options.dryRun && !config.BACKFILL_ENABLED) throw new Error('BACKFILL_ENABLED=true is required for database writes');
+if (!options.dryRun && (!config.DATA_BACKFILL_ENABLED || !config.BACKFILL_ENABLED)) {
+  throw new Error('DATA_BACKFILL_ENABLED=true and BACKFILL_ENABLED=true are required for database writes');
+}
 const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
 const selected = fotmobCompetitions.filter(c => config.SUPPORTED_COMPETITIONS.includes(c.key)
   && (options.competition ? [c.key,c.name,String(c.id)].some(s => normalize(s) === normalize(options.competition!)) : expansionKeys.includes(c.key)));

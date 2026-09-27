@@ -26,7 +26,7 @@ export class PublicCsvHistoricalImporter {
   ) {}
 
   enabled() {
-    return this.config.PUBLIC_CSV_IMPORT_ENABLED;
+    return this.config.DATA_BACKFILL_ENABLED && this.config.PUBLIC_CSV_IMPORT_ENABLED;
   }
 
   stop() {

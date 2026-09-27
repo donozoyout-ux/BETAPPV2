@@ -90,7 +90,8 @@ export class OpenFootballHistoricalImporter {
           await this.imports.complete(dataset.sourceKey);
           return {state:'DATASET_COMPLETED' as const,sourceKey:dataset.sourceKey,imported:0};
         }
-        const batch=parsed.matches.slice(start,start+this.config.OPENFOOTBALL_BATCH_SIZE);
+        const batch=parsed.matches.slice(start,start+Math.min(this.config.OPENFOOTBALL_BATCH_SIZE,
+          this.config.DATA_BACKFILL_MAX_MATCHES_PER_RUN));
         let imported=0,inserted=0,updated=0,duplicates=0;
         for(const item of batch){
           if(this.stopped) break;

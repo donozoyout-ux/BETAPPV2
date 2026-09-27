@@ -1,0 +1,578 @@
+{
+  "version": "HISTORICAL_DATA_BACKFILL_V1",
+  "mode": "DRY_RUN",
+  "databaseWrites": 0,
+  "generatedAt": "2026-09-27T19:55:41.889Z",
+  "sources": {
+    "openFootball": [
+      {
+        "competition": "Premier League",
+        "season": "2024-25",
+        "url": "https://raw.githubusercontent.com/openfootball/football.json/master/2024-25/en.1.json",
+        "policy": "PRODUCTION_ELIGIBLE_CC0",
+        "matchResults": true,
+        "exactOddsTimestamps": false
+      },
+      {
+        "competition": "La Liga",
+        "season": "2024-25",
+        "url": "https://raw.githubusercontent.com/openfootball/football.json/master/2024-25/es.1.json",
+        "policy": "PRODUCTION_ELIGIBLE_CC0",
+        "matchResults": true,
+        "exactOddsTimestamps": false
+      },
+      {
+        "competition": "Bundesliga",
+        "season": "2024-25",
+        "url": "https://raw.githubusercontent.com/openfootball/football.json/master/2024-25/de.1.json",
+        "policy": "PRODUCTION_ELIGIBLE_CC0",
+        "matchResults": true,
+        "exactOddsTimestamps": false
+      },
+      {
+        "competition": "Serie A",
+        "season": "2024-25",
+        "url": "https://raw.githubusercontent.com/openfootball/football.json/master/2024-25/it.1.json",
+        "policy": "PRODUCTION_ELIGIBLE_CC0",
+        "matchResults": true,
+        "exactOddsTimestamps": false
+      },
+      {
+        "competition": "Ligue 1",
+        "season": "2024-25",
+        "url": "https://raw.githubusercontent.com/openfootball/football.json/master/2024-25/fr.1.json",
+        "policy": "PRODUCTION_ELIGIBLE_CC0",
+        "matchResults": true,
+        "exactOddsTimestamps": false
+      },
+      {
+        "competition": "Süper Lig",
+        "season": "2024-25",
+        "url": "https://raw.githubusercontent.com/openfootball/football.json/master/2024-25/tr.1.json",
+        "policy": "PRODUCTION_ELIGIBLE_CC0",
+        "matchResults": true,
+        "exactOddsTimestamps": false
+      },
+      {
+        "competition": "Premier League",
+        "season": "2025-26",
+        "url": "https://raw.githubusercontent.com/openfootball/football.json/master/2025-26/en.1.json",
+        "policy": "PRODUCTION_ELIGIBLE_CC0",
+        "matchResults": true,
+        "exactOddsTimestamps": false
+      },
+      {
+        "competition": "La Liga",
+        "season": "2025-26",
+        "url": "https://raw.githubusercontent.com/openfootball/football.json/master/2025-26/es.1.json",
+        "policy": "PRODUCTION_ELIGIBLE_CC0",
+        "matchResults": true,
+        "exactOddsTimestamps": false
+      },
+      {
+        "competition": "Bundesliga",
+        "season": "2025-26",
+        "url": "https://raw.githubusercontent.com/openfootball/football.json/master/2025-26/de.1.json",
+        "policy": "PRODUCTION_ELIGIBLE_CC0",
+        "matchResults": true,
+        "exactOddsTimestamps": false
+      },
+      {
+        "competition": "Serie A",
+        "season": "2025-26",
+        "url": "https://raw.githubusercontent.com/openfootball/football.json/master/2025-26/it.1.json",
+        "policy": "PRODUCTION_ELIGIBLE_CC0",
+        "matchResults": true,
+        "exactOddsTimestamps": false
+      },
+      {
+        "competition": "Ligue 1",
+        "season": "2025-26",
+        "url": "https://raw.githubusercontent.com/openfootball/football.json/master/2025-26/fr.1.json",
+        "policy": "PRODUCTION_ELIGIBLE_CC0",
+        "matchResults": true,
+        "exactOddsTimestamps": false
+      },
+      {
+        "competition": "Süper Lig",
+        "season": "2025-26",
+        "url": "https://raw.githubusercontent.com/openfootball/football.json/master/2025-26/tr.1.json",
+        "policy": "PRODUCTION_ELIGIBLE_CC0",
+        "matchResults": true,
+        "exactOddsTimestamps": false
+      },
+      {
+        "competition": "Premier League",
+        "season": "2026-27",
+        "url": "https://raw.githubusercontent.com/openfootball/football.json/master/2026-27/en.1.json",
+        "policy": "PRODUCTION_ELIGIBLE_CC0",
+        "matchResults": true,
+        "exactOddsTimestamps": false
+      },
+      {
+        "competition": "La Liga",
+        "season": "2026-27",
+        "url": "https://raw.githubusercontent.com/openfootball/football.json/master/2026-27/es.1.json",
+        "policy": "PRODUCTION_ELIGIBLE_CC0",
+        "matchResults": true,
+        "exactOddsTimestamps": false
+      },
+      {
+        "competition": "Bundesliga",
+        "season": "2026-27",
+        "url": "https://raw.githubusercontent.com/openfootball/football.json/master/2026-27/de.1.json",
+        "policy": "PRODUCTION_ELIGIBLE_CC0",
+        "matchResults": true,
+        "exactOddsTimestamps": false
+      },
+      {
+        "competition": "Serie A",
+        "season": "2026-27",
+        "url": "https://raw.githubusercontent.com/openfootball/football.json/master/2026-27/it.1.json",
+        "policy": "PRODUCTION_ELIGIBLE_CC0",
+        "matchResults": true,
+        "exactOddsTimestamps": false
+      },
+      {
+        "competition": "Ligue 1",
+        "season": "2026-27",
+        "url": "https://raw.githubusercontent.com/openfootball/football.json/master/2026-27/fr.1.json",
+        "policy": "PRODUCTION_ELIGIBLE_CC0",
+        "matchResults": true,
+        "exactOddsTimestamps": false
+      }
+    ],
+    "footballDataArchive": {
+      "competitions": [
+        "Premier League",
+        "La Liga",
+        "Bundesliga",
+        "Serie A",
+        "Ligue 1",
+        "Süper Lig"
+      ],
+      "policy": "MANUAL_REVIEW_REQUIRED",
+      "automatedCollection": false,
+      "odds": "SHADOW_RESEARCH_ONLY_NO_TRUSTED_CAPTURE_TIMESTAMP"
+    },
+    "csvDatasetPlanRows": 0
+  },
+  "competitions": [
+    {
+      "competition": "Premier League",
+      "targetFinishedMatches": 80,
+      "discovered": 1140,
+      "eligible": 778,
+      "inserted": 0,
+      "imported": 0,
+      "duplicate": null,
+      "skipped": 362,
+      "unsafe_time": 0,
+      "invalid_result": 0,
+      "errors": 0,
+      "seasons": [
+        {
+          "source": "OpenFootball CC0",
+          "competition": "Premier League",
+          "season": "2024-25",
+          "url": "https://raw.githubusercontent.com/openfootball/football.json/master/2024-25/en.1.json",
+          "discovered": 380,
+          "eligible": 380,
+          "inserted": 0,
+          "imported": 0,
+          "duplicate": null,
+          "skipped": 0,
+          "unsafe_time": 0,
+          "invalid_result": 0,
+          "errors": 0,
+          "databaseDuplicateEstimate": "UNAVAILABLE_READ_ONLY_DATABASE_NOT_CONFIGURED"
+        },
+        {
+          "source": "OpenFootball CC0",
+          "competition": "Premier League",
+          "season": "2025-26",
+          "url": "https://raw.githubusercontent.com/openfootball/football.json/master/2025-26/en.1.json",
+          "discovered": 380,
+          "eligible": 353,
+          "inserted": 0,
+          "imported": 0,
+          "duplicate": null,
+          "skipped": 27,
+          "unsafe_time": 0,
+          "invalid_result": 0,
+          "errors": 0,
+          "databaseDuplicateEstimate": "UNAVAILABLE_READ_ONLY_DATABASE_NOT_CONFIGURED"
+        },
+        {
+          "source": "OpenFootball CC0",
+          "competition": "Premier League",
+          "season": "2026-27",
+          "url": "https://raw.githubusercontent.com/openfootball/football.json/master/2026-27/en.1.json",
+          "discovered": 380,
+          "eligible": 45,
+          "inserted": 0,
+          "imported": 0,
+          "duplicate": null,
+          "skipped": 335,
+          "unsafe_time": 0,
+          "invalid_result": 0,
+          "errors": 0,
+          "databaseDuplicateEstimate": "UNAVAILABLE_READ_ONLY_DATABASE_NOT_CONFIGURED"
+        }
+      ]
+    },
+    {
+      "competition": "La Liga",
+      "targetFinishedMatches": 80,
+      "discovered": 1140,
+      "eligible": 799,
+      "inserted": 0,
+      "imported": 0,
+      "duplicate": null,
+      "skipped": 341,
+      "unsafe_time": 0,
+      "invalid_result": 0,
+      "errors": 0,
+      "seasons": [
+        {
+          "source": "OpenFootball CC0",
+          "competition": "La Liga",
+          "season": "2024-25",
+          "url": "https://raw.githubusercontent.com/openfootball/football.json/master/2024-25/es.1.json",
+          "discovered": 380,
+          "eligible": 370,
+          "inserted": 0,
+          "imported": 0,
+          "duplicate": null,
+          "skipped": 10,
+          "unsafe_time": 0,
+          "invalid_result": 0,
+          "errors": 0,
+          "databaseDuplicateEstimate": "UNAVAILABLE_READ_ONLY_DATABASE_NOT_CONFIGURED"
+        },
+        {
+          "source": "OpenFootball CC0",
+          "competition": "La Liga",
+          "season": "2025-26",
+          "url": "https://raw.githubusercontent.com/openfootball/football.json/master/2025-26/es.1.json",
+          "discovered": 380,
+          "eligible": 365,
+          "inserted": 0,
+          "imported": 0,
+          "duplicate": null,
+          "skipped": 15,
+          "unsafe_time": 0,
+          "invalid_result": 0,
+          "errors": 0,
+          "databaseDuplicateEstimate": "UNAVAILABLE_READ_ONLY_DATABASE_NOT_CONFIGURED"
+        },
+        {
+          "source": "OpenFootball CC0",
+          "competition": "La Liga",
+          "season": "2026-27",
+          "url": "https://raw.githubusercontent.com/openfootball/football.json/master/2026-27/es.1.json",
+          "discovered": 380,
+          "eligible": 64,
+          "inserted": 0,
+          "imported": 0,
+          "duplicate": null,
+          "skipped": 316,
+          "unsafe_time": 0,
+          "invalid_result": 0,
+          "errors": 0,
+          "databaseDuplicateEstimate": "UNAVAILABLE_READ_ONLY_DATABASE_NOT_CONFIGURED"
+        }
+      ]
+    },
+    {
+      "competition": "Bundesliga",
+      "targetFinishedMatches": 80,
+      "discovered": 918,
+      "eligible": 633,
+      "inserted": 0,
+      "imported": 0,
+      "duplicate": null,
+      "skipped": 285,
+      "unsafe_time": 0,
+      "invalid_result": 0,
+      "errors": 0,
+      "seasons": [
+        {
+          "source": "OpenFootball CC0",
+          "competition": "Bundesliga",
+          "season": "2024-25",
+          "url": "https://raw.githubusercontent.com/openfootball/football.json/master/2024-25/de.1.json",
+          "discovered": 306,
+          "eligible": 306,
+          "inserted": 0,
+          "imported": 0,
+          "duplicate": null,
+          "skipped": 0,
+          "unsafe_time": 0,
+          "invalid_result": 0,
+          "errors": 0,
+          "databaseDuplicateEstimate": "UNAVAILABLE_READ_ONLY_DATABASE_NOT_CONFIGURED"
+        },
+        {
+          "source": "OpenFootball CC0",
+          "competition": "Bundesliga",
+          "season": "2025-26",
+          "url": "https://raw.githubusercontent.com/openfootball/football.json/master/2025-26/de.1.json",
+          "discovered": 306,
+          "eligible": 294,
+          "inserted": 0,
+          "imported": 0,
+          "duplicate": null,
+          "skipped": 12,
+          "unsafe_time": 0,
+          "invalid_result": 0,
+          "errors": 0,
+          "databaseDuplicateEstimate": "UNAVAILABLE_READ_ONLY_DATABASE_NOT_CONFIGURED"
+        },
+        {
+          "source": "OpenFootball CC0",
+          "competition": "Bundesliga",
+          "season": "2026-27",
+          "url": "https://raw.githubusercontent.com/openfootball/football.json/master/2026-27/de.1.json",
+          "discovered": 306,
+          "eligible": 33,
+          "inserted": 0,
+          "imported": 0,
+          "duplicate": null,
+          "skipped": 273,
+          "unsafe_time": 0,
+          "invalid_result": 0,
+          "errors": 0,
+          "databaseDuplicateEstimate": "UNAVAILABLE_READ_ONLY_DATABASE_NOT_CONFIGURED"
+        }
+      ]
+    },
+    {
+      "competition": "Serie A",
+      "targetFinishedMatches": 80,
+      "discovered": 1140,
+      "eligible": 764,
+      "inserted": 0,
+      "imported": 0,
+      "duplicate": null,
+      "skipped": 376,
+      "unsafe_time": 0,
+      "invalid_result": 0,
+      "errors": 0,
+      "seasons": [
+        {
+          "source": "OpenFootball CC0",
+          "competition": "Serie A",
+          "season": "2024-25",
+          "url": "https://raw.githubusercontent.com/openfootball/football.json/master/2024-25/it.1.json",
+          "discovered": 380,
+          "eligible": 370,
+          "inserted": 0,
+          "imported": 0,
+          "duplicate": null,
+          "skipped": 10,
+          "unsafe_time": 0,
+          "invalid_result": 0,
+          "errors": 0,
+          "databaseDuplicateEstimate": "UNAVAILABLE_READ_ONLY_DATABASE_NOT_CONFIGURED"
+        },
+        {
+          "source": "OpenFootball CC0",
+          "competition": "Serie A",
+          "season": "2025-26",
+          "url": "https://raw.githubusercontent.com/openfootball/football.json/master/2025-26/it.1.json",
+          "discovered": 380,
+          "eligible": 344,
+          "inserted": 0,
+          "imported": 0,
+          "duplicate": null,
+          "skipped": 36,
+          "unsafe_time": 0,
+          "invalid_result": 0,
+          "errors": 0,
+          "databaseDuplicateEstimate": "UNAVAILABLE_READ_ONLY_DATABASE_NOT_CONFIGURED"
+        },
+        {
+          "source": "OpenFootball CC0",
+          "competition": "Serie A",
+          "season": "2026-27",
+          "url": "https://raw.githubusercontent.com/openfootball/football.json/master/2026-27/it.1.json",
+          "discovered": 380,
+          "eligible": 50,
+          "inserted": 0,
+          "imported": 0,
+          "duplicate": null,
+          "skipped": 330,
+          "unsafe_time": 0,
+          "invalid_result": 0,
+          "errors": 0,
+          "databaseDuplicateEstimate": "UNAVAILABLE_READ_ONLY_DATABASE_NOT_CONFIGURED"
+        }
+      ]
+    },
+    {
+      "competition": "Ligue 1",
+      "targetFinishedMatches": 80,
+      "discovered": 918,
+      "eligible": 629,
+      "inserted": 0,
+      "imported": 0,
+      "duplicate": null,
+      "skipped": 289,
+      "unsafe_time": 0,
+      "invalid_result": 0,
+      "errors": 0,
+      "seasons": [
+        {
+          "source": "OpenFootball CC0",
+          "competition": "Ligue 1",
+          "season": "2024-25",
+          "url": "https://raw.githubusercontent.com/openfootball/football.json/master/2024-25/fr.1.json",
+          "discovered": 306,
+          "eligible": 306,
+          "inserted": 0,
+          "imported": 0,
+          "duplicate": null,
+          "skipped": 0,
+          "unsafe_time": 0,
+          "invalid_result": 0,
+          "errors": 0,
+          "databaseDuplicateEstimate": "UNAVAILABLE_READ_ONLY_DATABASE_NOT_CONFIGURED"
+        },
+        {
+          "source": "OpenFootball CC0",
+          "competition": "Ligue 1",
+          "season": "2025-26",
+          "url": "https://raw.githubusercontent.com/openfootball/football.json/master/2025-26/fr.1.json",
+          "discovered": 306,
+          "eligible": 282,
+          "inserted": 0,
+          "imported": 0,
+          "duplicate": null,
+          "skipped": 24,
+          "unsafe_time": 0,
+          "invalid_result": 0,
+          "errors": 0,
+          "databaseDuplicateEstimate": "UNAVAILABLE_READ_ONLY_DATABASE_NOT_CONFIGURED"
+        },
+        {
+          "source": "OpenFootball CC0",
+          "competition": "Ligue 1",
+          "season": "2026-27",
+          "url": "https://raw.githubusercontent.com/openfootball/football.json/master/2026-27/fr.1.json",
+          "discovered": 306,
+          "eligible": 41,
+          "inserted": 0,
+          "imported": 0,
+          "duplicate": null,
+          "skipped": 265,
+          "unsafe_time": 0,
+          "invalid_result": 0,
+          "errors": 0,
+          "databaseDuplicateEstimate": "UNAVAILABLE_READ_ONLY_DATABASE_NOT_CONFIGURED"
+        }
+      ]
+    },
+    {
+      "competition": "Süper Lig",
+      "targetFinishedMatches": 80,
+      "discovered": 648,
+      "eligible": 428,
+      "inserted": 0,
+      "imported": 0,
+      "duplicate": null,
+      "skipped": 220,
+      "unsafe_time": 0,
+      "invalid_result": 0,
+      "errors": 0,
+      "seasons": [
+        {
+          "source": "OpenFootball CC0",
+          "competition": "Süper Lig",
+          "season": "2024-25",
+          "url": "https://raw.githubusercontent.com/openfootball/football.json/master/2024-25/tr.1.json",
+          "discovered": 342,
+          "eligible": 338,
+          "inserted": 0,
+          "imported": 0,
+          "duplicate": null,
+          "skipped": 4,
+          "unsafe_time": 0,
+          "invalid_result": 0,
+          "errors": 0,
+          "databaseDuplicateEstimate": "UNAVAILABLE_READ_ONLY_DATABASE_NOT_CONFIGURED"
+        },
+        {
+          "source": "OpenFootball CC0",
+          "competition": "Süper Lig",
+          "season": "2025-26",
+          "url": "https://raw.githubusercontent.com/openfootball/football.json/master/2025-26/tr.1.json",
+          "discovered": 306,
+          "eligible": 90,
+          "inserted": 0,
+          "imported": 0,
+          "duplicate": null,
+          "skipped": 216,
+          "unsafe_time": 0,
+          "invalid_result": 0,
+          "errors": 0,
+          "databaseDuplicateEstimate": "UNAVAILABLE_READ_ONLY_DATABASE_NOT_CONFIGURED"
+        }
+      ]
+    }
+  ],
+  "statisticsCoverage": {
+    "importedByMatchSource": 0,
+    "note": "OpenFootball match-results source contains no match statistics."
+  },
+  "oddsCoverage": {
+    "officialTimestampedOddsImported": 0,
+    "shadowExamplesImported": 0,
+    "note": "Football-Data archived opening/closing columns have no trusted capture timestamp; official historical odds are not imported."
+  },
+  "officialHistoricalExamples": {
+    "generated": 0,
+    "note": "Dry-run does not mutate/refresh prediction examples."
+  },
+  "shadowExamples": {
+    "generated": 0,
+    "note": "Existing shadow CSV layer is unchanged by dry-run."
+  },
+  "secondPhaseAssessment": {
+    "imported": false,
+    "competitions": [
+      {
+        "competition": "Eredivisie",
+        "configSupported": true,
+        "openFootballSourceAvailable": true
+      },
+      {
+        "competition": "Belgian Pro League",
+        "configSupported": true,
+        "openFootballSourceAvailable": true
+      },
+      {
+        "competition": "Portuguese league",
+        "configSupported": false,
+        "openFootballSourceAvailable": false
+      },
+      {
+        "competition": "Scottish league",
+        "configSupported": false,
+        "openFootballSourceAvailable": false
+      },
+      {
+        "competition": "Brasileirão Série A",
+        "configSupported": true,
+        "openFootballSourceAvailable": false
+      }
+    ]
+  },
+  "lookahead": {
+    "status": "PASS_BY_SOURCE_DESIGN",
+    "rule": "historical_kickoff < target_kickoff",
+    "importedHistoricalMatchesHaveExplicitKickoff": true,
+    "noOddsImported": true
+  },
+  "note": "Duplicate estimate requires read-only comparison against the target database; no production database was queried."
+}

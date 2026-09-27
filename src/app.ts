@@ -268,14 +268,15 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
       apiFootball: !config.API_FOOTBALL_ENABLED || !config.API_FOOTBALL_KEY.trim() ? { status: 'NOT_CONFIGURED' }
         : repository.liveProviderHealth ? await repository.liveProviderHealth() : { status: 'UNAVAILABLE' },
       competitionAutoBackfill: {
-        enabled: config.BACKFILL_ENABLED && config.COMPETITION_BACKFILL_AUTO_ENABLED && config.FOTMOB_ENABLED,
+        enabled: config.DATA_BACKFILL_ENABLED && config.BACKFILL_ENABLED
+          && config.COMPETITION_BACKFILL_AUTO_ENABLED && config.FOTMOB_ENABLED,
         seasons: config.COMPETITION_BACKFILL_AUTO_SEASONS,
         intervalMs: config.COMPETITION_BACKFILL_AUTO_INTERVAL_MS,
         scope: 'ALL_CONFIGURED_BY_DATA_DEFICIT',
         targetPolicy: 'DATA_TARGET_V1',
       },
       publicCsvImport: {
-        enabled: config.PUBLIC_CSV_IMPORT_ENABLED,
+        enabled: config.DATA_BACKFILL_ENABLED && config.PUBLIC_CSV_IMPORT_ENABLED,
         source: 'football-data.co.uk',
         automationPolicy: config.PUBLIC_CSV_IMPORT_ENABLED ? 'MANUAL_OVERRIDE' : 'DISABLED_SOURCE_TERMS',
         seasons: config.PUBLIC_CSV_IMPORT_SEASONS,
@@ -286,7 +287,9 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
         shadowEvidence: 'CSV_STAGE_V1_RESEARCH_ONLY',
       },
       openFootballImport: {
-        enabled: config.OPENFOOTBALL_IMPORT_ENABLED,
+        enabled: config.DATA_BACKFILL_ENABLED && config.OPENFOOTBALL_IMPORT_ENABLED,
+        dataBackfillKillSwitch: config.DATA_BACKFILL_ENABLED,
+        maxMatchesPerRun: config.DATA_BACKFILL_MAX_MATCHES_PER_RUN,
         source: 'openfootball/football.json',
         license: 'CC0_PUBLIC_DOMAIN',
         seasons: config.OPENFOOTBALL_IMPORT_SEASONS,

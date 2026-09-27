@@ -108,6 +108,10 @@ services:
         value: "43200000"
       - key: OPENFOOTBALL_IMPORT_ENABLED
         value: "true"
+      - key: DATA_BACKFILL_ENABLED
+        value: "false"
+      - key: DATA_BACKFILL_MAX_MATCHES_PER_RUN
+        value: "150"
       - key: OPENFOOTBALL_BASE_URL
         value: https://raw.githubusercontent.com/openfootball/football.json/master
       - key: OPENFOOTBALL_IMPORT_SEASONS

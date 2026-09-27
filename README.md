@@ -94,6 +94,9 @@ npm run odds-neighbors:backtest
 # FotMob geçmiş maç/statistik backfill (BACKFILL_ENABLED=true gerekir)
 npm run historical:backfill -- --provider=fotmob --competition=PremierLeague --season=2025-2026
 
+# Açık OpenFootball sonuç arşivinin yalnız-okunur dry-run raporu (DB bağlantısı yok, yazma yok)
+npm run historical:data:backfill -- --dry-run --competition=all --seasons=2024-25,2025-26,2026-27
+
 # Provider-independent kapsama yüzdeleri
 npm run historical:audit
 

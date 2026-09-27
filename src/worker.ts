@@ -217,7 +217,7 @@ try {
     if (apiFootballOddsCollector.enabled()) await apiFootballOddsCollector.runCycle();
     if (competitionAutoBackfill.enabled()) await competitionAutoBackfill.runNext();
     if (publicCsvImporter.enabled()) await publicCsvImporter.runCycle();
-    if (openFootballImporter.enabled()) await openFootballImporter.runCycle();
+    if (config.DATA_BACKFILL_ENABLED && openFootballImporter.enabled()) await openFootballImporter.runCycle();
     if (liveOddsCollector) await liveOddsCollector.runCycle();
     await stageHistoricalRepository.runNext();
   }
@@ -227,7 +227,7 @@ try {
     competitionBackfillTask = competitionAutoBackfill.runForever();
     apiFootballOddsTask = apiFootballOddsCollector.runForever();
     publicCsvImportTask = publicCsvImporter.runForever();
-    openFootballImportTask = openFootballImporter.runForever();
+    if (config.DATA_BACKFILL_ENABLED) openFootballImportTask = openFootballImporter.runForever();
     stageHistoricalTask = stageHistoricalRepository.runForever();
     liveOddsTask = liveOddsCollector?.runForever();
     while (!stopped) {

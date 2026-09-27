@@ -45,7 +45,8 @@ export class CompetitionAutoBackfill {
   }
 
   enabled() {
-    return this.config.BACKFILL_ENABLED && this.config.COMPETITION_BACKFILL_AUTO_ENABLED && this.config.FOTMOB_ENABLED;
+    return this.config.DATA_BACKFILL_ENABLED && this.config.BACKFILL_ENABLED
+      && this.config.COMPETITION_BACKFILL_AUTO_ENABLED && this.config.FOTMOB_ENABLED;
   }
 
   stop() {

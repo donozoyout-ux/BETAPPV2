@@ -15,6 +15,19 @@ function zoneOffsetMs(date: Date, timeZone: string): number {
   return Date.UTC(get('year'),get('month')-1,get('day'),get('hour'),get('minute'),get('second'))-date.getTime();
 }
 
+function resolveLocalKickoff(year:number,month:number,day:number,hour:number,minute:number,timeZone:string):Date|null{
+  const wall=Date.UTC(year,month-1,day,hour,minute,0);
+  const offsets=new Set([-36,-24,0,24,36].map(hours=>zoneOffsetMs(new Date(wall+hours*3_600_000),timeZone)));
+  const matches=[...offsets].map(offset=>new Date(wall-offset)).filter(candidate=>{
+    const parts=new Intl.DateTimeFormat('en-GB',{timeZone,year:'numeric',month:'2-digit',day:'2-digit',
+      hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(candidate);
+    const value=(key:string)=>Number(parts.find(part=>part.type===key)?.value??NaN);
+    return value('year')===year&&value('month')===month&&value('day')===day
+      &&value('hour')===hour&&value('minute')===minute;
+  });
+  return matches.length===1?matches[0]!:null;
+}
+
 export function openFootballKickoff(dateValue: unknown, timeValue: unknown, timeZone: string | null): Date | null {
   const date=String(dateValue ?? '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
   const rawTime=String(timeValue ?? '').trim();
@@ -25,6 +38,8 @@ export function openFootballKickoff(dateValue: unknown, timeValue: unknown, time
   const year=Number(date[1]),month=Number(date[2]),day=Number(date[3]),hour=Number(time[1]),minute=Number(time[2]);
   if (month<1||month>12||day<1||day>31||hour>23||minute>59) return null;
   const wall=Date.UTC(year,month-1,day,hour,minute,0);
+  const calendar=new Date(wall);
+  if(calendar.getUTCFullYear()!==year||calendar.getUTCMonth()!==month-1||calendar.getUTCDate()!==day)return null;
   if (explicit) {
     const offsetHours=Number(explicit[3]);
     const sign=offsetHours<0?-1:1;
@@ -33,10 +48,7 @@ export function openFootballKickoff(dateValue: unknown, timeValue: unknown, time
     return Number.isNaN(result.getTime()) ? null : result;
   }
   if (!timeZone) return null;
-  let utc=wall;
-  for (let iteration=0;iteration<3;iteration+=1) utc=wall-zoneOffsetMs(new Date(utc),timeZone);
-  const result=new Date(utc);
-  return Number.isNaN(result.getTime()) ? null : result;
+  return resolveLocalKickoff(year,month,day,hour,minute,timeZone);
 }
 
 function scorePair(value: unknown): [number,number] | null {
@@ -62,12 +74,14 @@ export function parseOpenFootballDataset(payload: unknown, dataset: OpenFootball
   const rows=Array.isArray(root.matches) ? root.matches as OpenFootballMatch[] : [];
   let skippedUnfinished=0;
   let skippedUnsafeTime=0;
+  let invalidResult=0;
   const matches: ParsedOpenFootballMatch[]=[];
   rows.forEach((row,index)=>{
     const home=String(row.team1 ?? '').trim();
     const away=String(row.team2 ?? '').trim();
     const ft=scorePair(row.score?.ft);
-    if (!home || !away || !ft) { skippedUnfinished+=1; return; }
+    if (!home || !away || !row.score?.ft) { skippedUnfinished+=1; return; }
+    if (!ft) { invalidResult+=1; return; }
     const kickoff=openFootballKickoff(row.date,row.time,dataset.timeZone);
     if (!kickoff) { skippedUnsafeTime+=1; return; }
     const externalId='of-'+createHash('sha256').update([
@@ -87,5 +101,6 @@ export function parseOpenFootballDataset(payload: unknown, dataset: OpenFootball
     };
     matches.push({rowNumber:index+1,match,statistics:{matchProviderExternalId:externalId,statistics:[],sourceUpdatedAt:fetchedAt,raw}});
   });
-  return {name:String(root.name ?? ''),totalMatches:rows.length,finishedRows:matches.length,skippedUnfinished,skippedUnsafeTime,matches};
+  return {name:String(root.name ?? ''),totalMatches:rows.length,finishedRows:matches.length,skippedUnfinished,skippedUnsafeTime,
+    invalidResult,matches};
 }

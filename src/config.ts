@@ -64,6 +64,8 @@ const schema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   COLLECTOR_ENABLED: booleanFromString.default(true),
   BACKFILL_ENABLED: booleanFromString.default(false),
+  DATA_BACKFILL_ENABLED: booleanFromString.default(false),
+  DATA_BACKFILL_MAX_MATCHES_PER_RUN: z.coerce.number().int().min(1).max(500).default(150),
   COMPETITION_BACKFILL_AUTO_ENABLED: booleanFromString.default(false),
   COMPETITION_BACKFILL_AUTO_SEASONS: z.coerce.number().int().min(1).max(2).default(1),
   COMPETITION_BACKFILL_AUTO_INTERVAL_MS: z.coerce.number().int().min(300_000).default(900_000),

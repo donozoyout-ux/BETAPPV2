@@ -58,6 +58,7 @@ const schema = z.object({
   HOST: z.string().default('0.0.0.0'),
   PORT: z.coerce.number().int().positive().default(3000),
   DATABASE_URL: z.string().url(),
+  HISTORICAL_RECONCILIATION_TOKEN: z.string().trim().min(1).optional(),
   DATABASE_SSL: booleanFromString.default(false),
   DB_POOL_MAX: z.coerce.number().int().min(1).max(50).default(10),
   DB_CONNECT_TIMEOUT: z.coerce.number().int().min(1_000).max(60_000).default(5_000),

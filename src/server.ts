@@ -8,6 +8,7 @@ import { PredictionRepository } from './predictions/service.js';
 import { OddsIntelligenceRepository } from './odds-neighbors/repository.js';
 import { ControlAuditService } from './control-audit.js';
 import { NowgoalLiveOddsRepository } from './db/nowgoal-live-odds-repository.js';
+import { HistoricalReconciliationDiagnosticsService } from './historical/reconciliation-diagnostics.js';
 
 const config = loadConfig();
 const logger = createLogger(config, 'betapp-web');
@@ -21,7 +22,10 @@ const predictions = new PredictionRepository(pool, config.SUPPORTED_COMPETITIONS
 const oddsIntelligence = new OddsIntelligenceRepository(pool);
 const controlAudit = new ControlAuditService(pool, config);
 const liveOddsRepository = new NowgoalLiveOddsRepository(pool);
-const app = buildApp(config, repository, logger, oddsAnalysis, predictions, oddsIntelligence, controlAudit, liveOddsRepository);
+const historicalReconciliation = new HistoricalReconciliationDiagnosticsService(pool,
+  process.env.OPENFOOTBALL_BASE_URL ?? 'https://raw.githubusercontent.com/openfootball/football.json/master');
+const app = buildApp(config, repository, logger, oddsAnalysis, predictions, oddsIntelligence, controlAudit, liveOddsRepository,
+  historicalReconciliation);
 
 async function shutdown(signal: string) {
   logger.info({ signal }, 'Server shutdown requested');

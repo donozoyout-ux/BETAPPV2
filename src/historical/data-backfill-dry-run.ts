@@ -23,7 +23,7 @@ export type BackfillCompetitionResult = {
 };
 
 export async function dryRunHistoricalBackfill(input:{competitionKey:string;baseUrl:string;seasons:readonly string[];
-  fetcher?:(url:string)=>Promise<unknown>}):Promise<BackfillCompetitionResult>{
+  fetcher?:(url:string)=>Promise<unknown>; fetchedAt?:Date}):Promise<BackfillCompetitionResult>{
   const competition=initialBackfillCompetitions.find(item=>item.configKey.toLowerCase()===input.competitionKey.toLowerCase());
   if(!competition)throw new Error('Choose one of PremierLeague, LaLiga, Bundesliga, SerieA, Ligue1, SuperLig');
   const datasets=openFootballDatasets(input.baseUrl,input.seasons,[competition.configKey])
@@ -37,7 +37,7 @@ export async function dryRunHistoricalBackfill(input:{competitionKey:string;base
   for(const dataset of datasets){
     try{
       const payload=await fetcher(dataset.url);
-      const parsed=parseOpenFootballDataset(payload,dataset);
+      const parsed=parseOpenFootballDataset(payload,dataset,input.fetchedAt??new Date());
       const root=payload&&typeof payload==='object'?payload as {matches?:unknown[]}:{};
       const total=Array.isArray(root.matches)?root.matches.length:0;
       results.push({source:'OpenFootball CC0',competition:dataset.competition,season:dataset.season,url:dataset.url,

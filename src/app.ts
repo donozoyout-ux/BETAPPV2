@@ -21,6 +21,7 @@ import type { OddsIntelligenceRepository } from './odds-neighbors/repository.js'
 import type { OddsIntelligence } from './odds-neighbors/types.js';
 import { stageResearchCard, stageResearchScript } from './predictions/stage-research-view.js';
 import { isCompetitionConfigured } from './matching/competition.js';
+import { bearerTokenMatches, type HistoricalReconciliationSummary } from './historical/reconciliation-diagnostics.js';
 
 function oddsEvidence(analysis: OddsIntelligence | undefined): Record<string, unknown> | null {
   if (!analysis) return null;
@@ -42,7 +43,8 @@ function attachOddsEvidence(rows: Array<Record<string, unknown>>, analyses: Odds
 
 export function buildApp(config: AppConfig, repository: FootballRepository, logger: Logger,
   oddsAnalysis?: OddsAnalysisRepository, predictions?: PredictionRepository, oddsIntelligence?: OddsIntelligenceRepository,
-    controlAudit?: ControlAuditService, liveOddsRepository?: NowgoalLiveOddsRepository) {
+    controlAudit?: ControlAuditService, liveOddsRepository?: NowgoalLiveOddsRepository,
+    historicalReconciliation?: { get: () => Promise<HistoricalReconciliationSummary> }) {
   const app = Fastify({ loggerInstance: logger });
   void app.register(helmet, { contentSecurityPolicy: false });
 
@@ -320,6 +322,15 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
   });
   app.get('/api/odds/upcoming', async () => ({ odds: await repository.upcomingOdds(1000) }));
   app.get('/api/backfill/status', async () => repository.backfillStatus());
+  app.get('/api/admin/historical-reconciliation', async (request, reply) => {
+    reply.header('cache-control', 'no-store');
+    if (!config.HISTORICAL_RECONCILIATION_TOKEN) return reply.code(503).send({ error: 'diagnostics_auth_not_configured' });
+    if (!bearerTokenMatches(request.headers.authorization, config.HISTORICAL_RECONCILIATION_TOKEN)) {
+      return reply.code(401).send({ error: 'unauthorized' });
+    }
+    if (!historicalReconciliation) return reply.code(503).send({ error: 'diagnostics_unavailable' });
+    return historicalReconciliation.get();
+  });
   app.get('/api/odds-analysis/upcoming', async () => ({ modelVersion: 'ODDS_V1',
     analyses: oddsAnalysis ? await oddsAnalysis.upcoming() : [] }));
   app.get('/api/odds-analysis/similarity', async () => ({

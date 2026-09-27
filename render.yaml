@@ -15,6 +15,8 @@ services:
         fromDatabase:
           name: betapp-v2-postgres
           property: connectionString
+      - key: HISTORICAL_RECONCILIATION_TOKEN
+        sync: false
       - key: DATABASE_SSL
         value: "true"
       - key: NODE_ENV

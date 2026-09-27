@@ -3,13 +3,17 @@ import type { AppConfig } from '../config.js';
 import type { NowgoalLiveOddsRepository } from '../db/nowgoal-live-odds-repository.js';
 
 const TAB='Live_Odds_Analysis';
-const HEADER=['match_id','nowgoal_match_id','source_url','captured_at','match_minute','minute_label','score','period','bookmaker',
+export const LIVE_ODDS_SHEET_HEADER=['match_id','nowgoal_match_id','source_url','captured_at','match_minute','minute_label','score','period','bookmaker',
   'ah_initial_home','ah_initial_line','ah_initial_away','ah_live_home','ah_live_line','ah_live_away',
   'one_x_two_initial_home','one_x_two_initial_draw','one_x_two_initial_away','one_x_two_live_home','one_x_two_live_draw','one_x_two_live_away',
   'ou_initial_over','ou_initial_line','ou_initial_under','ou_live_over','ou_live_line','ou_live_under','parser_version','raw_hash','observation_identity'];
+const HEADER=LIVE_ODDS_SHEET_HEADER;
 const range=(a1:string)=>encodeURIComponent("'"+TAB+"'!")+a1.replace(':','%3A');
 type SheetResult={status:'SYNCED'|'SYNC_DISABLED'|'SYNC_ERROR';appended:number;error?:string};
 type SheetApiResponse={sheets?:Array<{properties:{title:string;sheetId:number}}>};
+export type GoogleSheetsSmokeStatus='GOOGLE_SHEETS_CONNECTED'|'GOOGLE_SHEETS_NOT_CONFIGURED'|'GOOGLE_SHEETS_PERMISSION_ERROR'
+  |'GOOGLE_SHEETS_AUTH_ERROR'|'GOOGLE_SHEETS_API_ERROR';
+export type GoogleSheetsSmokeResult={status:GoogleSheetsSmokeStatus;error?:string};
 function dateSerial(value:unknown):number|null { const date=new Date(String(value)); return Number.isNaN(date.getTime())?null:date.getTime()/86_400_000+25_569; }
 function identity(row:Record<string,unknown>):string {
   return [row.match_id,row.nowgoal_match_id,row.match_minute??'',row.score_home??'',row.score_away??'',row.period,row.bookmaker??'',row.raw_hash].join('|');
@@ -25,7 +29,41 @@ function rowValues(row:Record<string,unknown>) {
 }
 export class GoogleLiveOddsSheetSync {
   private token:{value:string;expires:number}|null=null;
-  constructor(private readonly config:AppConfig,private readonly repository:NowgoalLiveOddsRepository) {}
+  constructor(private readonly config:AppConfig,private readonly repository?:NowgoalLiveOddsRepository) {}
+  async smoke():Promise<GoogleSheetsSmokeResult>{
+    const id=this.config.GOOGLE_SHEETS_SPREADSHEET_ID;
+    const email=this.config.GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL;
+    const key=this.config.GOOGLE_SHEETS_PRIVATE_KEY;
+    if(!id||!email||!key)return {status:'GOOGLE_SHEETS_NOT_CONFIGURED'};
+    let token:string;
+    try { token=await this.accessToken(email,key); }
+    catch { return {status:'GOOGLE_SHEETS_AUTH_ERROR',error:'Google service-account authentication failed.'}; }
+    const headers={'authorization':'Bearer '+token,'content-type':'application/json'};
+    const root='https://sheets.googleapis.com/v4/spreadsheets/'+encodeURIComponent(id);
+    try {
+      let metadata=await this.request(root+'?fields=sheets.properties',{headers});
+      let sheet=metadata.sheets?.find((item)=>item.properties.title===TAB);
+      if(!sheet){
+        await this.request(root+':batchUpdate',{method:'POST',headers,body:JSON.stringify({requests:[{addSheet:{properties:{title:TAB}}}]})});
+        metadata=await this.request(root+'?fields=sheets.properties',{headers});
+        sheet=metadata.sheets?.find((item)=>item.properties.title===TAB);
+      }
+      if(!sheet)throw new Error('Google Sheets tab could not be created or resolved.');
+      const existing=await this.request(root+'/values/'+range('A:AD'),{headers}) as SheetApiResponse & {values?:unknown[][]};
+      const rows=existing.values??[];
+      if(!rows.length||!rows[0]?.length){
+        await this.request(root+'/values/'+range('A1')+'?valueInputOption=RAW',{method:'PUT',headers,body:JSON.stringify({values:[HEADER]})});
+      }else if(JSON.stringify(rows[0])!==JSON.stringify(HEADER)){
+        return {status:'GOOGLE_SHEETS_API_ERROR',error:'Live_Odds_Analysis header does not match the expected schema.'};
+      }
+      return {status:'GOOGLE_SHEETS_CONNECTED'};
+    }catch(error){
+      const message=error instanceof Error?error.message:'';
+      if(/Google Sheets HTTP 403\b/.test(message))return {status:'GOOGLE_SHEETS_PERMISSION_ERROR',error:'Google service account cannot access this spreadsheet.'};
+      if(/Google Sheets HTTP 401\b/.test(message))return {status:'GOOGLE_SHEETS_AUTH_ERROR',error:'Google rejected the service-account authorization.'};
+      return {status:'GOOGLE_SHEETS_API_ERROR',error:'Google Sheets API connection or setup failed.'};
+    }
+  }
   async inspect(appendRealRows = false): Promise<SheetResult & {wouldAppend?:number;configured:boolean}> {
     const id=this.config.GOOGLE_SHEETS_SPREADSHEET_ID,email=this.config.GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL,key=this.config.GOOGLE_SHEETS_PRIVATE_KEY;
     if(!id||!email||!key)return {status:'SYNC_DISABLED',appended:0,configured:false};
@@ -43,6 +81,7 @@ export class GoogleLiveOddsSheetSync {
       if(!rows.length||!rows[0]?.length)await this.request(root+'/values/'+range('A1')+'?valueInputOption=RAW',{method:'PUT',headers,body:JSON.stringify({values:[HEADER]})});
       else if(JSON.stringify(rows[0])!==JSON.stringify(HEADER))throw new Error('Existing Live_Odds_Analysis headers do not match expected schema');
       const known=new Set(rows.slice(1).map((row)=>String(row[29]??'')));
+      if(!this.repository)throw new Error('Live odds repository is required for inspect.');
       const pending=await this.repository.unsynced(5000);
       const toAppend=pending.filter((row)=>!known.has(identity(row)));
       if(appendRealRows&&toAppend.length)await this.request(root+'/values/'+encoded+':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',{
@@ -55,6 +94,7 @@ export class GoogleLiveOddsSheetSync {
     const id=this.config.GOOGLE_SHEETS_SPREADSHEET_ID,email=this.config.GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL,key=this.config.GOOGLE_SHEETS_PRIVATE_KEY;
     if(!id||!email||!key)return {status:'SYNC_DISABLED',appended:0};
     try {
+      if(!this.repository)throw new Error('Live odds repository is required for sync.');
       const pending=await this.repository.unsynced();
       if(!pending.length)return {status:'SYNCED',appended:0};
       const headers={'authorization':'Bearer '+await this.accessToken(email,key),'content-type':'application/json'};

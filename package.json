@@ -51,7 +51,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "odds:live-audit": "tsx src/odds/live-audit-cli.ts",
-    "odds:live-sheet-smoke": "tsx src/sheets/live-sheet-smoke-cli.ts"
+    "odds:live-sheet-smoke": "tsx src/sheets/live-sheet-smoke-cli.ts",
+    "sheets:smoke": "tsx src/sheets/google-sheets-smoke-cli.ts"
   },
   "dependencies": {
     "@fastify/helmet": "^13.0.2",

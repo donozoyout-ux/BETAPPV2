@@ -30,6 +30,8 @@ describe('current-main runtime regression', () => {
     const worker = await source('src/worker.ts');
     const runtimeStatus = await source('src/collector/prematch-runtime-status.ts');
     expect(worker).toContain("import { prematchCollectorRuntimeStatus } from './collector/prematch-runtime-status.js'");
+    expect(worker.indexOf("source: 'worker.bootstrap'"))
+      .toBeLessThan(worker.indexOf('async function runCycle'));
     expect(worker.indexOf('prematchCollectorRuntimeStatus({ enabled: config.NOWGOAL_ENABLED'))
       .toBeLessThan(worker.indexOf('await oddsCollector?.runCycle()'));
     expect(runtimeStatus).toContain("event: 'PREMATCH_COLLECTOR_RUNTIME_STATUS'");

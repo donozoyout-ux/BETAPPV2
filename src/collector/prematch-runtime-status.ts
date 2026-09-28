@@ -1,5 +1,6 @@
 export type PrematchRuntimeSource = 'worker.runCycle' | 'worker.bootstrap';
-export type PrematchRuntimeReason = 'NOWGOAL_DISABLED' | 'NOT_INSTANTIATED' | 'COLLECTOR_DISABLED' | null;
+export type PrematchRuntimeReason = 'NOWGOAL_DISABLED' | 'NOT_INSTANTIATED' | 'COLLECTOR_DISABLED'
+  | 'AWAITING_CYCLE' | null;
 
 export function prematchCollectorRuntimeStatus(input: {
   enabled: boolean;

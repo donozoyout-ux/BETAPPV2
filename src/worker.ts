@@ -90,6 +90,11 @@ const secondaryRefresh = new SecondaryLiveRefresh(apiFootball, liveRepository, c
 const apiFootballOddsCollector = new ApiFootballPrematchOddsCollector(
   apiFootball, oddsRepository, repository, config, logger,
 );
+logger.info(prematchCollectorRuntimeStatus({ enabled: config.NOWGOAL_ENABLED,
+  instantiated: oddsCollector !== null, started: false, source: 'worker.bootstrap',
+  reason: !config.COLLECTOR_ENABLED ? 'COLLECTOR_DISABLED'
+    : !config.NOWGOAL_ENABLED ? 'NOWGOAL_DISABLED' : 'AWAITING_CYCLE' }),
+'PREMATCH_COLLECTOR_RUNTIME_STATUS');
 const liveRefresh = config.FOTMOB_ENABLED ? new LiveRefresh(fotmob, repository, logger, async (match, id, stats) => {
   const payload = await fotmob.details(match.providerExternalId);
   const observedAt = stats.sourceUpdatedAt.toISOString();

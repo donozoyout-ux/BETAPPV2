@@ -16,6 +16,7 @@ import { NowgoalProvider } from './providers/nowgoal.js';
 import { OddsRepository } from './db/odds-repository.js';
 import { OddsCollector } from './collector/odds-collector.js';
 import { ApiFootballPrematchOddsCollector } from './collector/api-football-odds-collector.js';
+import { prematchCollectorRuntimeStatus } from './collector/prematch-runtime-status.js';
 import { PredictionRepository, PredictionService } from './predictions/service.js';
 import { ControlAuditService } from './control-audit.js';
 import { CompetitionAutoBackfill } from './historical/competition-auto-backfill.js';
@@ -184,6 +185,10 @@ async function runCycle(): Promise<void> {
     catch (error) { logger.error({ err: error }, 'Prediction historical refresh failed; continuing'); }
   }
   if (!stopped) {
+    logger.info(prematchCollectorRuntimeStatus({ enabled: config.NOWGOAL_ENABLED,
+      instantiated: oddsCollector !== null, started: oddsCollector !== null,
+      source: 'worker.runCycle', reason: oddsCollector ? null : 'NOWGOAL_DISABLED' }),
+    'PREMATCH_COLLECTOR_RUNTIME_STATUS');
     try { await oddsCollector?.runCycle(); }
     catch (error) { logger.error({ err: error }, 'Odds collector cycle failed'); }
   }
@@ -238,7 +243,12 @@ try {
       if (!stopped) await waitForNextCycle();
     }
   }
-  else logger.info('Collector disabled by configuration');
+  else {
+    logger.info(prematchCollectorRuntimeStatus({ enabled: config.NOWGOAL_ENABLED,
+      instantiated: oddsCollector !== null, started: false, source: 'worker.bootstrap', reason: 'COLLECTOR_DISABLED' }),
+    'PREMATCH_COLLECTOR_RUNTIME_STATUS');
+    logger.info('Collector disabled by configuration');
+  }
 } catch (error) {
   logger.fatal({ err: error }, 'Worker initialization failed');
   process.exitCode = 1;

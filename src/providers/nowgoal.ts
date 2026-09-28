@@ -1,9 +1,10 @@
+import { createHash } from 'node:crypto';
 import type { AppConfig } from '../config.js';
 import type { MatchOdds, NormalizedOdds, OddsFixture, OddsProvider } from '../domain/odds.js';
 import type { Logger } from '../logger.js';
 import { check, statusFromError } from '../qualification/helpers.js';
 import { providerCapabilities, type ProviderQualification, type QualifiableProvider } from '../qualification/types.js';
-import { ResilientHttpClient } from './http-client.js';
+import { ProviderHttpError, ResilientHttpClient } from './http-client.js';
 
 type NowgoalMatch = {
   ScheduleID?: string;
@@ -101,6 +102,10 @@ export function normalizeNowgoalOddsRows(
 
 function dateOnly(date: Date): string { return date.toISOString().slice(0, 10); }
 
+function safeFixtureRef(providerMatchId: string | undefined): string | null {
+  return providerMatchId ? createHash('sha256').update(providerMatchId).digest('hex').slice(0, 12) : null;
+}
+
 function parseUtc(value: string): Date {
   return new Date(`${value.replace(' ', 'T')}Z`);
 }
@@ -110,7 +115,7 @@ export class NowgoalProvider implements OddsProvider, QualifiableProvider {
   private readonly http: ResilientHttpClient;
   private readonly companyIds: number[];
 
-  constructor(private readonly config: AppConfig, logger: Logger) {
+  constructor(private readonly config: AppConfig, private readonly logger: Logger) {
     this.companyIds = config.NOWGOAL_COMPANY_IDS;
     this.http = new ResilientHttpClient({ baseUrl: config.NOWGOAL_BASE_URL.replace(/\/$/, ''),
       timeoutMs: config.PROVIDER_TIMEOUT_MS, requestsPerSecond: config.PROVIDER_REQUESTS_PER_SECOND,
@@ -119,29 +124,85 @@ export class NowgoalProvider implements OddsProvider, QualifiableProvider {
 
   private proxyPath(path: string): string { return `?path=${encodeURIComponent(path)}`; }
 
+  private async requestJson<T>(path: string, date: Date, requestType: string): Promise<{ payload: T; status: number | null }> {
+    this.logger.info({ event: 'PREMATCH_PROVIDER_REQUEST', provider: this.name, date: dateOnly(date), requestType },
+      'PREMATCH_PROVIDER_REQUEST');
+    let status: number | null = null;
+    try {
+      const payload = await this.http.getJson<T>(path, (responseStatus) => { status = responseStatus; });
+      return { payload, status };
+    } catch (error) {
+      const errorStatus = error instanceof ProviderHttpError ? error.status ?? status : status;
+      this.logger.warn({ event: 'PREMATCH_PROVIDER_RESPONSE', provider: this.name, date: dateOnly(date), requestType,
+        httpStatus: errorStatus, requestSuccess: false, count: 0,
+        errorClass: error instanceof Error ? error.name : 'UnknownError' }, 'PREMATCH_PROVIDER_RESPONSE');
+      throw error;
+    }
+  }
+
+  private logResponse(date: Date, requestType: string, status: number | null, count: number) {
+    this.logger.info({ event: 'PREMATCH_PROVIDER_RESPONSE', provider: this.name, date: dateOnly(date), requestType,
+      httpStatus: status, requestSuccess: status != null && status >= 200 && status < 300, count },
+    'PREMATCH_PROVIDER_RESPONSE');
+  }
+
   async getPrematchOddsForDate(date: Date): Promise<MatchOdds[]> {
     const query = `date=${dateOnly(date)}&timeRange=all&lang=en&ishot=0&halfOdd=0`;
-    const matchPayload = await this.http.getJson<MatchDiaryResponse>(
-      this.proxyPath(`/v1/football/match/diary?${query}`),
-    );
+    const matchRequest = await this.requestJson<MatchDiaryResponse>(
+      this.proxyPath(`/v1/football/match/diary?${query}`), date, 'fixture_diary');
+    const matchPayload = matchRequest.payload;
+    this.logResponse(date, 'fixture_diary', matchRequest.status, matchPayload.data?.matches?.length ?? 0);
     const capturedAt = new Date();
-    const oddsPayloads = await Promise.all(this.companyIds.map((companyId) =>
-      this.http.getJson<OddsDiaryResponse>(this.proxyPath(`/v1/football/odds/diary?${query}&companyid=${companyId}`))));
-    const odds = normalizeNowgoalOddsRows(oddsPayloads.flatMap((payload) => payload.data ?? []), nowgoalCompanies, capturedAt);
+    const oddsPayloads = await Promise.all(this.companyIds.map(async (companyId) => {
+      const request = await this.requestJson<OddsDiaryResponse>(
+        this.proxyPath(`/v1/football/odds/diary?${query}&companyid=${companyId}`), date, 'odds_diary');
+      this.logResponse(date, 'odds_diary', request.status, request.payload.data?.length ?? 0);
+      return request.payload;
+    }));
+    const sourceRows = oddsPayloads.flatMap((payload) => payload.data ?? []);
+    const odds = normalizeNowgoalOddsRows(sourceRows, nowgoalCompanies, capturedAt);
     const oddsByMatch = new Map<string, NormalizedOdds[]>();
     for (const item of odds) oddsByMatch.set(item.providerMatchId, [...(oddsByMatch.get(item.providerMatchId) ?? []), item]);
     const leagues = new Map((matchPayload.data?.leagues ?? []).flatMap((league) =>
       league.sclassID ? [[league.sclassID, league.leagueName ?? null] as const] : []));
-    return (matchPayload.data?.matches ?? []).flatMap((match): MatchOdds[] => {
-      if (match.MatchState !== 0 || !match.ScheduleID || !match.matchTime || !match.homeTeam || !match.guestTeam) return [];
+    const matches = matchPayload.data?.matches ?? [];
+    const candidates: MatchOdds[] = [];
+    for (const match of matches) {
+      const fixtureRef = safeFixtureRef(match.ScheduleID);
+      const competition = match.sclassID ? (leagues.get(match.sclassID) ?? null) : null;
+      const status = match.MatchState === 0 ? 'scheduled' : String(match.MatchState ?? 'unknown');
+      if (match.MatchState !== 0) {
+        this.logger.info({ event: 'PREMATCH_FIXTURE_SKIPPED', fixtureRef, competition, kickoff: match.matchTime ?? null,
+          provider: this.name, status, reason: 'NOT_UPCOMING', count: 0 }, 'PREMATCH_FIXTURE_SKIPPED');
+        continue;
+      }
+      if (!match.ScheduleID || !match.matchTime || !match.homeTeam || !match.guestTeam) {
+        this.logger.info({ event: 'PREMATCH_FIXTURE_SKIPPED', fixtureRef, competition, kickoff: match.matchTime ?? null,
+          provider: this.name, status, reason: 'INVALID_FIXTURE', count: 0 }, 'PREMATCH_FIXTURE_SKIPPED');
+        continue;
+      }
       const matchOdds = oddsByMatch.get(match.ScheduleID) ?? [];
-      if (!matchOdds.length) return [];
+      if (!matchOdds.length) {
+        this.logger.info({ event: 'PREMATCH_FIXTURE_SKIPPED', fixtureRef, competition, kickoff: match.matchTime,
+          provider: this.name, status, reason: 'NO_ODDS', count: 0 }, 'PREMATCH_FIXTURE_SKIPPED');
+        continue;
+      }
       const fixture: OddsFixture = { providerMatchId: match.ScheduleID, kickoffAt: parseUtc(match.matchTime),
-        homeTeam: match.homeTeam, awayTeam: match.guestTeam,
-        leagueName: match.sclassID ? (leagues.get(match.sclassID) ?? null) : null };
-      if (Number.isNaN(fixture.kickoffAt.getTime())) return [];
-      return [{ fixture, odds: matchOdds }];
-    });
+        homeTeam: match.homeTeam, awayTeam: match.guestTeam, leagueName: competition };
+      if (Number.isNaN(fixture.kickoffAt.getTime())) {
+        this.logger.info({ event: 'PREMATCH_FIXTURE_SKIPPED', fixtureRef, competition, kickoff: match.matchTime,
+          provider: this.name, status, reason: 'INVALID_FIXTURE', count: 0 }, 'PREMATCH_FIXTURE_SKIPPED');
+        continue;
+      }
+      candidates.push({ fixture, odds: matchOdds });
+      this.logger.info({ event: 'PREMATCH_FIXTURE_CANDIDATE', fixtureRef, competition,
+        kickoff: fixture.kickoffAt.toISOString(), provider: this.name, status, count: matchOdds.length },
+      'PREMATCH_FIXTURE_CANDIDATE');
+    }
+    this.logger.info({ event: 'PREMATCH_ODDS_NORMALIZED', provider: this.name, date: dateOnly(date),
+      sourceRowCount: sourceRows.length, normalizedQuoteCount: odds.length, candidateCount: candidates.length },
+    'PREMATCH_ODDS_NORMALIZED');
+    return candidates;
   }
 
   async getPrematchOdds(): Promise<NormalizedOdds[]> {
@@ -154,10 +215,11 @@ export class NowgoalProvider implements OddsProvider, QualifiableProvider {
     const startedAt = Date.now();
     try {
       const query = `date=${dateOnly(new Date())}&timeRange=all&lang=en&ishot=0&halfOdd=0`;
-      const sample = await this.http.getJson<MatchDiaryResponse>(
-        this.proxyPath(`/v1/football/match/diary?${query}`),
-      );
+      const response = await this.requestJson<MatchDiaryResponse>(
+        this.proxyPath(`/v1/football/match/diary?${query}`), new Date(), 'fixture_diary_health');
+      const sample = response.payload;
       const count = sample.data?.matches?.length ?? 0;
+      this.logResponse(new Date(), 'fixture_diary_health', response.status, count);
       return { provider: this.name, ok: true, checkedAt: new Date(), latencyMs: Date.now() - startedAt,
         message: `${count} fixtures reachable` };
     } catch (error) {

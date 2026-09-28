@@ -46,7 +46,11 @@ export class ApiFootballPrematchOddsCollector {
   }
 
   async runCycle() {
-    if (!this.enabled()) return { state: 'DISABLED' as const };
+    if (!this.enabled()) {
+      this.logger.info({ event: 'PREMATCH_CYCLE_END', provider: 'api-football', status: 'DISABLED',
+        reason: 'PROVIDER_DISABLED', count: 0 }, 'PREMATCH_CYCLE_END');
+      return { state: 'DISABLED' as const };
+    }
     const scope = 'prematch-odds-api-football';
     const startedAt = new Date();
     const cursor = {
@@ -54,6 +58,9 @@ export class ApiFootballPrematchOddsCollector {
       futureDays: this.config.API_FOOTBALL_PREMATCH_FUTURE_DAYS,
       maxFixtures: this.config.API_FOOTBALL_PREMATCH_MAX_FIXTURES,
     };
+    this.logger.info({ event: 'PREMATCH_ODDS_CYCLE_START', provider: 'api-football',
+      startedAt: cursor.startedAt, futureDays: cursor.futureDays, status: 'STARTED', count: 0 },
+    'PREMATCH_ODDS_CYCLE_START');
     await this.repository.markStarted('api-football', scope, cursor);
 
     try {
@@ -63,7 +70,22 @@ export class ApiFootballPrematchOddsCollector {
       let unresolved = 0;
 
       for (let day = 0; day <= this.config.API_FOOTBALL_PREMATCH_FUTURE_DAYS && !this.stopped; day += 1) {
-        const fixtures = await this.provider.fixturesForDate(addDays(startedAt, day));
+        const date = addDays(startedAt, day);
+        const dateLabel = date.toISOString().slice(0, 10);
+        let httpStatus: number | null = null;
+        this.logger.info({ event: 'PREMATCH_PROVIDER_REQUEST', provider: 'api-football', requestType: 'fixture_list',
+          date: dateLabel }, 'PREMATCH_PROVIDER_REQUEST');
+        let fixtures: ApiFixture[];
+        try {
+          fixtures = await this.provider.fixturesForDate(date, (status) => { httpStatus = status; });
+          this.logger.info({ event: 'PREMATCH_PROVIDER_RESPONSE', provider: 'api-football', requestType: 'fixture_list',
+            date: dateLabel, httpStatus, requestSuccess: true, count: fixtures.length }, 'PREMATCH_PROVIDER_RESPONSE');
+        } catch (error) {
+          this.logger.warn({ event: 'PREMATCH_PROVIDER_RESPONSE', provider: 'api-football', requestType: 'fixture_list',
+            date: dateLabel, httpStatus, requestSuccess: false, errorClass: error instanceof Error ? error.name : 'UnknownError',
+            count: 0 }, 'PREMATCH_PROVIDER_RESPONSE');
+          throw error;
+        }
         discovered += fixtures.length;
         for (const fixture of fixtures) {
           if (new Date(fixture.kickoffAt) <= startedAt) continue;
@@ -75,7 +97,17 @@ export class ApiFootballPrematchOddsCollector {
             leagueName: fixture.league,
           });
           matchReasons[resolution.reason] = (matchReasons[resolution.reason] ?? 0) + 1;
-          if (!resolution.matchId) { unresolved += 1; continue; }
+          const traceFields = { competition: fixture.league, kickoff: fixture.kickoffAt,
+            provider: 'api-football', status: fixture.snapshot.status, count: 1 };
+          this.logger.info({ event: 'PREMATCH_FIXTURE_CANDIDATE', ...traceFields }, 'PREMATCH_FIXTURE_CANDIDATE');
+          if (!resolution.matchId) {
+            unresolved += 1;
+            this.logger.info({ event: 'PREMATCH_FIXTURE_SKIPPED', ...traceFields, reason: resolution.reason },
+              'PREMATCH_FIXTURE_SKIPPED');
+            continue;
+          }
+          this.logger.info({ event: 'PREMATCH_FIXTURE_SELECTED', ...traceFields, matchId: resolution.matchId,
+            reason: resolution.reason }, 'PREMATCH_FIXTURE_SELECTED');
           resolved.push({ fixture, matchId: resolution.matchId, reason: resolution.reason });
         }
       }
@@ -89,7 +121,14 @@ export class ApiFootballPrematchOddsCollector {
         const bTime = b.lastAttemptAt?.getTime() ?? 0;
         if (aTime !== bTime) return aTime - bTime;
         return new Date(a.fixture.kickoffAt).getTime() - new Date(b.fixture.kickoffAt).getTime();
-      }).slice(0, this.config.API_FOOTBALL_PREMATCH_MAX_FIXTURES);
+      });
+      for (const skipped of candidates.slice(this.config.API_FOOTBALL_PREMATCH_MAX_FIXTURES)) {
+        this.logger.info({ event: 'PREMATCH_FIXTURE_SKIPPED', matchId: skipped.matchId,
+          competition: skipped.fixture.league, kickoff: skipped.fixture.kickoffAt, provider: 'api-football',
+          status: skipped.fixture.snapshot.status, reason: 'MAX_FIXTURES_PER_CYCLE', count: 0 },
+        'PREMATCH_FIXTURE_SKIPPED');
+      }
+      candidates.splice(this.config.API_FOOTBALL_PREMATCH_MAX_FIXTURES);
 
       let attempted = 0;
       let withOdds = 0;
@@ -101,14 +140,27 @@ export class ApiFootballPrematchOddsCollector {
       for (const candidate of candidates) {
         if (this.stopped) break;
         attempted += 1;
+        let httpStatus: number | null = null;
+        const traceFields = { matchId: candidate.matchId, competition: candidate.fixture.league,
+          kickoff: candidate.fixture.kickoffAt, provider: 'api-football', status: candidate.fixture.snapshot.status };
         try {
-          const result = await this.provider.prematchOdds(candidate.fixture);
+          this.logger.info({ event: 'PREMATCH_PROVIDER_REQUEST', ...traceFields, requestType: 'fixture_odds' },
+            'PREMATCH_PROVIDER_REQUEST');
+          const result = await this.provider.prematchOdds(candidate.fixture, (status) => { httpStatus = status; });
+          this.logger.info({ event: 'PREMATCH_PROVIDER_RESPONSE', ...traceFields, requestType: 'fixture_odds',
+            httpStatus, requestSuccess: true, count: result.odds.length }, 'PREMATCH_PROVIDER_RESPONSE');
+          this.logger.info({ event: 'PREMATCH_ODDS_NORMALIZED', ...traceFields,
+            normalizedQuoteCount: result.odds.length, count: result.odds.length }, 'PREMATCH_ODDS_NORMALIZED');
           if (!result.odds.length) {
             await this.oddsRepository.markCollectionState({
               provider: 'api-football', matchId: candidate.matchId,
               providerMatchId: candidate.fixture.snapshot.externalId,
               status: 'NO_ODDS', inserted: 0,
             });
+            this.logger.info({ event: 'PREMATCH_SNAPSHOT_WRITTEN', ...traceFields,
+              status: 'SKIPPED', reason: 'NO_ODDS', count: 0 }, 'PREMATCH_SNAPSHOT_WRITTEN');
+            this.logger.info({ event: 'PREMATCH_ANALYSIS_CREATED', ...traceFields,
+              created: false, status: 'NOT_CREATED', reason: 'NO_ODDS', count: 0 }, 'PREMATCH_ANALYSIS_CREATED');
             continue;
           }
           withOdds += 1;
@@ -122,6 +174,12 @@ export class ApiFootballPrematchOddsCollector {
             status: 'SUCCESS', inserted: stored.inserted,
             capturedAt: result.odds[0]?.capturedAt ?? null,
           });
+          this.logger.info({ event: 'PREMATCH_SNAPSHOT_WRITTEN', ...traceFields, count: stored.inserted },
+            'PREMATCH_SNAPSHOT_WRITTEN');
+          this.logger.info({ event: 'PREMATCH_ANALYSIS_CREATED', ...traceFields,
+            created: stored.analysisGenerated, status: stored.analysisGenerated ? 'CREATED'
+              : stored.analysisFailed ? 'FAILED' : 'NOT_CREATED', reason: stored.inserted === 0 ? 'NO_NEW_SNAPSHOTS'
+                : stored.analysisFailed ? 'ANALYSIS_FAILED' : null, count: stored.inserted }, 'PREMATCH_ANALYSIS_CREATED');
         } catch (error) {
           errors += 1;
           await this.oddsRepository.markCollectionState({
@@ -130,6 +188,10 @@ export class ApiFootballPrematchOddsCollector {
             status: 'ERROR', inserted: 0, error,
           }).catch(() => undefined);
           this.logger.warn({ err: error, matchId: candidate.matchId }, 'API-Football prematch odds fixture failed');
+          this.logger.warn({ event: 'PREMATCH_PROVIDER_RESPONSE', provider: 'api-football', matchId: candidate.matchId,
+            competition: candidate.fixture.league, kickoff: candidate.fixture.kickoffAt,
+            status: candidate.fixture.snapshot.status, httpStatus, requestSuccess: false, errorClass: error instanceof Error
+              ? error.name : 'UnknownError', count: 0 }, 'PREMATCH_PROVIDER_RESPONSE');
         }
       }
 
@@ -151,9 +213,14 @@ export class ApiFootballPrematchOddsCollector {
       await this.repository.markSucceeded('api-football', scope, completed);
       await this.repository.markProviderFetch('api-football');
       this.logger.info(completed, 'API-Football prematch odds cycle completed');
+      this.logger.info({ event: 'PREMATCH_CYCLE_END', provider: 'api-football', status: 'SUCCEEDED', reason: null,
+        matched: resolved.length - unresolved, unmatched: unresolved, snapshots, analyses, analysisFailures, errors,
+        count: discovered }, 'PREMATCH_CYCLE_END');
       return { state: 'SUCCESS' as const, ...completed };
     } catch (error) {
       await this.repository.markFailed('api-football', scope, error);
+      this.logger.warn({ event: 'PREMATCH_CYCLE_END', provider: 'api-football', status: 'FAILED',
+        reason: error instanceof Error ? error.name : 'UnknownError', count: 0 }, 'PREMATCH_CYCLE_END');
       this.logger.error({ err: error }, 'API-Football prematch odds cycle failed');
       return { state: 'ERROR' as const, error: error instanceof Error ? error.message : String(error) };
     }

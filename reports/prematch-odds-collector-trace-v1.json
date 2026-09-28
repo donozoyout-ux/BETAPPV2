@@ -1,0 +1,74 @@
+{
+  "report": "prematch-odds-collector-trace-v1",
+  "status": "IMPLEMENTED_AND_VERIFIED_LOCALLY",
+  "branch": "codex/nowgoal-live-odds-integration-v2",
+  "baseSha": "c6b5e186952c17ae991d4beed47b3d7d42f51cac",
+  "scope": "pre-match odds collector observability only",
+  "production": {
+    "databaseWrites": false,
+    "importsOrBackfills": false,
+    "liveOddsChanged": false,
+    "predictionChanged": false,
+    "productionSmokeRun": false
+  },
+  "logPoints": [
+    "PREMATCH_ODDS_CYCLE_START",
+    "PREMATCH_FIXTURE_CANDIDATE",
+    "PREMATCH_FIXTURE_SELECTED",
+    "PREMATCH_PROVIDER_REQUEST",
+    "PREMATCH_PROVIDER_RESPONSE",
+    "PREMATCH_ODDS_NORMALIZED",
+    "PREMATCH_SNAPSHOT_WRITTEN",
+    "PREMATCH_ANALYSIS_CREATED",
+    "PREMATCH_FIXTURE_SKIPPED",
+    "PREMATCH_CYCLE_END",
+    "PREMATCH_ODDS_ENV_STATUS"
+  ],
+  "skipReasons": {
+    "providerConditionLabels": ["NOT_UPCOMING", "INVALID_FIXTURE", "NO_ODDS"],
+    "existingResolverReasons": ["NO_CANDIDATE", "LEAGUE_MISMATCH", "TEAM_MISMATCH", "AMBIGUOUS", "KICKOFF_MISMATCH"],
+    "otherExistingGates": ["PROVIDER_DISABLED", "MAX_FIXTURES_PER_CYCLE", "PROVIDER_UNAVAILABLE", "NO_NEW_SNAPSHOTS", "ANALYSIS_FAILED"]
+  },
+  "providerCalls": {
+    "requestCountChanged": false,
+    "intervalChanged": false,
+    "retryBehaviorChanged": false,
+    "responseBodyLogged": false,
+    "httpStatusObservedThroughOptionalCallback": true
+  },
+  "envStatus": {
+    "loggedByWorker": ["NOWGOAL_ENABLED", "API_FOOTBALL_PREMATCH_ODDS_ENABLED", "COLLECTOR_INTERVAL_MS", "NOWGOAL_BASE_URL", "NOWGOAL_COMPANY_IDS"],
+    "representation": "SET or NOT_SET only; no values/secrets",
+    "productionRuntimeValuesRead": false,
+    "renderYamlNote": "blueprint declares Nowgoal enabled, API Football prematch flag enabled, API Football itself disabled, and worker interval 900000ms; actual Render overrides remain unverified until worker startup log after deployment"
+  },
+  "security": {
+    "rawOddsLogged": false,
+    "rawProviderResponseLogged": false,
+    "secretTokenOrAuthorizationLogged": false,
+    "databaseUrlLogged": false,
+    "rawProviderFixtureIdLogged": false,
+    "providerFixtureRef": "truncated one-way SHA-256 correlation hash until internal match is resolved",
+    "internalMatchIdLoggedAfterResolution": true
+  },
+  "tests": {
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "build": "PASS",
+    "unit": {"status": "PASS", "filesPassed": 59, "testsPassed": 345},
+    "fullNpmTest": {
+      "status": "PARTIAL_CONTAINER_RUNTIME_MISSING",
+      "filesPassed": 59,
+      "integrationSuitesFailedToInitialize": 2,
+      "testsPassed": 345,
+      "testsSkipped": 16,
+      "failingSuites": [
+        {"file": "test/integration/nowgoal-live-odds.test.ts", "reason": "Testcontainers could not find a working container runtime strategy"},
+        {"file": "test/integration/repository.test.ts", "reason": "Testcontainers could not find a working container runtime strategy"}
+      ],
+      "assertionFailures": 0
+    },
+    "diffCheck": "PASS"
+  },
+  "expectedProductionLogQuery": "Search Render worker logs for PREMATCH_ODDS_CYCLE_START, PREMATCH_FIXTURE_SELECTED, PREMATCH_PROVIDER_REQUEST, PREMATCH_PROVIDER_RESPONSE, PREMATCH_ODDS_NORMALIZED, PREMATCH_SNAPSHOT_WRITTEN, PREMATCH_ANALYSIS_CREATED"
+}

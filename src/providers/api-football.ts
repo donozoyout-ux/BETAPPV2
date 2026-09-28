@@ -151,7 +151,7 @@ export class ApiFootballProvider {
     this.configured = config.API_FOOTBALL_ENABLED && Boolean(config.API_FOOTBALL_KEY.trim());
     this.health = this.configured ? 'UNAVAILABLE' : 'NOT_CONFIGURED';
   }
-  private async requestPage(path: string): Promise<{ rows: unknown[]; page: number; total: number }> {
+  private async requestPage(path: string, onHttpResponse?: (status: number) => void): Promise<{ rows: unknown[]; page: number; total: number }> {
     if (!this.configured) return { rows: [], page: 1, total: 1 };
     // Serialize all calls for this API key; live and prematch collectors share the same provider instance.
     const previous = this.chain; let release!: () => void;
@@ -165,6 +165,7 @@ export class ApiFootballProvider {
       const response = await fetch(`https://v3.football.api-sports.io${path}`, {
         headers: { 'x-apisports-key': this.config.API_FOOTBALL_KEY }, signal: AbortSignal.timeout(this.config.PROVIDER_TIMEOUT_MS),
       });
+      onHttpResponse?.(response.status);
       if (response.status === 429) {
         this.health = 'RATE_LIMITED';
         const retry = num(response.headers.get('retry-after'));
@@ -193,8 +194,8 @@ export class ApiFootballProvider {
     } finally { release(); }
   }
 
-  async request(path: string): Promise<unknown[]> {
-    const page = await this.requestPage(path);
+  async request(path: string, onHttpResponse?: (status: number) => void): Promise<unknown[]> {
+    const page = await this.requestPage(path, onHttpResponse);
     if (page.total > 1) throw new Error('API_FOOTBALL_INCOMPLETE_RESPONSE');
     return page.rows;
   }
@@ -220,16 +221,16 @@ export class ApiFootballProvider {
     return rows.map(r => apiFixture(r, now)).filter((f): f is ApiFixture => f != null && this.supportedFixture(f));
   }
 
-  async fixturesForDate(date: Date) {
+  async fixturesForDate(date: Date, onHttpResponse?: (status: number) => void) {
     if (!this.configured) return [];
     const day = date.toISOString().slice(0, 10);
-    const rows = await this.request(`/fixtures?date=${encodeURIComponent(day)}`);
+    const rows = await this.request(`/fixtures?date=${encodeURIComponent(day)}`, onHttpResponse);
     const now = new Date().toISOString();
     return rows.map(r => apiFixture(r, now)).filter((f): f is ApiFixture =>
       f != null && f.snapshot.status === 'scheduled' && this.supportedFixture(f));
   }
 
-  async prematchOdds(fixture: ApiFixture): Promise<MatchOdds> {
+  async prematchOdds(fixture: ApiFixture, onHttpResponse?: (status: number) => void): Promise<MatchOdds> {
     const capturedAt = new Date();
     if (!this.configured || fixture.snapshot.status !== 'scheduled' || capturedAt >= new Date(fixture.kickoffAt)) {
       return { fixture: { providerMatchId: fixture.snapshot.externalId, kickoffAt: new Date(fixture.kickoffAt),
@@ -237,7 +238,8 @@ export class ApiFootballProvider {
     }
     // Pre-match odds are paginated by bookmaker. One page is enough for safe bookmaker-depth evidence
     // and keeps the shared live/prematch API queue within a conservative quota budget.
-    const rows = (await this.requestPage(`/odds?fixture=${encodeURIComponent(fixture.snapshot.externalId)}`)).rows;
+    const rows = (await this.requestPage(`/odds?fixture=${encodeURIComponent(fixture.snapshot.externalId)}`,
+      onHttpResponse)).rows;
     const oddsFixture: OddsFixture = { providerMatchId: fixture.snapshot.externalId, kickoffAt: new Date(fixture.kickoffAt),
       homeTeam: fixture.homeTeam, awayTeam: fixture.awayTeam, leagueName: fixture.league };
     return { fixture: oddsFixture, odds: apiPrematchOdds(rows, fixture, capturedAt) };

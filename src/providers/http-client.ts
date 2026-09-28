@@ -37,7 +37,7 @@ export class ResilientHttpClient {
     release();
   }
 
-  async getJson<T>(path: string): Promise<T> {
+  async getJson<T>(path: string, onResponse?: (status: number) => void): Promise<T> {
     let lastError: unknown;
     for (let attempt = 0; attempt <= this.options.maxRetries; attempt += 1) {
       await this.rateLimit();
@@ -51,6 +51,7 @@ export class ResilientHttpClient {
             'user-agent': 'BETAPP-V2/2.0 (+data-collector)',
           },
         });
+        onResponse?.(response.status);
         if (!response.ok) {
           const retryable = response.status === 408 || response.status === 429 || response.status >= 500;
           throw new ProviderHttpError(`Provider returned HTTP ${response.status}`, response.status, retryable);

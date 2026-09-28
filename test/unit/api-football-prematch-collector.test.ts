@@ -44,7 +44,7 @@ describe('API-Football prematch odds collector', () => {
     const result=await collector.runCycle();
     expect(result).toMatchObject({state:'SUCCESS',attempted:1,withOdds:1,snapshots:1});
     expect(provider.prematchOdds).toHaveBeenCalledTimes(1);
-    expect(provider.prematchOdds).toHaveBeenCalledWith(b);
+    expect(provider.prematchOdds).toHaveBeenCalledWith(b, expect.any(Function));
     expect(oddsRepository.markCollectionState).toHaveBeenCalledWith(expect.objectContaining({
       provider:'api-football',matchId:'m-b',status:'SUCCESS',inserted:1,
     }));

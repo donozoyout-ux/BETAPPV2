@@ -34,6 +34,13 @@ import { runGoogleSheetsStartupSmoke } from './sheets/google-sheets-startup-smok
 
 const config = loadConfig();
 const logger = createLogger(config, 'betapp-worker');
+const envPresence = (name: string) => process.env[name]?.trim() ? 'SET' : 'NOT_SET';
+logger.info({ event: 'PREMATCH_ODDS_ENV_STATUS', provider: 'nowgoal',
+  nowgoalEnabled: envPresence('NOWGOAL_ENABLED'),
+  apiFootballPrematchEnabled: envPresence('API_FOOTBALL_PREMATCH_ODDS_ENABLED'),
+  collectorInterval: envPresence('COLLECTOR_INTERVAL_MS'),
+  nowgoalBaseUrl: envPresence('NOWGOAL_BASE_URL'),
+  nowgoalCompanyIds: envPresence('NOWGOAL_COMPANY_IDS') }, 'PREMATCH_ODDS_ENV_STATUS');
 const pool = createPool({ ...config,
   DB_POOL_MAX: Math.min(config.DB_POOL_MAX, 4),
   DB_CONNECT_TIMEOUT: Math.max(config.DB_CONNECT_TIMEOUT, 15_000),

@@ -1,7 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadConfig } from '../../src/config.js';
 import { createLogger } from '../../src/logger.js';
+import type { Logger } from '../../src/logger.js';
 import { normalizeNowgoalOddsRows, NowgoalProvider } from '../../src/providers/nowgoal.js';
+
+function captureLogger() {
+  const entries: Array<{ level: string; fields: Record<string, unknown>; message: string }> = [];
+  const logger = {
+    info: (fields: Record<string, unknown>, message: string) => entries.push({ level: 'info', fields, message }),
+    warn: (fields: Record<string, unknown>, message: string) => entries.push({ level: 'warn', fields, message }),
+    error: (fields: Record<string, unknown>, message: string) => entries.push({ level: 'error', fields, message }),
+  } as unknown as Logger;
+  return { entries, logger };
+}
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -40,5 +51,51 @@ describe('Nowgoal odds provider', () => {
     expect(matches).toHaveLength(1);
     expect(matches[0]!.fixture).toMatchObject({ providerMatchId: 'm1', homeTeam: 'Arsenal', awayTeam: 'Chelsea' });
     expect(matches[0]!.odds).toHaveLength(2);
+  });
+
+  it('logs request/response and normalized counts without secrets, raw odds, or provider IDs', async () => {
+    const config = loadConfig({ DATABASE_URL: 'postgresql://localhost/betapp', NOWGOAL_COMPANY_IDS: '2',
+      NOWGOAL_BASE_URL: 'https://provider.example.test/proxy?token=private-token',
+      API_FOOTBALL_KEY: 'private-api-key', GOOGLE_SHEETS_PRIVATE_KEY: 'private-key-material' });
+    const { entries, logger } = captureLogger();
+    const provider = new NowgoalProvider(config, logger);
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = decodeURIComponent(String(input));
+      const body = url.includes('/match/diary') ? { data: { leagues: [{ sclassID: '39', leagueName: 'Premier League' }],
+        matches: [{ ScheduleID: 'provider-private-id', matchTime: '2099-01-01 18:00:00', homeTeam: 'Home',
+          guestTeam: 'Away', MatchState: 0, sclassID: '39' }] } }
+        : { data: [{ ScheduleID: 'provider-private-id', CompanyID: 2, Type: '1x2', UpOdds: '2.11', Goal: '3.22', DownOdds: '4.3' }] };
+      return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await provider.getPrematchOddsForDate(new Date('2099-01-01T00:00:00Z'));
+    expect(result).toHaveLength(1);
+    expect(result[0]?.odds).toHaveLength(3);
+    const events = entries.map((entry) => entry.fields.event);
+    expect(events).toContain('PREMATCH_PROVIDER_REQUEST');
+    expect(events).toContain('PREMATCH_PROVIDER_RESPONSE');
+    expect(events).toContain('PREMATCH_ODDS_NORMALIZED');
+    expect(entries.find((entry) => entry.fields.event === 'PREMATCH_PROVIDER_RESPONSE')?.fields.httpStatus).toBe(200);
+    expect(entries.find((entry) => entry.fields.event === 'PREMATCH_ODDS_NORMALIZED')?.fields.normalizedQuoteCount).toBe(3);
+    const serialized = JSON.stringify(entries);
+    for (const secret of ['private-token', 'private-api-key', 'private-key-material', 'provider-private-id', '2.11', '3.22', '4.3']) {
+      expect(serialized).not.toContain(secret);
+    }
+  });
+
+  it('logs the actual skip gate when a scheduled fixture has no normalized odds', async () => {
+    const config = loadConfig({ DATABASE_URL: 'postgresql://localhost/betapp', NOWGOAL_COMPANY_IDS: '2' });
+    const { entries, logger } = captureLogger();
+    const provider = new NowgoalProvider(config, logger);
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const body = decodeURIComponent(String(input)).includes('/match/diary')
+        ? { data: { matches: [{ ScheduleID: 'only-for-hash', matchTime: '2099-01-01 18:00:00', homeTeam: 'A',
+          guestTeam: 'B', MatchState: 0 }] } } : { data: [] };
+      return new Response(JSON.stringify(body), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(provider.getPrematchOddsForDate(new Date('2099-01-01T00:00:00Z'))).resolves.toEqual([]);
+    expect(entries.find((entry) => entry.fields.event === 'PREMATCH_FIXTURE_SKIPPED')?.fields.reason).toBe('NO_ODDS');
+    expect(JSON.stringify(entries)).not.toContain('only-for-hash');
   });
 });

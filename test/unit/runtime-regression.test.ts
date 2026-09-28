@@ -25,4 +25,18 @@ describe('current-main runtime regression', () => {
     expect(render).toContain('preDeployCommand: node dist/db/migrate.js');
     expect(keepAwake).toContain('2-59/5 * * * *');
   });
+
+  it('reports safe pre-match collector runtime wiring state', async () => {
+    const worker = await source('src/worker.ts');
+    const runtimeStatus = await source('src/collector/prematch-runtime-status.ts');
+    expect(worker).toContain("import { prematchCollectorRuntimeStatus } from './collector/prematch-runtime-status.js'");
+    expect(worker.indexOf('prematchCollectorRuntimeStatus({ enabled: config.NOWGOAL_ENABLED'))
+      .toBeLessThan(worker.indexOf('await oddsCollector?.runCycle()'));
+    expect(runtimeStatus).toContain("event: 'PREMATCH_COLLECTOR_RUNTIME_STATUS'");
+    expect(runtimeStatus).toContain("'NOWGOAL_DISABLED'");
+    expect(runtimeStatus).toContain("'NOT_INSTANTIATED'");
+    expect(runtimeStatus).toContain("'COLLECTOR_DISABLED'");
+    expect(runtimeStatus).not.toContain('DATABASE_URL');
+    expect(runtimeStatus).not.toContain('PRIVATE_KEY');
+  });
 });

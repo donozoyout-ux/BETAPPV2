@@ -1,0 +1,89 @@
+{
+  "report": "prematch-collector-runtime-audit-v1",
+  "status": "PARTIAL_RUNTIME_NOT_VERIFIED",
+  "branch": "codex/nowgoal-live-odds-integration-v2",
+  "localSha": "a62b4fb39579b1ff57f9b520a03077e8c534b578",
+  "productionSha": "UNKNOWN",
+  "rootCause": "NOT_CONFIRMED",
+  "productionRuntimeVerification": "NOT_VERIFIED",
+  "worker": {
+    "renderWorkerCommand": "node dist/worker.js",
+    "packageStartWorker": "node dist/worker.js",
+    "packageDevWorker": "tsx watch src/worker.ts",
+    "packageCollectOnce": "tsx src/worker.ts --once",
+    "wiringConsistent": true,
+    "defaultDockerRuntime": "node dist/runtime.js (Render worker dockerCommand overrides it with node dist/worker.js)"
+  },
+  "startupPaths": {
+    "liveNowgoal": {
+      "constructedAt": "src/worker.ts when NOWGOAL_LIVE_ODDS_ENABLED is true",
+      "startedAt": "regular COLLECTOR_ENABLED branch via liveOddsCollector.runForever()",
+      "emitsObservedLiveCycleMessage": true
+    },
+    "prematchNowgoal": {
+      "constructedAt": "src/worker.ts when NOWGOAL_ENABLED is true",
+      "cycleCall": "worker.runCycle -> oddsCollector?.runCycle()",
+      "firstCycleLog": "PREMATCH_ODDS_CYCLE_START is first statement in OddsCollector.runCycle",
+      "normalLoop": "runCycle immediately, then COLLECTOR_INTERVAL_MS wait",
+      "separateProcessRequired": false,
+      "reachableInWorkerPath": true
+    },
+    "apiFootballPrematch": {
+      "constructedAt": "always in src/worker.ts",
+      "startedAt": "runForever inside COLLECTOR_ENABLED branch",
+      "effectiveGate": "provider.configured && API_FOOTBALL_PREMATCH_ODDS_ENABLED",
+      "productionHealth": "NOT_CONFIGURED; not an effective provider fallback in observed snapshot"
+    }
+  },
+  "runtimeObservation": {
+    "endpoint": "GET https://betappv2.onrender.com/health",
+    "httpStatus": 200,
+    "observedAt": "2026-09-28T18:34:39.316Z",
+    "workerCheckpointLastRun": "2026-09-28T18:34:28.11Z",
+    "workerCheckpointLastSuccess": "2026-09-28T18:18:58.539Z",
+    "nowgoalProviderStatus": "healthy",
+    "nowgoalProviderLastChecked": "2026-09-28T18:19:02.372Z",
+    "liveOdds": {"status": "NO_DATA", "trackedMatches": 0},
+    "apiFootball": "NOT_CONFIGURED",
+    "deploymentShaExposed": false,
+    "runtimeMarkerExposed": false,
+    "interpretation": "Health timestamps do not prove the worker reached the pre-match odds call; no deployed revision/runtime effective flag was exposed."
+  },
+  "environment": {
+    "RenderBlueprint": {
+      "COLLECTOR_ENABLED": "SET true",
+      "NOWGOAL_ENABLED": "SET true",
+      "NOWGOAL_LIVE_ODDS_ENABLED": "SET true",
+      "NOWGOAL_LIVE_ODDS_INTERVAL_SECONDS": "SET 30",
+      "COLLECTOR_INTERVAL_MS": "SET 900000",
+      "API_FOOTBALL_ENABLED": "SET false",
+      "API_FOOTBALL_PREMATCH_ODDS_ENABLED": "SET true"
+    },
+    "productionEffectiveValues": "UNKNOWN except API_FOOTBALL_NOT_CONFIGURED from public health",
+    "secretsAccessed": false,
+    "existingPrematchEnvStatusLog": "Only SET/NOT_SET presence; does not expose effective boolean; not available from public health"
+  },
+  "a62b4fbPrematchLogReachability": {
+    "codeReachable": true,
+    "cycleStartIsFirstCollectorMethodStatement": true,
+    "infoLevelConfiguredInBlueprint": true,
+    "ifA62b4fbRunsAndNowgoalEnabled": "PREMATCH_ODDS_CYCLE_START must be emitted when classic collector is invoked",
+    "absenceProvesStaleDeployment": false,
+    "possibleCauses": ["worker artifact not at a62b4fb or log filtering", "NOWGOAL_ENABLED runtime false", "main cycle not yet at sequential odds stage", "process stopped before odds stage"]
+  },
+  "runtimeMarkerAdded": {
+    "event": "PREMATCH_COLLECTOR_RUNTIME_STATUS",
+    "fields": ["enabled", "instantiated", "started", "reason", "source"],
+    "reasons": ["NOWGOAL_DISABLED", "NOT_INSTANTIATED", "COLLECTOR_DISABLED", null],
+    "secretsOrOddsLogged": false,
+    "behaviorChanged": false,
+    "schemaChanged": false
+  },
+  "testStatus": {
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "build": "PASS",
+    "unit": {"status": "PASS", "files": 59, "tests": 346}
+  },
+  "recommendedMinimumFix": "Deploy this branch to the Render worker, then compare PREMATCH_COLLECTOR_RUNTIME_STATUS with PREMATCH_ODDS_CYCLE_START in complete, unfiltered worker logs. Verify effective NOWGOAL_ENABLED without reading secret values."
+}

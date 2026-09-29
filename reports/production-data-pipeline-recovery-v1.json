@@ -1,0 +1,20 @@
+{
+  "report": "production-data-pipeline-recovery-v1",
+  "rootCause": "API_FOOTBALL_ENABLED=false in Render web and worker configuration disabled the configured fallback provider",
+  "changes": [
+    "Enable API_FOOTBALL_ENABLED in Render blueprint without changing API_FOOTBALL_KEY",
+    "Add API_FOOTBALL_* safe cycle diagnostics",
+    "Add GET /api/data-pipeline-status aggregate diagnostics",
+    "Record Nowgoal pre-match collection success aggregate",
+    "Arbitrate same-fixture pre-match providers before persistence"
+  ],
+  "stages": {
+    "fixture": "PASS",
+    "apiFootballFallback": "RECOVERED",
+    "nowgoalCollector": "PASS",
+    "snapshotToAnalysis": "PASS",
+    "analysisToPrediction": "PASS",
+    "fixtureSpecificProductionLogs": "BLOCKED"
+  },
+  "safety": { "predictionScoringChanged": false, "thresholdsChanged": false, "uiChanged": false, "sheetsChanged": false, "historicalBackfillRun": false, "secretsLogged": false }
+}

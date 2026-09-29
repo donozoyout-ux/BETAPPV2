@@ -42,6 +42,11 @@ logger.info({ event: 'PREMATCH_ODDS_ENV_STATUS', provider: 'nowgoal',
   collectorInterval: envPresence('COLLECTOR_INTERVAL_MS'),
   nowgoalBaseUrl: envPresence('NOWGOAL_BASE_URL'),
   nowgoalCompanyIds: envPresence('NOWGOAL_COMPANY_IDS') }, 'PREMATCH_ODDS_ENV_STATUS');
+logger.info({ event: 'API_FOOTBALL_RUNTIME_STATUS', collectorEnabled: config.COLLECTOR_ENABLED,
+  apiFootballEnabled: config.API_FOOTBALL_ENABLED, apiFootballKey: envPresence('API_FOOTBALL_KEY'),
+  prematchEnabled: config.API_FOOTBALL_PREMATCH_ODDS_ENABLED,
+  intervalMs: config.API_FOOTBALL_PREMATCH_INTERVAL_MS,
+  maxFixtures: config.API_FOOTBALL_PREMATCH_MAX_FIXTURES }, 'API_FOOTBALL_RUNTIME_STATUS');
 const pool = createPool({ ...config,
   DB_POOL_MAX: Math.min(config.DB_POOL_MAX, 4),
   DB_CONNECT_TIMEOUT: Math.max(config.DB_CONNECT_TIMEOUT, 15_000),

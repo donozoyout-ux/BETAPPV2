@@ -253,6 +253,14 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
   });
 
   app.get('/data-coverage.js', async (_request, reply) => reply.type('application/javascript').send(dataPoolScript));
+  app.get('/api/data-pipeline-status', async () => ({
+    collectorEnabled: config.COLLECTOR_ENABLED,
+    apiFootballEnabled: config.API_FOOTBALL_ENABLED && Boolean(config.API_FOOTBALL_KEY.trim()),
+    nowgoalEnabled: config.NOWGOAL_ENABLED,
+    apiFootballPrematchEnabled: config.API_FOOTBALL_PREMATCH_ODDS_ENABLED,
+    nowgoalFutureDays: config.NOWGOAL_FUTURE_DAYS,
+    ...await repository.dataPipelineStatus(),
+  }));
   app.get<{ Querystring:{detail?:string} }>('/api/data-coverage', async (request, reply) => {
     const data = await repository.dataCoverage(config.SUPPORTED_COMPETITIONS);
     reply.header('Cache-Control', 'private, max-age=300');

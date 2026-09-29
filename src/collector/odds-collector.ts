@@ -68,8 +68,18 @@ export class OddsCollector {
           }
           this.logger.info({ event: 'PREMATCH_FIXTURE_SELECTED', ...providerFixture, matchId: resolution.matchId,
             reason: resolution.reason }, 'PREMATCH_FIXTURE_SELECTED');
+          const arbitration = this.oddsRepository as OddsRepository & Partial<Pick<OddsRepository, 'hasProviderOdds'>>;
+          if (await arbitration.hasProviderOdds?.(resolution.matchId, 'api-football:%')) {
+            this.logger.info({ event: 'PREMATCH_FIXTURE_SKIPPED', ...providerFixture, matchId: resolution.matchId,
+              reason: 'API_FOOTBALL_ALREADY_SELECTED' }, 'PREMATCH_FIXTURE_SKIPPED');
+            continue;
+          }
           matched += 1;
           const stored = await this.oddsRepository.appendManyAndAnalyze(resolution.matchId, item.odds);
+          const collection = this.oddsRepository as OddsRepository & Partial<Pick<OddsRepository, 'markCollectionState'>>;
+          await collection.markCollectionState?.({ provider: this.provider.name, matchId: resolution.matchId,
+            providerMatchId: null, status: 'SUCCESS', inserted: stored.inserted,
+            capturedAt: item.odds[0]?.capturedAt ?? null });
           snapshots += stored.inserted;
           if (stored.analysisGenerated) analyses += 1;
           if (stored.analysisFailed) analysisFailures += 1;

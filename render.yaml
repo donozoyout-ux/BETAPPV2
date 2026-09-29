@@ -32,7 +32,7 @@ services:
       - key: BACKFILL_ENABLED
         value: "false"
       - key: API_FOOTBALL_ENABLED
-        value: "false"
+        value: "true"
       - key: API_FOOTBALL_KEY
         sync: false
       - key: FOTMOB_ENABLED
@@ -125,7 +125,7 @@ services:
       - key: OPENFOOTBALL_CURRENT_REFRESH_MS
         value: "86400000"
       - key: API_FOOTBALL_ENABLED
-        value: "false"
+        value: "true"
       - key: API_FOOTBALL_KEY
         sync: false
       - key: API_FOOTBALL_PREMATCH_ODDS_ENABLED

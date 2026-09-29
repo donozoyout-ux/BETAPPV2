@@ -47,6 +47,8 @@ export class ApiFootballPrematchOddsCollector {
 
   async runCycle() {
     if (!this.enabled()) {
+      this.logger.info({ event: 'API_FOOTBALL_RUNTIME_STATUS', enabled: false, configured: this.provider.configured,
+        prematchEnabled: this.config.API_FOOTBALL_PREMATCH_ODDS_ENABLED, reason: 'PROVIDER_DISABLED' }, 'API_FOOTBALL_RUNTIME_STATUS');
       this.logger.info({ event: 'PREMATCH_CYCLE_END', provider: 'api-football', status: 'DISABLED',
         reason: 'PROVIDER_DISABLED', count: 0 }, 'PREMATCH_CYCLE_END');
       return { state: 'DISABLED' as const };
@@ -61,6 +63,9 @@ export class ApiFootballPrematchOddsCollector {
     this.logger.info({ event: 'PREMATCH_ODDS_CYCLE_START', provider: 'api-football',
       startedAt: cursor.startedAt, futureDays: cursor.futureDays, status: 'STARTED', count: 0 },
     'PREMATCH_ODDS_CYCLE_START');
+    this.logger.info({ event: 'API_FOOTBALL_RUNTIME_STATUS', enabled: true, configured: this.provider.configured,
+      prematchEnabled: this.config.API_FOOTBALL_PREMATCH_ODDS_ENABLED, futureDays: cursor.futureDays,
+      maxFixtures: cursor.maxFixtures }, 'API_FOOTBALL_RUNTIME_STATUS');
     await this.repository.markStarted('api-football', scope, cursor);
 
     try {
@@ -75,15 +80,20 @@ export class ApiFootballPrematchOddsCollector {
         let httpStatus: number | null = null;
         this.logger.info({ event: 'PREMATCH_PROVIDER_REQUEST', provider: 'api-football', requestType: 'fixture_list',
           date: dateLabel }, 'PREMATCH_PROVIDER_REQUEST');
+        this.logger.info({ event: 'API_FOOTBALL_FIXTURE_REQUEST', date: dateLabel }, 'API_FOOTBALL_FIXTURE_REQUEST');
         let fixtures: ApiFixture[];
         try {
           fixtures = await this.provider.fixturesForDate(date, (status) => { httpStatus = status; });
           this.logger.info({ event: 'PREMATCH_PROVIDER_RESPONSE', provider: 'api-football', requestType: 'fixture_list',
             date: dateLabel, httpStatus, requestSuccess: true, count: fixtures.length }, 'PREMATCH_PROVIDER_RESPONSE');
+          this.logger.info({ event: 'API_FOOTBALL_FIXTURE_RESPONSE', date: dateLabel, httpStatus,
+            fixtureCount: fixtures.length, success: true }, 'API_FOOTBALL_FIXTURE_RESPONSE');
         } catch (error) {
           this.logger.warn({ event: 'PREMATCH_PROVIDER_RESPONSE', provider: 'api-football', requestType: 'fixture_list',
             date: dateLabel, httpStatus, requestSuccess: false, errorClass: error instanceof Error ? error.name : 'UnknownError',
             count: 0 }, 'PREMATCH_PROVIDER_RESPONSE');
+          this.logger.warn({ event: 'API_FOOTBALL_FIXTURE_RESPONSE', date: dateLabel, httpStatus,
+            fixtureCount: 0, success: false, reason: error instanceof Error ? error.name : 'UnknownError' }, 'API_FOOTBALL_FIXTURE_RESPONSE');
           throw error;
         }
         discovered += fixtures.length;
@@ -104,10 +114,20 @@ export class ApiFootballPrematchOddsCollector {
             unresolved += 1;
             this.logger.info({ event: 'PREMATCH_FIXTURE_SKIPPED', ...traceFields, reason: resolution.reason },
               'PREMATCH_FIXTURE_SKIPPED');
+            this.logger.info({ event: 'API_FOOTBALL_FIXTURE_SKIPPED', ...traceFields, reason: resolution.reason }, 'API_FOOTBALL_FIXTURE_SKIPPED');
             continue;
           }
           this.logger.info({ event: 'PREMATCH_FIXTURE_SELECTED', ...traceFields, matchId: resolution.matchId,
             reason: resolution.reason }, 'PREMATCH_FIXTURE_SELECTED');
+          const arbitration = this.oddsRepository as OddsRepository & Partial<Pick<OddsRepository, 'hasProviderOdds'>>;
+          if (await arbitration.hasProviderOdds?.(resolution.matchId, 'nowgoal:%')) {
+            unresolved += 1;
+            this.logger.info({ event: 'PREMATCH_FIXTURE_SKIPPED', ...traceFields, matchId: resolution.matchId,
+              reason: 'NOWGOAL_ALREADY_SELECTED' }, 'PREMATCH_FIXTURE_SKIPPED');
+            this.logger.info({ event: 'API_FOOTBALL_FIXTURE_SKIPPED', ...traceFields, matchId: resolution.matchId,
+              reason: 'NOWGOAL_ALREADY_SELECTED' }, 'API_FOOTBALL_FIXTURE_SKIPPED');
+            continue;
+          }
           resolved.push({ fixture, matchId: resolution.matchId, reason: resolution.reason });
         }
       }
@@ -146,11 +166,16 @@ export class ApiFootballPrematchOddsCollector {
         try {
           this.logger.info({ event: 'PREMATCH_PROVIDER_REQUEST', ...traceFields, requestType: 'fixture_odds' },
             'PREMATCH_PROVIDER_REQUEST');
+          this.logger.info({ event: 'API_FOOTBALL_ODDS_REQUEST', ...traceFields }, 'API_FOOTBALL_ODDS_REQUEST');
           const result = await this.provider.prematchOdds(candidate.fixture, (status) => { httpStatus = status; });
           this.logger.info({ event: 'PREMATCH_PROVIDER_RESPONSE', ...traceFields, requestType: 'fixture_odds',
             httpStatus, requestSuccess: true, count: result.odds.length }, 'PREMATCH_PROVIDER_RESPONSE');
+          this.logger.info({ event: 'API_FOOTBALL_ODDS_RESPONSE', ...traceFields, httpStatus,
+            oddsCount: result.odds.length, success: true }, 'API_FOOTBALL_ODDS_RESPONSE');
           this.logger.info({ event: 'PREMATCH_ODDS_NORMALIZED', ...traceFields,
             normalizedQuoteCount: result.odds.length, count: result.odds.length }, 'PREMATCH_ODDS_NORMALIZED');
+          this.logger.info({ event: 'API_FOOTBALL_ODDS_NORMALIZED', ...traceFields,
+            normalizedQuoteCount: result.odds.length }, 'API_FOOTBALL_ODDS_NORMALIZED');
           if (!result.odds.length) {
             await this.oddsRepository.markCollectionState({
               provider: 'api-football', matchId: candidate.matchId,
@@ -192,6 +217,8 @@ export class ApiFootballPrematchOddsCollector {
             competition: candidate.fixture.league, kickoff: candidate.fixture.kickoffAt,
             status: candidate.fixture.snapshot.status, httpStatus, requestSuccess: false, errorClass: error instanceof Error
               ? error.name : 'UnknownError', count: 0 }, 'PREMATCH_PROVIDER_RESPONSE');
+          this.logger.warn({ event: 'API_FOOTBALL_ODDS_RESPONSE', ...traceFields, httpStatus,
+            oddsCount: 0, success: false, reason: error instanceof Error ? error.name : 'UnknownError' }, 'API_FOOTBALL_ODDS_RESPONSE');
         }
       }
 
@@ -216,11 +243,16 @@ export class ApiFootballPrematchOddsCollector {
       this.logger.info({ event: 'PREMATCH_CYCLE_END', provider: 'api-football', status: 'SUCCEEDED', reason: null,
         matched: resolved.length - unresolved, unmatched: unresolved, snapshots, analyses, analysisFailures, errors,
         count: discovered }, 'PREMATCH_CYCLE_END');
+      this.logger.info({ event: 'API_FOOTBALL_CYCLE_END', status: 'SUCCEEDED', durationMs: Date.now() - startedAt.getTime(),
+        fixturesFetched: discovered, oddsFetched: withOdds, snapshotsWritten: snapshots, analysesCreated: analyses,
+        providerErrors: errors, skippedFixtures: unresolved, skipReasons: matchReasons }, 'API_FOOTBALL_CYCLE_END');
       return { state: 'SUCCESS' as const, ...completed };
     } catch (error) {
       await this.repository.markFailed('api-football', scope, error);
       this.logger.warn({ event: 'PREMATCH_CYCLE_END', provider: 'api-football', status: 'FAILED',
         reason: error instanceof Error ? error.name : 'UnknownError', count: 0 }, 'PREMATCH_CYCLE_END');
+      this.logger.warn({ event: 'API_FOOTBALL_CYCLE_END', status: 'FAILED', durationMs: Date.now() - startedAt.getTime(),
+        reason: error instanceof Error ? error.name : 'UnknownError' }, 'API_FOOTBALL_CYCLE_END');
       this.logger.error({ err: error }, 'API-Football prematch odds cycle failed');
       return { state: 'ERROR' as const, error: error instanceof Error ? error.message : String(error) };
     }

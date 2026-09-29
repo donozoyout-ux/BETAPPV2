@@ -129,6 +129,13 @@ export class OddsRepository {
     }]));
   }
 
+  /** Source arbitration for the same fixture; values and raw odds remain private. */
+  async hasProviderOdds(matchId: string, providerPrefix: string): Promise<boolean> {
+    const result = await this.pool.query('SELECT 1 FROM odds_snapshots WHERE match_id=$1 AND provider LIKE $2 LIMIT 1',
+      [matchId, providerPrefix]);
+    return result.rows.length > 0;
+  }
+
   async markCollectionState(input: {
     provider: string; matchId: string; providerMatchId: string | null;
     status: 'SUCCESS' | 'NO_ODDS' | 'ERROR'; inserted: number; capturedAt?: Date | null; error?: unknown;

@@ -57,4 +57,17 @@ describe('API-Football prematch odds collector', () => {
       createLogger({...config,LOG_LEVEL:'silent'},'test'));
     await expect(collector.runCycle()).resolves.toEqual({state:'DISABLED'});
   });
+
+  it('uses Nowgoal as the existing same-fixture source instead of duplicating pre-match snapshots', async () => {
+    const item=fixture('one','2099-01-01T18:00:00Z');
+    const provider={configured:true,health:'SUPPORTED',fixturesForDate:vi.fn().mockResolvedValueOnce([item]).mockResolvedValue([]),prematchOdds:vi.fn()} as unknown as ApiFootballProvider;
+    const oddsRepository={resolveMatchDetailed:vi.fn().mockResolvedValue({matchId:'internal-one',reason:'MATCHED_EXACT',homeSimilarity:1,awaySimilarity:1,kickoffMinutes:0}),
+      collectionStates:vi.fn().mockResolvedValue(new Map()),hasProviderOdds:vi.fn().mockResolvedValue(true),appendManyAndAnalyze:vi.fn(),markCollectionState:vi.fn()} as unknown as OddsRepository;
+    const repository={markStarted:vi.fn(),markSucceeded:vi.fn(),markFailed:vi.fn(),markProviderFetch:vi.fn()} as unknown as FootballRepository;
+    const config=loadConfig({DATABASE_URL:'postgresql://localhost/test',API_FOOTBALL_ENABLED:'true',API_FOOTBALL_KEY:'secret',API_FOOTBALL_PREMATCH_ODDS_ENABLED:'true'});
+    const result=await new ApiFootballPrematchOddsCollector(provider,oddsRepository,repository,config,createLogger({...config,LOG_LEVEL:'silent'},'test')).runCycle();
+    expect(result).toMatchObject({state:'SUCCESS',attempted:0});
+    expect(provider.prematchOdds).not.toHaveBeenCalled();
+    expect(oddsRepository.appendManyAndAnalyze).not.toHaveBeenCalled();
+  });
 });

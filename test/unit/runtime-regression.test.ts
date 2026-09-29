@@ -39,4 +39,17 @@ describe('current-main runtime regression', () => {
     expect(runtimeStatus).not.toContain('DATABASE_URL');
     expect(runtimeStatus).not.toContain('PRIVATE_KEY');
   });
+
+  it('keeps API-Football fallback and safe pipeline diagnostics wired into production runtime', async () => {
+    const [worker, collector, app, repository, render] = await Promise.all([
+      source('src/worker.ts'), source('src/collector/api-football-odds-collector.ts'), source('src/app.ts'),
+      source('src/db/repository.ts'), source('render.yaml'),
+    ]);
+    for (const event of ['API_FOOTBALL_RUNTIME_STATUS','API_FOOTBALL_FIXTURE_REQUEST','API_FOOTBALL_FIXTURE_RESPONSE',
+      'API_FOOTBALL_ODDS_REQUEST','API_FOOTBALL_ODDS_RESPONSE','API_FOOTBALL_ODDS_NORMALIZED',
+      'API_FOOTBALL_FIXTURE_SKIPPED','API_FOOTBALL_CYCLE_END']) expect(worker + collector).toContain(event);
+    expect(app).toContain("'/api/data-pipeline-status'");
+    expect(repository).toContain('dataPipelineStatus');
+    expect(render).toContain('key: API_FOOTBALL_ENABLED\n        value: "true"');
+  });
 });

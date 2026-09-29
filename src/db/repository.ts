@@ -348,6 +348,19 @@ export class FootballRepository {
     return result.rows[0]?.cursor ?? null;
   }
 
+  /** Safe aggregate only: never returns provider credentials or raw odds. */
+  async dataPipelineStatus() {
+    const [checkpoints, collection] = await Promise.all([
+      this.pool.query(`SELECT provider,scope,last_started_at,last_succeeded_at,last_failed_at,last_error,cursor
+        FROM collector_checkpoints WHERE scope IN ('prematch-odds','prematch-odds-api-football') ORDER BY provider,scope`),
+      this.pool.query(`SELECT provider,last_status,count(*) fixtures,COALESCE(sum(snapshots_inserted),0) snapshots,
+        max(last_attempt_at) last_attempt_at,max(last_success_at) last_success_at
+        FROM odds_collection_state GROUP BY provider,last_status ORDER BY provider,last_status`),
+    ]);
+    return { checkpoints: checkpoints.rows.map((row) => ({ ...row,
+      last_error: row.last_error ? String(row.last_error).slice(0, 300) : null })), collection: collection.rows };
+  }
+
   async markStarted(provider: string, scope: string, cursor: Record<string, unknown>) {
     await this.pool.query(
       `INSERT INTO collector_checkpoints(provider,scope,cursor,last_started_at) VALUES($1,$2,$3::jsonb,now())

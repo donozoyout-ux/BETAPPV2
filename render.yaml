@@ -70,7 +70,7 @@ services:
       - key: NVIDIA_BASE_URL
         value: https://integrate.api.nvidia.com/v1
       - key: NVIDIA_MODEL
-        value: nvidia/nemotron-3.5-lightning-30b-a3b
+        value: deepseek-ai/deepseek-v4.1-flash
       - key: AI_ROUTER_PROVIDER
         value: groq
       - key: AI_FALLBACK_PROVIDER

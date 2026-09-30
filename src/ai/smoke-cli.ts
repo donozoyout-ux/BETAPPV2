@@ -3,7 +3,7 @@ import { NvidiaProvider } from './nvidia-provider.js';
 async function main() {
   const apiKey = process.env.NVIDIA_API_KEY?.trim();
   const baseUrl = process.env.NVIDIA_BASE_URL?.trim() || 'https://integrate.api.nvidia.com/v1';
-  const model = process.env.NVIDIA_MODEL?.trim() || 'nvidia/nemotron-3.5-lightning-30b-a3b';
+  const model = process.env.NVIDIA_MODEL?.trim() || 'deepseek-ai/deepseek-v4.1-flash';
 
   if (!apiKey) {
     console.log('NVIDIA_AI_SMOKE | NOT_CONFIGURED');

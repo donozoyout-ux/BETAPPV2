@@ -58,7 +58,7 @@ describe('NVIDIA NIM AI Provider and AI Router', () => {
     const provider = new NvidiaProvider({
       apiKey: 'nvapi-valid-test-key',
       baseUrl: 'https://integrate.api.nvidia.com/v1',
-      model: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+      model: 'deepseek-ai/deepseek-v4.1-flash',
     });
 
     expect(provider.isConfigured()).toBe(true);
@@ -66,7 +66,7 @@ describe('NVIDIA NIM AI Provider and AI Router', () => {
     const res = await provider.complete([{ role: 'user', content: 'analyze match' }]);
     expect(res.success).toBe(true);
     expect(res.provider).toBe('nvidia');
-    expect(res.model).toBe('nvidia/nemotron-3.5-lightning-30b-a3b');
+    expect(res.model).toBe('deepseek-ai/deepseek-v4.1-flash');
     expect(res.content).toBe('Match analysis: Both teams have strong offensive records.');
     expect(res.latencyMs).toBeGreaterThanOrEqual(0);
     expect(res.error).toBeUndefined();
@@ -166,7 +166,7 @@ describe('NVIDIA NIM AI Provider and AI Router', () => {
         GROQ_MODEL: 'llama-3.3-70b-versatile',
         NVIDIA_API_KEY: 'nvapi-test',
         NVIDIA_BASE_URL: 'https://integrate.api.nvidia.com/v1',
-        NVIDIA_MODEL: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+        NVIDIA_MODEL: 'deepseek-ai/deepseek-v4.1-flash',
         AI_ROUTER_PROVIDER: 'groq',
         AI_FALLBACK_PROVIDER: 'nvidia',
         AI_TIMEOUT_MS: 15000,
@@ -199,7 +199,7 @@ describe('NVIDIA NIM AI Provider and AI Router', () => {
     vi.spyOn(mockNvidia, 'isConfigured').mockReturnValue(true);
     vi.spyOn(mockNvidia, 'complete').mockResolvedValue({
       provider: 'nvidia',
-      model: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+      model: 'deepseek-ai/deepseek-v4.1-flash',
       content: 'NVIDIA fallback analysis result',
       latencyMs: 30,
       success: true,
@@ -212,7 +212,7 @@ describe('NVIDIA NIM AI Provider and AI Router', () => {
         GROQ_MODEL: 'llama-3.3-70b-versatile',
         NVIDIA_API_KEY: 'nvapi-test',
         NVIDIA_BASE_URL: 'https://integrate.api.nvidia.com/v1',
-        NVIDIA_MODEL: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+        NVIDIA_MODEL: 'deepseek-ai/deepseek-v4.1-flash',
         AI_ROUTER_PROVIDER: 'groq',
         AI_FALLBACK_PROVIDER: 'nvidia',
         AI_TIMEOUT_MS: 15000,
@@ -244,7 +244,7 @@ describe('NVIDIA NIM AI Provider and AI Router', () => {
     vi.spyOn(mockNvidia, 'isConfigured').mockReturnValue(true);
     vi.spyOn(mockNvidia, 'complete').mockResolvedValue({
       provider: 'nvidia',
-      model: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+      model: 'deepseek-ai/deepseek-v4.1-flash',
       content: '',
       latencyMs: 20,
       success: false,
@@ -258,7 +258,7 @@ describe('NVIDIA NIM AI Provider and AI Router', () => {
         GROQ_MODEL: 'llama-3.3-70b-versatile',
         NVIDIA_API_KEY: 'nvapi-test',
         NVIDIA_BASE_URL: 'https://integrate.api.nvidia.com/v1',
-        NVIDIA_MODEL: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+        NVIDIA_MODEL: 'deepseek-ai/deepseek-v4.1-flash',
         AI_ROUTER_PROVIDER: 'groq',
         AI_FALLBACK_PROVIDER: 'nvidia',
         AI_TIMEOUT_MS: 15000,
@@ -305,7 +305,7 @@ describe('NVIDIA NIM AI Provider and AI Router', () => {
       DATABASE_URL: 'postgresql://betapp:betapp@localhost:5432/betapp',
       NVIDIA_API_KEY: 'nvapi-top-secret-key',
       NVIDIA_BASE_URL: 'https://integrate.api.nvidia.com/v1',
-      NVIDIA_MODEL: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+      NVIDIA_MODEL: 'deepseek-ai/deepseek-v4.1-flash',
       GROQ_API_KEY: 'gsk-top-secret-key',
       GROQ_BASE_URL: 'https://api.groq.com/openai/v1',
       GROQ_MODEL: 'llama-3.3-70b-versatile',
@@ -333,7 +333,7 @@ describe('NVIDIA NIM AI Provider and AI Router', () => {
     expect(body.groq.model).toBe('llama-3.3-70b-versatile');
     expect(body.nvidia.configured).toBe(true);
     expect(body.nvidia.baseUrlConfigured).toBe(true);
-    expect(body.nvidia.model).toBe('nvidia/nemotron-3.5-lightning-30b-a3b');
+    expect(body.nvidia.model).toBe('deepseek-ai/deepseek-v4.1-flash');
     expect(body.nvidia.reachable).toBeNull(); // No startup health request
 
     const responseText = response.body;

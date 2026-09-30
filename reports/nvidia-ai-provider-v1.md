@@ -33,7 +33,7 @@ flowchart TD
 ## 2. NVIDIA NIM Provider Specifications
 
 - **API Endpoint:** `POST ${NVIDIA_BASE_URL}/chat/completions` (Default: `https://integrate.api.nvidia.com/v1/chat/completions`)
-- **Default Model:** `nvidia/nemotron-3.5-lightning-30b-a3b` (Overrideable via `NVIDIA_MODEL`)
+- **Default Model:** `deepseek-ai/deepseek-v4.1-flash` (Overrideable via `NVIDIA_MODEL`)
 - **Headers:** `Authorization: Bearer ${NVIDIA_API_KEY}`, `Content-Type: application/json`
 - **Request Parameters:** `temperature: 0.2`, `max_tokens: 1200`, `stream: false`
 - **Timeout Management:** Configurable via `AI_TIMEOUT_MS` (Default: `15000ms`) with `AbortController` signal handling.
@@ -55,7 +55,7 @@ flowchart TD
 |---|---|---|
 | `NVIDIA_API_KEY` | *(empty)* | NVIDIA NIM API Key (Keep secret) |
 | `NVIDIA_BASE_URL` | `https://integrate.api.nvidia.com/v1` | NVIDIA NIM Base URL |
-| `NVIDIA_MODEL` | `nvidia/nemotron-3.5-lightning-30b-a3b` | Default NVIDIA NIM Model |
+| `NVIDIA_MODEL` | `deepseek-ai/deepseek-v4.1-flash` | Default NVIDIA NIM Model |
 | `GROQ_API_KEY` | *(empty)* | Groq Cloud API Key (Keep secret) |
 | `GROQ_BASE_URL` | `https://api.groq.com/openai/v1` | Groq Base URL |
 | `GROQ_MODEL` | `llama-3.3-70b-versatile` | Default Groq Model |
@@ -96,7 +96,7 @@ Command: `npm run ai:nvidia:smoke`
 Output:
 ```
 NVIDIA_AI_SMOKE | NOT_CONFIGURED
-{"status":"NOT_CONFIGURED","configured":false,"model":"nvidia/nemotron-3.5-lightning-30b-a3b","baseUrl":"https://integrate.api.nvidia.com/v1","reachable":null}
+{"status":"NOT_CONFIGURED","configured":false,"model":"deepseek-ai/deepseek-v4.1-flash","baseUrl":"https://integrate.api.nvidia.com/v1","reachable":null}
 ```
 *Status:* `BLOCKED / NOT_CONFIGURED` (Expected when running in an environment without a configured `NVIDIA_API_KEY`).
 

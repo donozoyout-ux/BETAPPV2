@@ -20,7 +20,7 @@ export class NvidiaProvider implements AiProvider {
   constructor(options: NvidiaProviderOptions = {}) {
     this.apiKey = options.apiKey?.trim();
     this.baseUrl = (options.baseUrl || 'https://integrate.api.nvidia.com/v1').replace(/\/+$/, '');
-    this.model = options.model?.trim() || 'nvidia/nemotron-3.5-lightning-30b-a3b';
+    this.model = options.model?.trim() || 'deepseek-ai/deepseek-v4.1-flash';
     this.timeoutMs = options.timeoutMs ?? 15_000;
     this.logger = options.logger;
   }

@@ -121,7 +121,7 @@ const schema = z.object({
   PROVIDER_CIRCUIT_COOLDOWN_MS: z.coerce.number().int().min(10_000).default(300_000),
   NVIDIA_API_KEY: z.string().default(''),
   NVIDIA_BASE_URL: z.string().url().default('https://integrate.api.nvidia.com/v1'),
-  NVIDIA_MODEL: z.string().default('nvidia/nemotron-3.5-lightning-30b-a3b'),
+  NVIDIA_MODEL: z.string().default('deepseek-ai/deepseek-v4.1-flash'),
   GROQ_API_KEY: z.string().default(''),
   GROQ_BASE_URL: z.string().url().default('https://api.groq.com/openai/v1'),
   GROQ_MODEL: z.string().default('llama-3.3-70b-versatile'),

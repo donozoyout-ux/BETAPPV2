@@ -14,7 +14,7 @@
   "nvidiaProvider": {
     "baseUrl": "https://integrate.api.nvidia.com/v1",
     "endpoint": "https://integrate.api.nvidia.com/v1/chat/completions",
-    "defaultModel": "nvidia/nemotron-3.5-lightning-30b-a3b",
+    "defaultModel": "deepseek-ai/deepseek-v4.1-flash",
     "timeoutMs": 15000,
     "configured": false,
     "availabilityCheck": "checkNvidiaAvailability()"
@@ -29,7 +29,7 @@
   "environmentVariables": {
     "NVIDIA_API_KEY": "Required for live NVIDIA NIM calls (uncommitted / secret)",
     "NVIDIA_BASE_URL": "https://integrate.api.nvidia.com/v1",
-    "NVIDIA_MODEL": "nvidia/nemotron-3.5-lightning-30b-a3b",
+    "NVIDIA_MODEL": "deepseek-ai/deepseek-v4.1-flash",
     "GROQ_API_KEY": "Required for live Groq calls (uncommitted / secret)",
     "GROQ_BASE_URL": "https://api.groq.com/openai/v1",
     "GROQ_MODEL": "llama-3.3-70b-versatile",

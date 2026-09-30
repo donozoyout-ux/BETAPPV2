@@ -1,0 +1,36 @@
+{
+  "version": "v1",
+  "generatedAt": "2026-09-30",
+  "productionInspection": "read-only",
+  "pipeline": {
+    "fixtureDiscovery": "PASS",
+    "oddsCollection": "PARTIAL",
+    "oddsAnalysis": "PARTIAL",
+    "predictionGeneration": "PASS_GATED",
+    "api": "PASS",
+    "todayRendering": "FIXED"
+  },
+  "diagnostics": {
+    "targetFixtures": 23,
+    "fixturesWithOddsAnalysis": 4,
+    "predictionRuns": 3,
+    "predictRuns": 0,
+    "maximumHistoricalSettledSample": 19,
+    "minimumHistoricalSample": 30
+  },
+  "rootCause": "Insufficient pre-match odds-analysis coverage and historical comparable sample size; not a scoring threshold or UI-only defect.",
+  "presentationStates": {
+    "OFFICIAL": "Resmi Tahmin",
+    "CANDIDATE_REJECTED": "Eşik Altı",
+    "WAITING_FOR_DATA": "Veri Bekleniyor",
+    "NOT_ANALYZED": "Analiz Edilmedi",
+    "ANALYSIS_FAILED": "Analiz Hatası"
+  },
+  "safety": {
+    "predictionScoringChanged": false,
+    "thresholdsChanged": false,
+    "gatesWeakened": false,
+    "productionWrites": false,
+    "backfillPerformed": false
+  }
+}

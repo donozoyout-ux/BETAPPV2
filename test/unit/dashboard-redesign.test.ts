@@ -59,7 +59,7 @@ describe('dashboard redesign behavior', () => {
     expect([...d.window.document.querySelectorAll('.summary-card strong')].map(e => e.textContent)).toEqual(['6', '0', '3', 'Aktif']);
     expect(d.window.document.querySelectorAll('#today thead th')).toHaveLength(7);
     expect(d.window.document.querySelectorAll('#today .mobile-match')).toHaveLength(6);
-    expect(d.window.document.querySelector('#today .today-table')?.textContent).toContain('Değerlendirilmedi');
+    expect(d.window.document.querySelector('#today .today-table')?.textContent).toContain('Analiz Edilmedi');
     expect(d.window.document.querySelector('#today .today-table')?.textContent).not.toContain('Hareket');
     expect(d.window.document.querySelector('#today .mobile-match')?.textContent).toContain('Analizi Aç');
   });

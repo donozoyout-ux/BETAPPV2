@@ -68,6 +68,38 @@ function translateReason(value: unknown): string {
   return translatePredictionGateReason(value);
 }
 
+export type PredictionPresentationStatus = 'OFFICIAL' | 'CANDIDATE_REJECTED' | 'WAITING_FOR_DATA'
+  | 'NOT_ANALYZED' | 'ANALYSIS_FAILED' | 'ANALYZING';
+
+const dataWaitReasons = new Set([
+  'NO_ODDS_ANALYSIS', 'PREDICTION_NOT_GENERATED', 'ODDS_NOT_ELIGIBLE', 'INSUFFICIENT_BOOKMAKERS',
+  'INSUFFICIENT_COMPLETE_STATES', 'LOW_DATA_QUALITY', 'LOW_MODEL_CONFIDENCE', 'MOVEMENT_NOT_SUPPORTED',
+  'INSUFFICIENT_HISTORICAL_SAMPLE', 'OFFICIAL_WINDOW_NOT_OPEN',
+]);
+
+// This is deliberately presentation-only. Gate Inspector remains the source of truth for eligibility.
+export function predictionPresentationStatus(item: Record<string, unknown> | undefined): PredictionPresentationStatus {
+  if (!item) return 'NOT_ANALYZED';
+  const inspector = objectValue(item.predictionGate);
+  const candidate = objectValue(inspector?.candidate) ?? objectValue(item.candidate);
+  const gateFailures = Array.isArray(inspector?.gates) ? inspector.gates as Array<Record<string, unknown>> : [];
+  const blockers = [
+    ...(Array.isArray(inspector?.blockers) ? inspector.blockers : []),
+    ...gateFailures.filter((gate) => gate.passed === false).map((gate) => gate.reasonCode),
+    ...(Array.isArray(item.skipReasons) ? item.skipReasons : []),
+    ...(Array.isArray(item.skip_reasons) ? item.skip_reasons : []),
+  ].map(String);
+  const analysisSignals = [item.analysisStatus, item.analysis_status, inspector?.analysisStatus, inspector?.analysis_status,
+    item.analysisError, inspector?.analysisError].map((value) => String(value ?? '').toUpperCase());
+  if (analysisSignals.some((value) => value.includes('FAILED') || value.includes('ERROR'))) return 'ANALYSIS_FAILED';
+  if (analysisSignals.some((value) => value.includes('RUNNING') || value.includes('ANALYZING'))) return 'ANALYZING';
+  if (String(inspector?.overallStatus) === 'OFFICIAL' && item.state === 'LOCKED_PREDICTION') return 'OFFICIAL';
+  if (!inspector) return 'NOT_ANALYZED';
+  if (blockers.some((reason) => dataWaitReasons.has(reason))) return 'WAITING_FOR_DATA';
+  if (candidate) return 'CANDIDATE_REJECTED';
+  return 'NOT_ANALYZED';
+}
+
 export function gateValue(value: unknown): string {
   if (Array.isArray(value)) return value.join(' / ');
   if (value && typeof value === 'object') {
@@ -78,13 +110,15 @@ export function gateValue(value: unknown): string {
   return String(value ?? '—');
 }
 
-function renderGateInspector(value: unknown): string {
+function renderGateInspector(value: unknown, presentationStatus?: PredictionPresentationStatus): string {
   if (!value || typeof value !== 'object') return '';
   const inspector = value as Record<string, unknown>;
   const gates = Array.isArray(inspector.gates) ? inspector.gates as Array<Record<string, unknown>> : [];
-  const status = String(inspector.overallStatus ?? 'REJECTED');
+  const status = presentationStatus ?? (String(inspector.overallStatus ?? 'REJECTED') as PredictionPresentationStatus);
   const labels: Record<string, string> = { OFFICIAL: 'RESMİ TAHMİN', REVIEW: 'İNCELEME',
-    REJECTED: 'REDDEDİLDİ', WAITING: 'VERİ BEKLENİYOR' };
+    REJECTED: 'REDDEDİLDİ', WAITING: 'VERİ BEKLENİYOR', CANDIDATE_REJECTED: 'EŞİK ALTI',
+    WAITING_FOR_DATA: 'VERİ BEKLENİYOR', NOT_ANALYZED: 'ANALİZ EDİLMEDİ', ANALYSIS_FAILED: 'ANALİZ HATASI',
+    ANALYZING: 'ANALİZ EDİLİYOR' };
   const rows = gates.map((item) => `<tr><td>${escapeHtml(item.label)}</td><td>${escapeHtml(gateValue(item.current))}</td>
     <td>${escapeHtml(gateValue(item.required))}</td><td>${item.passed ? '✅' : '❌'}</td></tr>`).join('');
   const prompt = status === 'OFFICIAL' ? 'Neden resmi tahmin oluştu?' : 'Neden resmi tahmin yok?';
@@ -94,7 +128,7 @@ function renderGateInspector(value: unknown): string {
     · Kanıt gücü: ${escapeHtml(evidence.evidenceStrength ?? 'VERY_LOW')} · Odds route: ${escapeHtml(evidence.oddsRouteStrength ?? 'WEAK')}
     · Prediction V1 kararını değiştirmez.</p>` : '';
   return `<details class="gate-inspector"><summary>Prediction Gate Inspector</summary><div class="details-body"><div class="row"><strong>Güvenlik kontrolleri</strong>
-    <span class="badge ${status === 'OFFICIAL' ? 'ok' : status === 'REVIEW' ? 'partial' : 'neutral'}">${escapeHtml(labels[status] ?? status)}</span></div>
+    <span class="badge ${status === 'OFFICIAL' ? 'ok' : ['CANDIDATE_REJECTED','ANALYZING'].includes(status) ? 'partial' : status === 'ANALYSIS_FAILED' ? 'bad' : 'neutral'}">${escapeHtml(labels[status] ?? status)}</span></div>
     <div class="scroll"><table><thead><tr><th>Kontrol</th><th>Mevcut</th><th>Gerekli</th><th>Sonuç</th></tr></thead><tbody>${rows}</tbody></table></div>
     <p><strong>${prompt}</strong> ${escapeHtml(inspector.summary)}</p>${evidenceText}</div></details>`;
 }
@@ -447,7 +481,7 @@ export function renderDashboard(data: DashboardData): string {
   }
   const rejectedPredictions = [...rejectedByMatch.values()];
 
-  const officialPredictionCards = officialPredictions.length ? officialPredictions.map((prediction) => {
+  const officialCards = (items: Array<Record<string, unknown>>, emptyTitle: string, emptyCopy: string) => items.length ? items.map((prediction) => {
     const gateCandidate = objectValue(objectValue(prediction.predictionGate)?.candidate);
     const gateHistorical = objectValue(gateCandidate?.historical);
     const score = gateCandidate?.predictionScore ?? prediction.prediction_score;
@@ -458,16 +492,30 @@ export function renderDashboard(data: DashboardData): string {
     const line = gateCandidate?.line ?? prediction.line;
     const selection = gateCandidate?.selection ?? prediction.selection;
     const referenceOdds = gateCandidate?.currentOdds ?? gateCandidate?.referenceOdds ?? prediction.reference_odds;
+    const bookmakerCount = gateCandidate?.bookmakerCount ?? prediction.bookmaker_count;
+    const movement = gateCandidate?.movementClass ?? prediction.movement_class;
+    const dataQuality = gateCandidate?.dataQualityGrade ?? prediction.data_quality_grade;
+    const confidence = gateCandidate?.confidenceGrade ?? prediction.confidence_grade;
     return `<article class="card prediction-card" data-search-row><div class="row"><div><strong>${escapeHtml(prediction.home_team)} — ${escapeHtml(prediction.away_team)}</strong>
       <p>${escapeHtml(prediction.league)} · ${escapeHtml(formatDate(prediction.kickoff_at, { day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' }))}</p></div>
       <span class="badge ok">Resmi tahmin</span></div>
       ${market == null ? '' : `<p style="font-size:1rem;color:var(--text)"><strong>${escapeHtml(translateMarket(market))} ${escapeHtml(line ?? '')} · ${escapeHtml(translateSelection(selection))}</strong></p>`}
       <div class="similarity-meta">${score == null ? '' : `<span class="badge ok">Tahmin skoru ${escapeHtml(score)}/100</span>`}
         ${hist == null ? '' : `<span class="badge neutral">Benzer geçmiş maç: ${escapeHtml(hist)}</span>`}<span class="badge neutral">Geçmiş başarı: ${escapeHtml(hit)}</span>
-        ${referenceOdds == null ? '' : `<span class="badge neutral">Oran: ${escapeHtml(optionalOdds(referenceOdds))}</span>`}</div>
+        ${referenceOdds == null ? '' : `<span class="badge neutral">Oran: ${escapeHtml(optionalOdds(referenceOdds))}</span>`}
+        ${bookmakerCount == null ? '' : `<span class="badge neutral">Bahis şirketi: ${escapeHtml(bookmakerCount)}</span>`}
+        ${movement == null ? '' : `<span class="badge neutral">Hareket: ${escapeHtml(movement)}</span>`}
+        ${dataQuality == null ? '' : `<span class="badge neutral">Veri kalitesi: ${escapeHtml(translateGrade(dataQuality))}</span>`}
+        ${confidence == null ? '' : `<span class="badge neutral">Model güveni: ${escapeHtml(translateGrade(confidence))}</span>`}</div>
       <p>Bu maç mevcut resmi tahmin kurallarının tamamını geçti.</p>
-      ${renderGateInspector(prediction.predictionGate)}</article>`;
-  }).join('') : emptyState('Henüz resmi tahmin bulunmuyor.', 'Bir tahmin yalnız tüm güvenlik kontrolleri tamamlandıktan sonra burada görünür.');
+      ${renderGateInspector(prediction.predictionGate, predictionPresentationStatus(prediction))}</article>`;
+  }).join('') : emptyState(emptyTitle, emptyCopy);
+  const officialPredictionCards = officialCards(officialPredictions, 'Henüz resmi tahmin bulunmuyor.',
+    'Bir tahmin yalnız tüm güvenlik kontrolleri tamamlandıktan sonra burada görünür.');
+  const todayOfficialPredictions = officialPredictions.filter((prediction) =>
+    istanbulDateKey(prediction.kickoff_at ?? prediction.kickoffAt) === todayKey);
+  const todayOfficialPredictionCards = officialCards(todayOfficialPredictions, 'Bugün için resmi tahmin bulunmuyor.',
+    'Şu an hiçbir maç tüm güvenlik koşullarını geçip kilitlenmiş resmi tahmin değil.');
 
   const reviewCandidateCards = reviewPredictions.length ? reviewPredictions.map((entry) => {
     const candidate = (entry.candidate ?? {}) as Record<string, unknown>;
@@ -500,13 +548,13 @@ export function renderDashboard(data: DashboardData): string {
       <p><strong>Neden henüz resmi tahmin değil?</strong></p>
       <ul style="margin:5px 0 0;padding-left:18px;color:var(--muted)">${missing || '<li>Resmi tahmin için gereken kanıt henüz tamamlanmadı.</li>'}</ul>
       <p class="not-official">Resmi tahmin değildir.</p><p style="color:var(--muted-2)">Bu kart inceleme içindir; performans kaydına dahil değildir.</p>
-      ${renderGateInspector(entry.predictionGate)}</article>`;
+      ${renderGateInspector(entry.predictionGate, predictionPresentationStatus(entry))}</article>`;
   }).join('') : renderEmpty('◇', 'Şu anda inceleme adayı yok', 'Resmi tahmin seviyesine yaklaşan maçlar burada gösterilecek.');
 
   const waitingPredictionCards = waitingPredictions.length ? waitingPredictions.map((prediction) =>
     `<article class="card prediction-card" data-search-row><div class="row"><div><strong>${escapeHtml(prediction.home_team)} — ${escapeHtml(prediction.away_team)}</strong>
       <p>${escapeHtml(prediction.league)} · ${escapeHtml(formatDate(prediction.kickoff_at, { day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' }))}</p></div>
-      <span class="badge neutral">Veri bekleniyor</span></div><p>${escapeHtml(objectValue(prediction.predictionGate)?.summary ?? 'Bekleme nedeni henüz mevcut değil.')}</p>${renderGateInspector(prediction.predictionGate)}</article>`).join('')
+      <span class="badge neutral">Veri bekleniyor</span></div><p>${escapeHtml(objectValue(prediction.predictionGate)?.summary ?? 'Bekleme nedeni henüz mevcut değil.')}</p>${renderGateInspector(prediction.predictionGate, predictionPresentationStatus(prediction))}</article>`).join('')
     : renderEmpty('…', 'Veri bekleyen maç yok', 'İlk oran ölçümü veya resmi tahmin penceresi beklenen maçlar burada görünür.');
 
   const rejectedRows = rejectedPredictions.map((prediction) => {
@@ -760,12 +808,12 @@ export function renderDashboard(data: DashboardData): string {
     const id = String(match.id ?? '');
     const prediction = predictionForMatch(id);
     const inspector = objectValue(prediction?.predictionGate);
-    const rawStatus = String(inspector?.overallStatus ?? 'UNKNOWN');
-    const status = rawStatus === 'OFFICIAL' && prediction?.state !== 'LOCKED_PREDICTION' ? 'WAITING' : rawStatus;
+    const status = predictionPresentationStatus(prediction);
     const candidate = objectValue(inspector?.candidate) ?? objectValue(prediction?.candidate);
     return { id, time: formatDate(match.kickoff_at, { hour: '2-digit', minute: '2-digit' }),
       home: match.home_team, away: match.away_team, league: match.league, status,
       candidate: candidate?.marketType == null ? '—' : `${translateMarket(candidate.marketType)}${candidate.line == null ? '' : ` ${candidate.line}`} · ${translateSelection(candidate.selection)}`,
+      ...(status === 'OFFICIAL' || candidate?.marketType == null ? {} : { candidateNote: 'Resmi tahmin: yayınlanmadı.' }),
       score: candidate?.predictionScore };
   });
   const globalAuditRaw = String(predictionSelfAudit?.status ?? 'NOT_AVAILABLE');
@@ -812,6 +860,7 @@ export function renderDashboard(data: DashboardData): string {
       ${systemStatus([{ label: 'Fikstür Verisi', state: providerState(['fotmob', 'sofascore']) }, { label: 'Oran Akışı', state: providerState(['nowgoal', 'iddaa']) }, { label: 'Analiz Motoru', state: globalAuditGuard ? 'Sorun Var' : oddsAnalyses.length || predictions.length || predictionPreviews.length ? 'Aktif' : 'Bekleniyor' }, { label: 'Veritabanı', key: 'database', state: 'Bekleniyor' }])}</div>
     </section>
     <section data-page="today" id="today" hidden>${heading('Bugünün Maçları', 'Günün tüm maçları, anlaşılır analiz durumlarıyla.')}
+      <section class="product-panel"><div class="panel-heading"><div><h2>RESMİ TAHMİNLER · ${todayOfficialPredictions.length}</h2><p>Yalnız tüm güvenlik kapılarından geçmiş ve kilitlenmiş kayıtlar.</p></div></div><div class="grid">${todayOfficialPredictionCards}</div></section>
       <section class="product-panel"><div class="panel-heading"><h2>Maç listesi · ${todayMatches.length}</h2><label><span class="sr-only">Takım veya lig ara</span><input class="match-search" data-match-search type="search" placeholder="Takım veya lig ara"></label></div>${matchList(todayRows)}</section>
       ${waitingNotice}
       <details><summary>Önümüzdeki 14 Gün · fikstür ve güncel oran akışı</summary><div class="details-body">${upcomingLeagueSummary}<div class="workspace"><article class="panel"><div class="panel-head"><h3>Yaklaşan maçlar</h3></div><div class="panel-body match-list">${matchCards}</div></article><article class="panel"><div class="panel-head"><h3>Güncel oranlar</h3></div><div class="panel-body odds-list">${oddsRows}</div></article></div></div></details>

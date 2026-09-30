@@ -1,0 +1,50 @@
+{
+  "version": "PREMATCH_DATA_COVERAGE_V2",
+  "generatedAt": "2026-09-30",
+  "productionInspection": "read-only",
+  "rootCause": {
+    "answer": "G",
+    "summary": "Multiple upstream problems: sparse pre-match odds-analysis coverage, odds eligibility failures, and production web deployment drift.",
+    "measures": {
+      "targetFixtures": 23,
+      "fixturesWithOddsAnalysis": 4,
+      "predictionRuns": 3,
+      "predictRuns": 0,
+      "maximumHistoricalSettledSample": 19,
+      "requiredHistoricalSample": 30,
+      "upcomingSevenDayFixtures": 84,
+      "upcomingSevenDayFixturesWithOdds": 4
+    }
+  },
+  "productionDeployment": {
+    "dataPipelineStatusRoute": "HTTP_404",
+    "interpretation": "The deployed web service is not demonstrably running the branch revision containing this route."
+  },
+  "coverage": {
+    "prematch": "PARTIAL",
+    "odds": "FAIL",
+    "oddsAnalysis": "FAIL",
+    "historical": "PARTIAL",
+    "prediction": "GATED"
+  },
+  "currentPredictionSkipReasons": [
+    { "reason": "ODDS_NOT_ELIGIBLE", "count": 3 },
+    { "reason": "LOCK_WINDOW_MISSED", "count": 1 }
+  ],
+  "telemetryLimitations": {
+    "historicalCollectorCycles": "NOT_PERSISTED",
+    "historicalHttpStatusDistribution": "NOT_PERSISTED",
+    "rawOddsExposed": false,
+    "secretsExposed": false,
+    "matchIdsExposedByAggregateEndpoint": false
+  },
+  "safety": {
+    "predictionLogicChanged": false,
+    "thresholdChanged": false,
+    "scoreChanged": false,
+    "gatesRemoved": false,
+    "todayUiChanged": false,
+    "backfillExecuted": false,
+    "productionDatabaseWritten": false
+  }
+}

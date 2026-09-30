@@ -1,5 +1,6 @@
 import { DataCoverageService } from '../data/coverage.js';
 import { PredictionCoverageService } from '../data/prediction-coverage.js';
+import { PrematchCoverageService, type PrematchRuntimeStatus } from '../data/prematch-coverage.js';
 import { guardPrimary, LiveRepository } from '../live/repository.js';
 import { createHash } from 'node:crypto';
 import type { PoolClient } from 'pg';
@@ -623,6 +624,7 @@ export class FootballRepository {
 
   private coverageServices = new Map<string, DataCoverageService>();
   private predictionCoverageServices = new Map<string, PredictionCoverageService>();
+  private prematchCoverageService: PrematchCoverageService | null = null;
   async dataCoverage(configured: readonly string[]) {
     const key = [...configured].sort().join(',');
     let service = this.coverageServices.get(key);
@@ -634,6 +636,10 @@ export class FootballRepository {
     let service=this.predictionCoverageServices.get(key);
     if(!service){service=new PredictionCoverageService(this.pool,configured);this.predictionCoverageServices.set(key,service);}
     return service.get();
+  }
+  async prematchCoverage(windowHours: number, runtime: PrematchRuntimeStatus) {
+    this.prematchCoverageService ??= new PrematchCoverageService(this.pool);
+    return this.prematchCoverageService.get(windowHours, runtime);
   }
 
   async liveSources(id: string) { return new LiveRepository(this.pool).read(id); }

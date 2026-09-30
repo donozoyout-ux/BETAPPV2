@@ -261,7 +261,19 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
     nowgoalFutureDays: config.NOWGOAL_FUTURE_DAYS,
     ...await repository.dataPipelineStatus(),
   }));
-  app.get<{ Querystring:{detail?:string} }>('/api/data-coverage', async (request, reply) => {
+  app.get<{ Querystring:{detail?:string;window?:string} }>('/api/data-coverage', async (request, reply) => {
+    if (request.query.detail === 'prematch') {
+      const rawWindow = Number(request.query.window?.replace(/h$/i, '') ?? 48);
+      const windowHours = Number.isFinite(rawWindow) ? Math.max(1, Math.min(168, Math.trunc(rawWindow))) : 48;
+      reply.header('Cache-Control', 'private, max-age=60');
+      return repository.prematchCoverage(windowHours, {
+        nowgoalEnabled: config.NOWGOAL_ENABLED,
+        nowgoalLiveOddsEnabled: config.NOWGOAL_LIVE_ODDS_ENABLED,
+        providerConfigured: config.NOWGOAL_ENABLED,
+        collectorInstantiated: config.NOWGOAL_ENABLED,
+        collectorStarted: null,
+      });
+    }
     const data = await repository.dataCoverage(config.SUPPORTED_COMPETITIONS);
     reply.header('Cache-Control', 'private, max-age=300');
     return { ...data, ...(request.query.detail==='prediction'

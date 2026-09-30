@@ -119,6 +119,15 @@ const schema = z.object({
   NOWGOAL_BASE_URL: z.string().url().default('https://nowgoal816.com/wp-json/sport-theme-plugin/v1/proxy'),
   PROVIDER_CIRCUIT_FAILURE_THRESHOLD: z.coerce.number().int().min(1).max(20).default(3),
   PROVIDER_CIRCUIT_COOLDOWN_MS: z.coerce.number().int().min(10_000).default(300_000),
+  NVIDIA_API_KEY: z.string().default(''),
+  NVIDIA_BASE_URL: z.string().url().default('https://integrate.api.nvidia.com/v1'),
+  NVIDIA_MODEL: z.string().default('nvidia/nemotron-3.5-lightning-30b-a3b'),
+  GROQ_API_KEY: z.string().default(''),
+  GROQ_BASE_URL: z.string().url().default('https://api.groq.com/openai/v1'),
+  GROQ_MODEL: z.string().default('llama-3.3-70b-versatile'),
+  AI_ROUTER_PROVIDER: z.enum(['groq', 'nvidia']).default('groq'),
+  AI_FALLBACK_PROVIDER: z.enum(['groq', 'nvidia', 'none']).default('nvidia'),
+  AI_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(60_000).default(15_000),
 });
 
 export type AppConfig = z.infer<typeof schema>;

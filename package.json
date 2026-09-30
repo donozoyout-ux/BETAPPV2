@@ -26,7 +26,6 @@
     "backfill:competitions": "tsx src/historical/competition-backfill-cli.ts",
     "historical:backfill": "tsx src/historical/backfill-cli.ts",
     "historical:data:backfill": "tsx src/historical/data-backfill-cli.ts",
-    "historical:data:backfill": "tsx src/historical/data-backfill-cli.ts",
     "historical:dry-run": "tsx src/historical/dry-run-cli.ts",
     "historical:qualify": "tsx src/historical/qualification-cli.ts",
     "historical:audit": "tsx src/historical/audit-cli.ts",
@@ -54,7 +53,8 @@
     "lint": "eslint .",
     "odds:live-audit": "tsx src/odds/live-audit-cli.ts",
     "odds:live-sheet-smoke": "tsx src/sheets/live-sheet-smoke-cli.ts",
-    "sheets:smoke": "tsx src/sheets/google-sheets-smoke-cli.ts"
+    "sheets:smoke": "tsx src/sheets/google-sheets-smoke-cli.ts",
+    "ai:nvidia:smoke": "tsx src/ai/smoke-cli.ts"
   },
   "dependencies": {
     "@fastify/helmet": "^13.0.2",
@@ -70,10 +70,10 @@
     "@types/node": "^24.10.0",
     "@types/pg": "^8.15.6",
     "eslint": "^9.38.0",
+    "jsdom": "^29.1.1",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.46.2",
-    "vitest": "^4.0.6",
-    "jsdom": "^29.1.1"
+    "vitest": "^4.0.6"
   }
 }

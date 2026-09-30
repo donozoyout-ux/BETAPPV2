@@ -59,6 +59,22 @@ services:
         value: https://nowgoal816.com/wp-json/sport-theme-plugin/v1/proxy
       - key: SUPPORTED_COMPETITIONS
         value: PremierLeague,LaLiga,Bundesliga,SerieA,Ligue1,SuperLig,ChampionsLeague,EuropaLeague,ConferenceLeague,BrasileiraoSerieA,WorldCup,EURO,EUROQualification,UefaNationsLeagueA,UefaNationsLeagueB,UefaNationsLeagueC,UefaNationsLeagueD,WorldCupQualificationUEFA,CopaAmerica,WorldCupQualificationCONMEBOL,InternationalFriendlies,Eredivisie,BelgianProLeague,DanishSuperliga,Allsvenskan,GreekSuperLeague
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_BASE_URL
+        value: https://api.groq.com/openai/v1
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: NVIDIA_BASE_URL
+        value: https://integrate.api.nvidia.com/v1
+      - key: NVIDIA_MODEL
+        value: nvidia/nemotron-3.5-lightning-30b-a3b
+      - key: AI_ROUTER_PROVIDER
+        value: groq
+      - key: AI_FALLBACK_PROVIDER
+        value: nvidia
 
   - type: worker
     name: betapp-v2-collector

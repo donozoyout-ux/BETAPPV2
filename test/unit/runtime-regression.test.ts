@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 
-async function source(path: string) { return readFile(path, 'utf8'); }
+async function source(path: string) { return (await readFile(path, 'utf8')).replace(/\r\n/g, '\n'); }
 
 describe('current-main runtime regression', () => {
   it('preserves fixture-first football, corner and Nowgoal ODDS_V1 worker composition', async () => {

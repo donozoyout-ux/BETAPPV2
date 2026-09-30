@@ -22,6 +22,7 @@ import type { OddsIntelligence } from './odds-neighbors/types.js';
 import { stageResearchCard, stageResearchScript } from './predictions/stage-research-view.js';
 import { isCompetitionConfigured } from './matching/competition.js';
 import { bearerTokenMatches, type HistoricalReconciliationSummary } from './historical/reconciliation-diagnostics.js';
+import { AiService } from './ai/service.js';
 
 function oddsEvidence(analysis: OddsIntelligence | undefined): Record<string, unknown> | null {
   if (!analysis) return null;
@@ -44,8 +45,10 @@ function attachOddsEvidence(rows: Array<Record<string, unknown>>, analyses: Odds
 export function buildApp(config: AppConfig, repository: FootballRepository, logger: Logger,
   oddsAnalysis?: OddsAnalysisRepository, predictions?: PredictionRepository, oddsIntelligence?: OddsIntelligenceRepository,
     controlAudit?: ControlAuditService, liveOddsRepository?: NowgoalLiveOddsRepository,
-    historicalReconciliation?: { get: () => Promise<HistoricalReconciliationSummary> }) {
+    historicalReconciliation?: { get: () => Promise<HistoricalReconciliationSummary> },
+    aiService?: AiService) {
   const app = Fastify({ loggerInstance: logger });
+  const ai = aiService ?? new AiService(config, { logger });
   void app.register(helmet, { contentSecurityPolicy: false });
 
   const competitionAllowed = (row: Record<string, unknown>): boolean => {
@@ -339,6 +342,10 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
       predictionPerformance: performance, predictionSelfAudit: selfAudit, predictionSelfAuditSegments: segmentAudits,
       predictionSelfAuditRootCauses: rootCauses, predictionAdaptiveRuleProposals: adaptiveProposals,
       oddsSimilarity: activeSimilarityRows(oddsSimilarity), predictionDiagnostics, oddsIntelligence: activeOddsIntelligence };
+  });
+  app.get<{ Querystring: { checkHealth?: string } }>('/api/ai-status', async (request) => {
+    const checkHealth = request.query.checkHealth === 'true';
+    return ai.status(checkHealth);
   });
   app.get('/api/odds/upcoming', async () => ({ odds: await repository.upcomingOdds(1000) }));
   app.get('/api/backfill/status', async () => repository.backfillStatus());

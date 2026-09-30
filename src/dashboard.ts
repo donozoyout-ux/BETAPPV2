@@ -1,3 +1,5 @@
+import { matchRow, matchState, navigation } from './ui/components.js';
+import { visualStyles } from './ui/styles.js';
 import { translatePredictionGateReason } from './predictions/gate-inspector.js';
 
 type DashboardData = { matches: Array<Record<string, unknown>>; providers: Array<Record<string, unknown>>;
@@ -195,10 +197,17 @@ export function shell(content: string, title = 'BETAPP — Futbol Analiz Termina
   @media(max-width:1180px){:root{--sidebar-w:215px}.metrics{grid-template-columns:repeat(3,1fr)}.state-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.command-hero{grid-template-columns:1fr}.audit-overview{grid-template-columns:repeat(2,1fr)}.similarity-grid{grid-template-columns:1fr}.detail-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.evidence-grid{grid-template-columns:minmax(0,7fr) minmax(280px,5fr)}}
   @media(max-width:860px){.sidebar{display:none}.app-main{margin-left:0}.mobile-menu{display:inline-flex}.topbar{padding:0 16px}.search{width:min(390px,58vw)}.content{width:min(100% - 26px,1500px)}.workspace{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}.core-grid,.evidence-grid,.split-grid{grid-template-columns:1fr}}
   @media(max-width:560px){.evidence-strip{grid-template-columns:1fr}.result-map-row{grid-template-columns:minmax(95px,1fr) 1.3fr 46px}.top-title{display:none}.top-actions .top-chip{display:none}.search{width:100%}.topbar{gap:10px}.content{width:min(100% - 18px,1500px);padding-top:16px}.hero-main,.hero-status{border-radius:12px}.hero-main{padding:19px}.metrics,.state-grid{grid-template-columns:1fr}.metrics{gap:7px}.metric{min-height:82px;padding:12px}.metric-value{font-size:1.4rem}.audit-overview{grid-template-columns:1fr}.section-title,.filterbar{align-items:flex-start;flex-direction:column;gap:6px}.odd{grid-template-columns:minmax(0,1fr) 62px}.odd-market,.movement{display:none}.match{grid-template-columns:55px minmax(0,1fr)}.match .status{display:none}.grid,.source-grid{grid-template-columns:1fr}.similar-row{grid-template-columns:24px minmax(0,1fr) 86px}.similar-result{grid-column:2/4;text-align:left}.footer{flex-direction:column}.match-hero,.detail-panel{padding:13px}.scoreboard{gap:8px;margin:17px auto}.scoreboard>strong{font-size:.9rem}.scoreboard>b{padding:8px;font-size:.9rem}.odds-strip{grid-template-columns:repeat(3,minmax(0,1fr))}.odds-strip>div:first-child{grid-column:1/-1}.one-x-two{grid-template-columns:auto 1fr;padding:9px}.one-x-two small{grid-column:1/-1}.detail-metrics,.corner-metrics,.result-cards{grid-template-columns:1fr 1fr}.twin-row{grid-template-columns:minmax(0,1fr) auto}.twin-row>:nth-child(n+3){grid-column:auto}.detail-title,.why-head{align-items:flex-start}.gate-table{min-width:670px}}
-  </style></head><body>${content}
+  ${visualStyles}</style></head><body>${content}
   <script>
   (()=>{const input=document.querySelector('[data-global-search]');if(input)input.addEventListener('input',()=>{const q=input.value.trim().toLocaleLowerCase('tr-TR');document.querySelectorAll('[data-search-row]').forEach(el=>{const hit=!q||el.textContent.toLocaleLowerCase('tr-TR').includes(q);el.classList.toggle('hidden-by-search',!hit)})});document.querySelectorAll('[data-state-filter]').forEach(button=>button.addEventListener('click',()=>{const state=button.dataset.stateFilter;document.querySelectorAll('[data-state-filter]').forEach(item=>item.classList.toggle('active',item===button));document.querySelectorAll('[data-match-state]').forEach(row=>row.classList.toggle('hidden-by-state',state!=='ALL'&&row.dataset.matchState!==state))}));const links=[...document.querySelectorAll('.side-nav a[href^="#"]')];const obs=new IntersectionObserver(entries=>{for(const e of entries){if(e.isIntersecting){links.forEach(a=>a.classList.toggle('active',a.getAttribute('href')==='#'+e.target.id))}}},{rootMargin:'-25% 0px -65% 0px'});document.querySelectorAll('main section[id]').forEach(s=>obs.observe(s));})();
-  </script></body></html>`;
+  document.querySelectorAll('[data-state-filter]').forEach(function(button){button.addEventListener('click',function(){
+ const state=button.dataset.stateFilter;
+ document.querySelectorAll('[data-state-filter]').forEach(function(b){b.setAttribute('aria-pressed',String(b===button));});
+ document.querySelectorAll('#matches [data-match-state]').forEach(function(row){const value=row.dataset.matchState;row.classList.toggle('hidden-by-state',state!=='ALL'&&(state==='OTHER'?['OFFICIAL','REVIEW','WAITING'].includes(value):state!==value));});
+ const empty=document.querySelector('.filter-empty');if(empty)empty.hidden=Array.from(document.querySelectorAll('#matches [data-match-state]')).some(function(row){return !row.classList.contains('hidden-by-state')&&!row.classList.contains('hidden-by-search');});
+});});
+document.querySelectorAll('a[href^="#"]').forEach(function(link){link.addEventListener('click',function(){const target=document.getElementById(link.getAttribute('href').slice(1));if(target){let parent=target;while(parent){if(parent.tagName==='DETAILS')parent.open=true;parent=parent.parentElement;}}if(link.dataset.navFilter){const button=document.querySelector('[data-state-filter="'+link.dataset.navFilter+'"]');if(button)button.click();}const mobile=link.closest('.mobile-nav');if(mobile)mobile.open=false;});});
+</script></body></html>`;
 }
 export function renderDashboard(data: DashboardData): string {
   const audit = (data.datasetAudit?.report ?? null) as DatasetAuditView | null;
@@ -665,90 +674,18 @@ export function renderDashboard(data: DashboardData): string {
   const reviewCandidateCount = reviewPredictions.length;
   const waitingPredictionCount = waitingPredictions.length;
   const rejectedPredictionCount = rejectedPredictions.length;
-  const stateLabel: Record<string, string> = { OFFICIAL: 'RESMİ TAHMİN', REVIEW: 'İNCELEME',
-    WAITING: 'VERİ BEKLENİYOR', REJECTED: 'REDDEDİLDİ' };
-  const stateClass: Record<string, string> = { OFFICIAL: 'official', REVIEW: 'review',
-    WAITING: 'waiting', REJECTED: 'rejected' };
-  const featureEntry = (status: string): Record<string, unknown> | undefined => status === 'OFFICIAL'
-    ? officialPredictions[0] : status === 'REVIEW' ? reviewPredictions[0]
-      : status === 'WAITING' ? waitingPredictions[0] : rejectedPredictions[0];
-  const featureCard = (status: 'OFFICIAL' | 'REVIEW' | 'WAITING' | 'REJECTED') => {
-    const featureId: Record<string, string> = { OFFICIAL: 'official-predictions', REVIEW: 'review-predictions',
-      WAITING: 'waiting-predictions', REJECTED: 'rejected-predictions' };
-    const entry = featureEntry(status);
-    if (!entry) {
-      const emptyText: Record<string, string> = { OFFICIAL: 'Şu anda resmi tahmin yok.',
-        REVIEW: 'Şu anda inceleme adayı yok.', WAITING: 'Veri bekleyen maç yok.',
-        REJECTED: 'Reddedilen güncel değerlendirme yok.' };
-      return `<article class="state-card ${stateClass[status]} empty-state" id="${featureId[status]}" data-prediction-state="${status}">
-        <span class="state-label">${stateLabel[status]}</span><strong>${emptyText[status]}</strong>
-        <p>Yeni gerçek değerlendirmeler oluştuğunda bu alan otomatik güncellenir.</p></article>`;
-    }
-    const inspector = objectValue(entry.predictionGate);
-    const candidate = objectValue(inspector?.candidate) ?? objectValue(entry.candidate) ?? objectValue(entry.selected_candidate);
-    const historical = objectValue(candidate?.historical);
-    const matchId = String(entry.match_id ?? entry.matchId ?? '');
-    const home = entry.home_team ?? entry.homeTeam;
-    const away = entry.away_team ?? entry.awayTeam;
-    const league = entry.league;
-    const kickoff = entry.kickoff_at ?? entry.kickoffAt;
-    const market = candidate?.marketType ?? entry.market_type;
-    const selection = candidate?.selection ?? entry.selection;
-    const line = candidate?.line ?? entry.line;
-    const score = candidate?.predictionScore ?? entry.prediction_score;
-    const sample = historical?.settledSampleSize ?? entry.historical_settled_sample_size ?? entry.historical_sample_size;
-    const currentOdds = candidate?.currentOdds ?? candidate?.referenceOdds ?? entry.reference_odds;
-    const movement = candidate?.movementClass ?? entry.movement_class;
-    const bookmakers = candidate?.bookmakerCount ?? entry.bookmaker_count;
-    const blockers = Array.isArray(inspector?.blockers) ? inspector.blockers as unknown[]
-      : Array.isArray(entry.skipReasons) ? entry.skipReasons as unknown[]
-      : Array.isArray(entry.skip_reasons) ? entry.skip_reasons as unknown[] : [];
-    const reason = status === 'OFFICIAL' ? inspector?.summary
-      : status === 'REVIEW' ? (blockers[0] == null ? inspector?.summary : translateReason(blockers[0]))
-      : inspector?.summary ?? (blockers[0] == null ? null : translateReason(blockers[0]));
-    const chips = [score == null ? '' : `<span>Tahmin skoru <b>${escapeHtml(score)}/100</b></span>`,
-      sample == null ? '' : `<span>Geçmiş örnek <b>${escapeHtml(sample)}</b></span>`,
-      currentOdds == null ? '' : `<span>Güncel oran <b>${escapeHtml(optionalOdds(currentOdds))}</b></span>`,
-      movement == null ? '' : `<span>Hareket <b>${escapeHtml(movement)}</b></span>`,
-      bookmakers == null ? '' : `<span>Bookmaker <b>${escapeHtml(bookmakers)}</b></span>`].filter(Boolean).join('');
-    const marketText = market == null ? '' : `${translateMarket(market)}${line == null ? '' : ` ${escapeHtml(line)}`}${selection == null ? '' : ` · ${translateSelection(selection)}`}`;
-    return `<article class="state-card ${stateClass[status]}" id="${featureId[status]}" data-prediction-state="${status}" data-search-row>
-      <div class="state-card-head"><span class="state-label">${stateLabel[status]}</span><span>${escapeHtml(formatDate(kickoff, { hour: '2-digit', minute: '2-digit' }))}</span></div>
-      <small>${escapeHtml(league ?? '—')}</small><h3>${escapeHtml(home ?? '—')} <span>—</span> ${escapeHtml(away ?? '—')}</h3>
-      ${status === 'REVIEW' ? '<strong class="not-official">Resmi tahmin değildir.</strong>' : ''}
-      ${marketText ? `<p class="state-market">${marketText}</p>` : ''}
-      ${chips ? `<div class="state-metrics">${chips}</div>` : '<p class="unavailable">Henüz hesaplanmadı</p>'}
-      ${reason ? `<p class="state-reason">${escapeHtml(reason)}</p>` : ''}
-      ${matchId ? `<a class="analysis-link" href="/matches/${encodeURIComponent(matchId)}">Detaylı Analiz <span>→</span></a>` : ''}
-    </article>`;
-  };
-  const featuredStateCards = (['OFFICIAL','REVIEW','WAITING','REJECTED'] as const).map(featureCard).join('');
-
   const predictionForMatch = (matchId: string) => [...predictions, ...predictionPreviews]
     .find((item) => String(item.match_id ?? item.matchId ?? '') === matchId)
     ?? reviewPredictions.find((item) => String(item.matchId ?? '') === matchId);
-  const todayMatchRows = todayMatches.length ? todayMatches.map((match) => {
-    const matchId = String(match.id ?? '');
-    const prediction = predictionForMatch(matchId);
-    const inspector = objectValue(prediction?.predictionGate);
-    const status = String(inspector?.overallStatus ?? 'UNKNOWN');
-    const candidate = objectValue(inspector?.candidate) ?? objectValue(prediction?.candidate);
-    const historical = objectValue(candidate?.historical);
-    const matchOdds = odds.filter((item) => String(item.match_id ?? '') === matchId
-      && ['MATCH_RESULT','1X2'].includes(String(item.market_type ?? item.market_name ?? '').toUpperCase()));
-    const price = (selection: string) => optionalOdds(matchOdds.find((item) =>
-      String(item.selection ?? '').toUpperCase() === selection)?.current_odds);
-    const market = candidate?.marketType == null ? '—' : `${translateMarket(candidate.marketType)}${candidate.line == null ? '' : ` ${candidate.line}`}
-      ${candidate.selection == null ? '' : `· ${translateSelection(candidate.selection)}`}`;
-    const humanStatus = status === 'UNKNOWN' ? 'Değerlendirilmedi' : stateLabel[status] ?? status;
-    return `<tr data-search-row data-match-state="${escapeHtml(status)}"><td class="mono">${escapeHtml(formatDate(match.kickoff_at, { hour: '2-digit', minute: '2-digit' }))}</td>
-      <td><strong>${escapeHtml(match.home_team)} — ${escapeHtml(match.away_team)}</strong></td><td>${escapeHtml(match.league)}</td>
-      <td class="mono">${price('HOME')}</td><td class="mono">${price('DRAW')}</td><td class="mono">${price('AWAY')}</td>
-      <td><span class="badge ${status === 'OFFICIAL' ? 'ok' : status === 'REVIEW' ? 'partial' : status === 'REJECTED' ? 'bad' : 'neutral'}">${escapeHtml(humanStatus)}</span></td>
-      <td>${escapeHtml(market)}</td><td class="mono">${escapeHtml(optionalNumber(candidate?.predictionScore, '/100'))}</td>
-      <td class="mono">${escapeHtml(optionalNumber(historical?.settledSampleSize))}</td><td>${escapeHtml(candidate?.movementClass ?? '—')}</td>
-      <td><a class="table-action" href="/matches/${encodeURIComponent(matchId)}">Analizi Aç</a></td></tr>`;
-  }).join('') : '<tr><td colspan="12">Bugün için desteklenen maç bulunmuyor.</td></tr>';
+  const todayMatchRows = todayMatches.map((match) => matchRow(match, predictionForMatch(String(match.id ?? '')))).join('');
+  const stateCounts = todayMatches.reduce<Record<string, number>>((counts, match) => {
+    const status = matchState(match, predictionForMatch(String(match.id ?? '')));
+    const key = ['OFFICIAL','REVIEW','WAITING'].includes(status) ? status : 'OTHER';
+    counts[key] = (counts[key] ?? 0) + 1;
+    return counts;
+  }, {});
+  const highlights = [...officialPredictions, ...reviewPredictions].slice(0, 3)
+    .map((prediction) => matchRow(prediction, prediction)).join('');
   const globalAuditRaw = String(predictionSelfAudit?.status ?? 'NOT_AVAILABLE');
   const globalAuditGuard = Boolean(predictionSelfAudit?.guardActive);
   const globalAuditStatus = globalAuditRaw === 'PAUSED' && !globalAuditGuard ? 'RECOVERY' : globalAuditRaw;
@@ -769,63 +706,25 @@ export function renderDashboard(data: DashboardData): string {
       <span>Hiçbir değişiklik otomatik uygulanmaz</span></article>
   </div>`;
 
-  return shell(`<div class="app-shell">
-    <aside class="sidebar">
-      <a class="brand" href="/"><span class="brand-mark">B</span><span>BETAPP<small>Analiz Terminali</small></span></a>
-      <div class="side-group"><div class="side-label">Terminal</div><nav class="side-nav" aria-label="Ana menü">
-        <a class="active" href="#overview"><span class="nav-icon">⌂</span>Genel Bakış</a>
-        <a href="#matches"><span class="nav-icon">◫</span>Bugünün Maçları</a>
-        <a href="#official-predictions"><span class="nav-icon">●</span>Resmi Tahminler</a>
-        <a href="#review-predictions"><span class="nav-icon">◇</span>İnceleme Adayları</a>
-        <a href="#odds"><span class="nav-icon">↗</span>Oran Analizi</a>
-        <a href="#odds-analysis"><span class="nav-icon">∿</span>Geçmiş İkizler</a>
-        <a href="#prediction-history"><span class="nav-icon">◷</span>Tahmin Geçmişi</a>
-        <a href="#prediction-self-audit"><span class="nav-icon">◉</span>Sistem Durumu</a>
-      </nav></div>
-      <div class="sidebar-foot"><a class="system-pill" href="#prediction-self-audit"><span class="live-dot ${allSourcesHealthy ? '' : 'wait'}"></span><span><strong style="display:block;color:var(--text)">${escapeHtml(statusText)}</strong>${sources.length} runtime provider</span></a></div>
-    </aside>
+  return shell(`<div class="app-shell">${navigation()}
     <div class="app-main">
-      <header class="topbar"><div class="top-title"><strong>BETAPP Futbol Analiz Terminali</strong><span>${escapeHtml(formatDate(new Date(), { day: '2-digit', month: 'long', year: 'numeric' }))} · ${supportedCompetitions.length ? `${supportedCompetitions.length} desteklenen lig` : 'Lig bilgisi bekleniyor'}</span></div>
+      <header class="topbar"><span class="top-title">Futbol / Genel Bakış</span>
         <label class="search" aria-label="Takım veya lig ara"><input data-global-search type="search" placeholder="Takım veya lig ara"></label>
-        <div class="top-actions"><a class="top-chip" href="#prediction-self-audit"><span class="live-dot ${allSourcesHealthy ? '' : 'wait'}"></span> ${escapeHtml(statusText)}</a></div>
-      </header>
+        <a class="top-chip" href="#system">${escapeHtml(statusText)}</a></header>
       <main class="content">
-        <section class="command-hero" id="overview">
-          <article class="hero-main"><p class="eyebrow">OPERASYON ÖZETİ</p><h1>${todayMatches.length
-              ? `Bugün ${todayMatches.length} maç<br>takip ediliyor.`
-              : matches.length
-                ? `Bugün maç yok.<br>Önümüzdeki 7 günde ${matches.length} maç var.`
-                : `Bugün maç yok.<br>Geçmiş analiz arşivi hazır.`}</h1>
-            <p class="hero-copy">Fikstür, gerçek pre-match oranlar ve Prediction Gate Inspector durumları tek terminalde izlenir. Bu ekran bahis yürütmez.</p></article>
-          <article class="hero-status"><div class="hero-status-head"><strong>Canlı telemetri</strong><span class="badge ${allSourcesHealthy ? 'ok' : sources.length ? 'partial' : 'neutral'}">${escapeHtml(statusText)}</span></div>
-            <div class="hero-status-list"><div class="health-row"><span>Yaklaşan fikstür</span><b>${matches.length ? `${matches.length} maç` : 'Bu hafta görünmüyor'}</b></div>
-              <div class="health-row"><span>Canlı oranlar</span><b>${odds.length ? `${odds.length} kayıt` : 'Maç bekleniyor'}</b></div>
-              <div class="health-row"><span>Historical örnekler</span><b>${historicalExampleCount}</b></div>
-              <div class="health-row"><span>Geçmiş oran snapshotları</span><b>${preKickoffSnapshotCount.toLocaleString('tr-TR')}</b></div></div></article>
+        <header class="page-heading" id="overview"><div><span class="section-kicker">MAÇ MERKEZİ</span><h1>Bugünün Analizleri</h1></div><time>${escapeHtml(formatDate(new Date(), { day:'2-digit',month:'long',year:'numeric' }))}</time></header>
+        <div class="summary-strip" aria-label="Sistem özeti"><span><b>${todayMatches.length}</b> maç</span><span><b>${stateCounts.OFFICIAL ?? 0}</b> resmi</span><span><b>${stateCounts.REVIEW ?? 0}</b> inceleme</span><span><b>${stateCounts.WAITING ?? 0}</b> bekleyen</span><span><b>${historicalExampleRaw == null ? '—' : historicalExampleCount}</b> tarihsel örnek</span><span><b>${preKickoffSnapshotRaw == null ? '—' : preKickoffSnapshotCount.toLocaleString('tr-TR')}</b> snapshot</span></div>
+        <section class="section" id="matches"><div class="section-title"><h2>Bugünün Maçları</h2><span class="muted">Türkiye saati</span></div>
+          <div class="filter-buttons" aria-label="Tahmin durumuna göre filtrele">${[['ALL','Tümü'],['OFFICIAL','Resmi'],['REVIEW','İnceleme'],['WAITING','Bekleyen'],['OTHER','Diğer']].map(([key,label]) => `<button class="filter-button ${key === 'ALL' ? 'active' : ''}" type="button" data-state-filter="${key}" aria-pressed="${key === 'ALL'}">${label} <span>${key === 'ALL' ? todayMatches.length : stateCounts[key!] ?? 0}</span></button>`).join('')}</div>
+          <div class="match-surface">${todayMatchRows || '<div class="detail-empty"><strong>Bugün için desteklenen maç bulunmuyor.</strong><p>Yaklaşan fikstür ve geçmiş analizler sistem arşivinde.</p></div>'}</div>
+          <p class="filter-empty" hidden>Bu filtreye uygun maç bulunmuyor.</p>
         </section>
-        <section class="metrics" aria-label="Sistem özeti">
-          <article class="metric"><span class="metric-label">Bugünkü Maçlar</span><strong class="metric-value">${todayMatches.length}</strong><span class="metric-note">Desteklenen fikstür</span></article>
-          <article class="metric"><span class="metric-label">Resmi Tahmin</span><strong class="metric-value">${officialPredictionCount}</strong><span class="metric-note">Gate Inspector OFFICIAL</span></article>
-          <article class="metric"><span class="metric-label">İnceleme</span><strong class="metric-value">${reviewCandidateCount}</strong><span class="metric-note">Resmi tahmin değildir</span></article>
-          <article class="metric"><span class="metric-label">Veri Bekleyen</span><strong class="metric-value">${waitingPredictionCount}</strong><span class="metric-note">Gate Inspector WAITING</span></article>
-          <article class="metric"><span class="metric-label">Tarihsel Örnek</span><strong class="metric-value">${historicalExampleRaw == null ? '—' : historicalExampleCount}</strong><span class="metric-note">Benzerlik motoru verisi</span></article>
-          <article class="metric"><span class="metric-label">Pre-match Snapshot</span><strong class="metric-value">${preKickoffSnapshotRaw == null ? '—' : preKickoffSnapshotCount.toLocaleString('tr-TR')}</strong><span class="metric-note">Gerçek oran kaydı</span></article>
-        </section>
+        <section class="dashboard-secondary"><article class="surface"><div class="section-title"><h2>Öne Çıkan Analizler</h2><span>En fazla 3 aday</span></div><div class="highlight-list">${highlights || '<div class="detail-empty"><strong>Henüz öne çıkan aday yok.</strong><p>Gerçek değerlendirmeler oluştukça burada görünür.</p></div>'}</div></article>
+          <article class="surface"><div class="section-title"><h2>Sistem Durumu</h2><a href="#system">Ayrıntılar</a></div><div class="source-grid">${providerCards}</div></article></section>
+        <section class="section" id="odds"><div class="section-title"><h2>Oran Hareketleri</h2><span>${odds.length} kayıt</span></div><div class="surface odds-list">${oddsRows}</div></section>
+        <details class="technical-records" id="system"><summary>Sistem ve analiz arşivi</summary><div class="details-body">
         ${waitingNotice}
-
-        <section class="section" id="predictions"><div class="section-title"><div><span class="section-kicker">Prediction Gate Inspector</span><h2>Güncel Tahmin Durumları</h2><p>Her durumdan en fazla bir gerçek güncel maç gösterilir.</p></div></div>
-          <div class="state-grid">${featuredStateCards}</div></section>
-
-        <section class="section" id="matches"><div class="section-title"><div><span class="section-kicker">Fikstür</span><h2>Bugünün Maçları</h2><p>Gerçek oranlar ve Gate Inspector durumlarıyla kompakt görünüm.</p></div><span class="count">${todayMatches.length}</span></div>
-          <div class="filterbar"><div class="filter-buttons" aria-label="Tahmin durumuna göre filtrele">
-            <button class="filter-button active" type="button" data-state-filter="ALL">Tümü</button><button class="filter-button" type="button" data-state-filter="OFFICIAL">Resmi</button>
-            <button class="filter-button" type="button" data-state-filter="REVIEW">İnceleme</button><button class="filter-button" type="button" data-state-filter="WAITING">Bekleyen</button>
-            <button class="filter-button" type="button" data-state-filter="REJECTED">Reddedildi</button></div></div>
-          <div class="scroll match-table"><table><thead><tr><th>Saat</th><th>Maç</th><th>Lig</th><th>1</th><th>X</th><th>2</th><th>Durum</th><th>Ana aday</th><th>Tahmin skoru</th><th>Geçmiş örnek</th><th>Hareket</th><th>Action</th></tr></thead><tbody>${todayMatchRows}</tbody></table></div>
-          <details><summary>Önümüzdeki 14 Gün · fikstür ve güncel oran akışı</summary><div class="details-body">${upcomingLeagueSummary}
-            <div class="workspace"><article class="panel"><div class="panel-head"><h3>Yaklaşan maçlar</h3><span class="count">${matches.length}</span></div><div class="panel-body match-list">${matchCards}</div></article>
-              <article class="panel" id="odds"><div class="panel-head"><h3>Güncel oranlar</h3><span class="count">${odds.length}</span></div><div class="panel-body odds-list">${oddsRows}</div></article></div></div></details></section>
-
+        <details><summary>Önümüzdeki 14 Gün · fikstür ve güncel oran akışı</summary><div class="details-body">${upcomingLeagueSummary}<div class="match-list">${matchCards}</div></div></details>
         <section class="section" id="archive"><div class="section-title"><div><span class="section-kicker">Sistem boş değil</span><h2>Veri Arşivi</h2><p>Canlı maç olmasa da sistemin elindeki gerçek geçmiş veriyi burada görebilirsin.</p></div></div>
           <div class="grid">
             <article class="card"><strong>Historical analiz örnekleri</strong><p style="font-size:1.45rem;color:var(--text);font-weight:900">${historicalExampleCount}</p><p>Geçmiş oran benzerliği için uygun örnek.</p></article>
@@ -868,6 +767,7 @@ export function renderDashboard(data: DashboardData): string {
             <details><summary>Gelişmiş veri ve model bilgileri</summary><div class="details-body">${matrix}${datasetHealth}${modelValidation}</div></details>
           </div></details></section>
 
+        </div></details>
         <footer class="footer"><span>BETAPP · Futbol oran ve maç analiz sistemi</span><span>Resmi tahminler deterministik kurallarla üretilir · gerçek bahis yürütme yetkisi yoktur.</span></footer>
       </main>
     </div>

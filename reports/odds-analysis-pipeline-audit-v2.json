@@ -1,0 +1,131 @@
+{
+  "report": "odds-analysis-pipeline-audit-v2",
+  "status": "PARTIAL",
+  "generatedAt": "2026-09-28T17:35:00Z",
+  "production": {
+    "baseUrl": "https://betappv2.onrender.com",
+    "access": "public GET API only; direct production database access was not used",
+    "snapshotTimeApproximate": "2026-09-28T20:30:00+03:00",
+    "writesPerformed": false
+  },
+  "workspace": {
+    "requestedBranch": "codex/nowgoal-live-odds-integration-v2",
+    "checkedOutBranch": "codex/ui-visual-overhaul-v3",
+    "head": "99599a5d3f877269dc808ca601494d57f196dea0",
+    "dirtyAtStart": ["src/dashboard.ts", "src/match-detail.ts", "src/ui/"],
+    "targetBranchProductionShaVerified": false
+  },
+  "rootCauseStatus": {
+    "classification": "A",
+    "confidence": "PARTIAL_API_EVIDENCE",
+    "finding": "The Turkey-Italy fixture is in the production dashboard but has no row in the dashboard's upcoming odds feed and is absent from the visible dashboard odds analyses. The API does not establish whether the collector attempted the fixture or whether persisted raw odds are absent, so collector-level A is not proven.",
+    "B": "UNKNOWN",
+    "C": "UNKNOWN",
+    "D": "UNKNOWN"
+  },
+  "turkeyItaly": {
+    "fixture": "EXISTS",
+    "competition": "EXISTS",
+    "teams": "EXISTS",
+    "kickoff": "EXISTS",
+    "fixtureStatus": "EXISTS: scheduled",
+    "season": "UNKNOWN",
+    "oddsSnapshots": "UNKNOWN; no matching row in dashboard upcoming odds feed",
+    "bookmakerCount": "UNKNOWN; zero rows exposed by dashboard odds feed",
+    "oddsAnalysisInput": "UNKNOWN",
+    "oddsAnalysisRun": "UNKNOWN; absent from dashboard aggregate; match detail route returned HTTP 404",
+    "predictionCandidate": "UNKNOWN",
+    "predictionRun": "UNKNOWN; fixture prediction route returned HTTP 404",
+    "evidence": {
+      "dashboardMatch": true,
+      "kickoffUtc": "2026-09-28T18:45:00Z",
+      "competitionName": "UEFA Nations League A",
+      "dashboardUpcomingOddsRows": 0,
+      "dashboardOddsAnalysesMatch": false,
+      "matchOddsAnalysisEndpointStatus": 404,
+      "matchPredictionsEndpointStatus": 404
+    }
+  },
+  "recentMatchAggregate": {
+    "sampling": "first 10 scheduled dashboard matches plus first 10 recentFinishedMatches entries; groups kept separate because exposed odds metrics differ",
+    "upcomingScheduled": {
+      "fixture_count": 10,
+      "odds_count": 0,
+      "odds_count_definition": "matching rows in dashboard upcoming odds list",
+      "odds_analysis_count": 1,
+      "odds_analysis_count_definition": "matches among first 10 found in dashboard oddsAnalyses aggregate (Russia-Iran only)",
+      "prediction_run_count": null,
+      "prediction_run_status": "UNKNOWN: fixture detail prediction endpoints returned 404"
+    },
+    "recentFinished": {
+      "fixture_count": 10,
+      "odds_count": 5,
+      "odds_count_definition": "recentFinishedMatches.odds_snapshots > 0",
+      "odds_analysis_count": null,
+      "odds_analysis_status": "UNKNOWN: dashboard oddsAnalyses only covers visible upcoming items; match detail endpoints returned 404",
+      "prediction_run_count": null,
+      "prediction_run_status": "UNKNOWN: fixture detail prediction endpoints returned 404"
+    }
+  },
+  "apiChecks": {
+    "/api/dashboard": 200,
+    "/api/odds-analysis/upcoming": 200,
+    "/api/predictions/diagnostics": 200,
+    "/api/data-coverage?detail=prediction": {
+      "status": 200,
+      "predictionCoveragePresent": false
+    },
+    "/api/odds-analysis/:matchId": 404,
+    "/api/predictions/:matchId": 404
+  },
+  "pipeline": {
+    "worker": "src/worker.ts; classic OddsCollector instantiated only when NOWGOAL_ENABLED; called from worker runCycle",
+    "defaultCollectorIntervalMs": 900000,
+    "renderBlueprint": {
+      "NOWGOAL_ENABLED": "true",
+      "NOWGOAL_FUTURE_DAYS": "3",
+      "NOWGOAL_COMPANY_IDS": "2,3,4,14,15,22,136",
+      "supportedCompetitionsContainsUefaNationsLeagueA": false,
+      "note": "Render service environment overrides/deployed SHA were not accessible from public API"
+    },
+    "providerBehavior": "getPrematchOddsForDate emits fixture only when MatchState is 0, fixture fields/time are valid, and at least one odds row normalizes",
+    "analysisTrigger": "appendManyAndAnalyze skips analyzeAndSave when inserted snapshot count is zero",
+    "analysisRunBookmakerMinimum": "none; quality eligibility is distinct from run insertion",
+    "predictionCandidateGate": "loadTargets requires a latest odds_analysis_runs row through an inner LATERAL join",
+    "liveOddsCollector": "not wired in inspected worker.ts; production deployment correspondence unknown"
+  },
+  "analysisRunGates": [
+    "fixture must exist when analyzeAndSave is invoked",
+    "collector must insert at least one new/changed odds snapshot to invoke analyzeAndSave on appendManyAndAnalyze path",
+    "analysis transaction must succeed",
+    "unique match/model/config/input key must not already exist"
+  ],
+  "regressionCheck": {
+    "43c858d": "touches historical backfill/config/report and worker; does not touch odds collector/repository/analysis engine or prediction query/engine",
+    "f148344": "touches historical reconciliation/import/parser/tests; does not touch odds collector/analysis/prediction pipeline",
+    "c6b5e18": "touches diagnostics/reconciliation/config/server/backfill; does not touch odds collector/analysis/prediction pipeline",
+    "productionDeployedShaVerified": false,
+    "conclusion": "No prediction/odds logic changes in those listed commit diffs; production deployment causality cannot be concluded without deployed SHA/config. Render YAML has an outdated competition allowlist that excludes Nations League A."
+  },
+  "blockers": [
+    "per-fixture odds-analysis and predictions API routes returned 404",
+    "data-coverage prediction detail absent from response",
+    "no fixture-specific collector outcome or safe odds snapshot count endpoint",
+    "checkout is on a different branch with pre-existing user modifications",
+    "Render deployed SHA and env overrides cannot be read from public API"
+  ],
+  "recommendedFix": "No fix performed. First verify Render worker deployed SHA and effective supported competition config. Then expose/consult an authenticated read-only aggregate trace for odds snapshot count, bookmaker count, analysis run existence, candidate existence, prediction run count, and collector result/reason.",
+  "tests": {
+    "command": "npm run test:unit",
+    "status": "FAIL",
+    "testFiles": {"passed": 27, "failed": 4, "total": 31},
+    "tests": {"passed": 155, "failed": 11, "total": 166},
+    "failingFiles": [
+      "test/unit/dashboard.test.ts",
+      "test/unit/match-detail.test.ts",
+      "test/unit/dashboard-route-resilience.test.ts",
+      "test/unit/match-detail-route.test.ts"
+    ],
+    "note": "At audit start src/dashboard.ts and src/match-detail.ts were modified and src/ui/ was untracked; no changes were made during audit."
+  }
+}

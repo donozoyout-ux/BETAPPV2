@@ -321,6 +321,8 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
   });
 
   app.get('/api/db-diagnostics', async () => repository.dbDiagnostics());
+  app.get('/api/db-cleanup', async () => repository.dbCleanup());
+  app.post('/api/db-cleanup', async () => repository.dbCleanup());
 
   app.get('/api/dashboard', async () => {
     const { data, today, previews, reviewCandidates, history, performance, selfAudit, segmentAudits,

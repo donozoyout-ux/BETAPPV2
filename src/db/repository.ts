@@ -105,8 +105,11 @@ export class FootballRepository {
   ) {
     const compact = compactPayloadForStorage(payload);
     await client.query(
-      `INSERT INTO source_payloads(provider,entity_type,external_id,payload_hash,payload,source_updated_at,content_type,parser_version)
-       VALUES ($1,$2,$3,$4,$5::jsonb,$6,'application/json','2') ON CONFLICT DO NOTHING`,
+      `INSERT INTO source_payloads(provider,entity_type,external_id,payload_hash,payload,source_updated_at,content_type,parser_version,fetched_at)
+       VALUES ($1,$2,$3,$4,$5::jsonb,$6,'application/json','2',now())
+       ON CONFLICT (provider,entity_type,external_id) DO UPDATE SET
+         payload_hash=excluded.payload_hash, payload=excluded.payload,
+         source_updated_at=excluded.source_updated_at, fetched_at=now()`,
       [provider, type, externalId, payloadHash(compact), JSON.stringify(compact), sourceUpdatedAt],
     );
   }
@@ -283,10 +286,11 @@ export class FootballRepository {
         if (value == null) continue;
         await client.query(
           `INSERT INTO data_observations(match_id,metric,provider,value,observed_at) VALUES($1,$2,$3,$4,$5)
-           ON CONFLICT DO NOTHING`, [id, metric, provider, String(value), match.sourceUpdatedAt]);
+           ON CONFLICT(match_id,metric,provider) DO UPDATE SET value=excluded.value, observed_at=excluded.observed_at`,
+          [id, metric, provider, String(value), match.sourceUpdatedAt]);
         const latest = await client.query<{ provider: string; value: string | null }>(
-          `SELECT DISTINCT ON(provider) provider,value FROM data_observations WHERE match_id=$1 AND metric=$2
-           ORDER BY provider,observed_at DESC`, [id, metric]);
+          `SELECT provider,value FROM data_observations WHERE match_id=$1 AND metric=$2`,
+          [id, metric]);
         const consensus = resolveConsensus(latest.rows);
         await client.query(
           `INSERT INTO data_consensus(match_id,metric,resolved_value,status,provider_count,agreement_count,confidence)
@@ -318,12 +322,12 @@ export class FootballRepository {
         for (const [side, value] of [['home', stat.homeValue], ['away', stat.awayValue]] as const) {
           await client.query(
             `INSERT INTO data_observations(match_id,metric,provider,value,observed_at) VALUES($1,$2,$3,$4,$5)
-             ON CONFLICT DO NOTHING`,
+             ON CONFLICT(match_id,metric,provider) DO UPDATE SET value=excluded.value, observed_at=excluded.observed_at`,
             [matchId, `${stat.key}.${side}`, provider, value == null ? null : String(value), data.sourceUpdatedAt],
           );
           const latest = await client.query<{ provider: string; value: string | null }>(
-            `SELECT DISTINCT ON(provider) provider,value FROM data_observations WHERE match_id=$1 AND metric=$2
-             ORDER BY provider,observed_at DESC`, [matchId, `${stat.key}.${side}`]);
+            `SELECT provider,value FROM data_observations WHERE match_id=$1 AND metric=$2`,
+            [matchId, `${stat.key}.${side}`]);
           const consensus = resolveConsensus(latest.rows);
           await client.query(
             `INSERT INTO data_consensus(match_id,metric,resolved_value,status,provider_count,agreement_count,confidence)

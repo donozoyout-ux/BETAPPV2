@@ -29,8 +29,39 @@ export class DataCoverageService {
     if (this.cache && this.cache.expiresAt > Date.now()) return this.cache.value;
     if (this.pending) return this.pending;
     this.pending = this.load();
-    try { const value = await this.pending; this.cache = { value, expiresAt: Date.now()+300_000 }; return value; }
-    finally { this.pending = undefined; }
+    try {
+      const value = await this.pending;
+      this.cache = { value, expiresAt: Date.now()+300_000 };
+      return value;
+    } catch {
+      if (this.cache) return this.cache.value;
+      return this.fallback();
+    } finally {
+      this.pending = undefined;
+    }
+  }
+  private fallback() {
+    const competitions = enrichCoverageTargets(coverageRows([], this.configured));
+    return {
+      competitions,
+      summary: {
+        totalMatches: 0, totalFinishedMatches: 0, totalHistoricalExamples: 0,
+        totalOddsCovered: 0, totalThreeBookmakerCovered: 0, totalOddsSnapshots: 0,
+        csvHistoricalOddsMatches: 0, csvHistoricalThreeBookmakers: 0, csvHistoricalOddsQuotes: 0,
+        csvStageMatches: 0, csvStageExamples: 0, csvStageResearchEligible: 0,
+        upcomingMatches7d: 0, upcomingOddsCovered7d: 0, upcomingThreeBookmakerCovered7d: 0,
+        totalStatsCovered: 0,
+      },
+      backfills: [],
+      publicCsvImports: [],
+      publicCsvStageRefreshes: [],
+      shadowSafety: { total: 0, invalid_official: 0, invalid_timing_known: 0 },
+      openFootballImports: [],
+      shadowResearch: [],
+      targetPolicy: DATA_TARGET_V1,
+      generatedAt: new Date().toISOString(),
+      cacheSeconds: 60,
+    };
   }
   private async load() {
     // Aggregate each evidence table before joining to avoid cross-product overcounts.

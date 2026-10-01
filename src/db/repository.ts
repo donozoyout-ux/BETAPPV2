@@ -439,12 +439,15 @@ export class FootballRepository {
         checks.write = written.rows[0]?.value === 1;
         await client.query('ROLLBACK');
         checks.transaction = checks.write;
+      } catch {
+        await client.query('ROLLBACK').catch(() => undefined);
+        checks.write = false;
+        checks.transaction = false;
+      }
+      try {
         const lock = await client.query<{ locked: boolean }>('SELECT pg_try_advisory_lock(hashtext($1)) AS locked', ['betapp-v2:health']);
         locked = lock.rows[0]?.locked === true;
         checks.advisoryLock = locked;
-      } catch (error) {
-        await client.query('ROLLBACK').catch(() => undefined);
-        throw error;
       } finally {
         if (locked) await client.query('SELECT pg_advisory_unlock(hashtext($1))', ['betapp-v2:health']).catch(() => undefined);
         client.release();
@@ -535,29 +538,29 @@ export class FootballRepository {
         [timeZone],
       ),
       this.pool.query(
-        `SELECT m.id,m.kickoff_at,m.status,m.home_score,m.away_score,m.source_updated_at,l.name league,
+        `WITH top_finished AS (
+          SELECT m.id,m.kickoff_at,m.status,m.home_score,m.away_score,m.source_updated_at,m.league_id,m.home_team_id,m.away_team_id
+          FROM matches m WHERE m.status='finished' ORDER BY m.kickoff_at DESC LIMIT 15
+        )
+        SELECT m.id,m.kickoff_at,m.status,m.home_score,m.away_score,m.source_updated_at,l.name league,
           ht.name home_team,at.name away_team,
           count(DISTINCT os.id)::integer odds_snapshots,
           count(DISTINCT (os.market_type,os.market_name,os.line,os.selection))::integer odds_markets
-         FROM matches m
-         JOIN leagues l ON l.id=m.league_id
-         JOIN teams ht ON ht.id=m.home_team_id
-         JOIN teams at ON at.id=m.away_team_id
-         LEFT JOIN odds_snapshots os ON os.match_id=m.id AND os.captured_at<m.kickoff_at
-         WHERE m.status='finished'
-         GROUP BY m.id,l.name,ht.name,at.name
-         ORDER BY m.kickoff_at DESC
-         LIMIT 15`
+        FROM top_finished m
+        JOIN leagues l ON l.id=m.league_id
+        JOIN teams ht ON ht.id=m.home_team_id
+        JOIN teams at ON at.id=m.away_team_id
+        LEFT JOIN odds_snapshots os ON os.match_id=m.id AND os.captured_at<m.kickoff_at
+        GROUP BY m.id,m.kickoff_at,m.status,m.home_score,m.away_score,m.source_updated_at,l.name,ht.name,at.name
+        ORDER BY m.kickoff_at DESC`
       ),
       this.pool.query(
         `SELECT
-          count(DISTINCT m.id) FILTER(WHERE m.status='finished')::integer finished_matches,
-          count(DISTINCT m.id) FILTER(WHERE m.status='finished' AND os.captured_at<m.kickoff_at)::integer finished_matches_with_odds,
-          count(*) FILTER(WHERE m.status='finished' AND os.captured_at<m.kickoff_at)::bigint pre_kickoff_snapshots,
-          min(m.kickoff_at) FILTER(WHERE m.status='finished' AND os.captured_at<m.kickoff_at) earliest_odds_match,
-          max(m.kickoff_at) FILTER(WHERE m.status='finished' AND os.captured_at<m.kickoff_at) latest_odds_match
-         FROM matches m
-         LEFT JOIN odds_snapshots os ON os.match_id=m.id`
+          (SELECT count(*)::integer FROM matches WHERE status='finished') AS finished_matches,
+          (SELECT count(DISTINCT os.match_id)::integer FROM odds_snapshots os JOIN matches m ON m.id=os.match_id WHERE m.status='finished' AND os.captured_at<m.kickoff_at) AS finished_matches_with_odds,
+          (SELECT count(*)::bigint FROM odds_snapshots os JOIN matches m ON m.id=os.match_id WHERE m.status='finished' AND os.captured_at<m.kickoff_at) AS pre_kickoff_snapshots,
+          (SELECT min(m.kickoff_at) FROM odds_snapshots os JOIN matches m ON m.id=os.match_id WHERE m.status='finished' AND os.captured_at<m.kickoff_at) AS earliest_odds_match,
+          (SELECT max(m.kickoff_at) FROM odds_snapshots os JOIN matches m ON m.id=os.match_id WHERE m.status='finished' AND os.captured_at<m.kickoff_at) AS latest_odds_match`
       ),
       this.pool.query('SELECT * FROM provider_status ORDER BY provider'),
     ]);
@@ -668,5 +671,45 @@ export class FootballRepository {
       postgresStatus:'AVAILABLE',sheetSyncStatus:rows.some((row)=>row.sheet_synced_at==null)?'PENDING':rows.length?'SYNCED':'NO_DATA',
       bookmakerCount:new Set(rows.map((row)=>row.bookmaker).filter(Boolean)).size,ftCount:rows.filter((row)=>row.period==='FT').length,
       htCount:rows.filter((row)=>row.period==='HT').length,observationCount:observations.rowCount??0,lastCaptureAt:tracking?.last_capture_at??observations.rows[0]?.captured_at??null};
+  }
+
+  async dbDiagnostics() {
+    try {
+      const [tableSizes, dbSize, activity] = await Promise.all([
+        this.pool.query<{
+          table_name: string;
+          total_size: string;
+          total_bytes: number;
+          table_size: string;
+          index_size: string;
+          estimated_rows: number;
+        }>(`SELECT
+              c.relname AS table_name,
+              pg_size_pretty(pg_total_relation_size(c.oid)) AS total_size,
+              pg_total_relation_size(c.oid)::bigint AS total_bytes,
+              pg_size_pretty(pg_relation_size(c.oid)) AS table_size,
+              pg_size_pretty(pg_total_relation_size(c.oid) - pg_relation_size(c.oid)) AS index_size,
+              c.reltuples::bigint AS estimated_rows
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'public' AND c.relkind IN ('r', 'm')
+            ORDER BY pg_total_relation_size(c.oid) DESC
+            LIMIT 30`),
+        this.pool.query<{ db_size: string; total_bytes: number }>(
+          "SELECT pg_size_pretty(pg_database_size(current_database())) AS db_size, pg_database_size(current_database())::bigint AS total_bytes"
+        ),
+        this.pool.query<{ count: number; state: string }>(
+          "SELECT count(*)::int count, coalesce(state, 'unknown') state FROM pg_stat_activity GROUP BY 2"
+        ),
+      ]);
+      return {
+        databaseSize: dbSize.rows[0]?.db_size ?? 'unknown',
+        totalBytes: dbSize.rows[0]?.total_bytes ?? 0,
+        tables: tableSizes.rows,
+        activity: activity.rows,
+      };
+    } catch (error) {
+      return { error: databaseErrorMessage(error), tables: [] };
+    }
   }
 }

@@ -80,19 +80,27 @@ export class OddsIntelligenceRepository {
   }
 
   async upcoming(limit = 20, now = new Date(), mode: SearchMode = 'CLOSEST_NEIGHBORS'): Promise<OddsIntelligence[]> {
-    const raw = await this.targets(null, Math.max(1, Math.min(limit, 100)), now);
-    const prepared = raw.map((item) => ({ data: item.data, route: selectPrimary(routeCandidates(item.data, item.snapshots, now)) })).filter((item): item is { data: MatchOutcomeData; route: OddsRoute } => item.route != null);
-    const history = await this.historicalFor(prepared);
-    return prepared.map((item) => buildOddsIntelligence({ ...item.data, route: item.route }, history.get(item.data.matchId) ?? [],
-      { mode, limit: mode === 'ODDS_BAND' ? oddsNeighborConfig.bandLimit : oddsNeighborConfig.closestLimit }, now));
+    try {
+      const raw = await this.targets(null, Math.max(1, Math.min(limit, 100)), now);
+      const prepared = raw.map((item) => ({ data: item.data, route: selectPrimary(routeCandidates(item.data, item.snapshots, now)) })).filter((item): item is { data: MatchOutcomeData; route: OddsRoute } => item.route != null);
+      const history = await this.historicalFor(prepared);
+      return prepared.map((item) => buildOddsIntelligence({ ...item.data, route: item.route }, history.get(item.data.matchId) ?? [],
+        { mode, limit: mode === 'ODDS_BAND' ? oddsNeighborConfig.bandLimit : oddsNeighborConfig.closestLimit }, now));
+    } catch {
+      return [];
+    }
   }
 
   async byMatch(matchId: string, now = new Date()): Promise<OddsIntelligence | null> {
-    const raw = await this.targets(matchId, 1, now); const item = raw[0]; if (!item) return null;
-    const route = selectPrimary(routeCandidates(item.data, item.snapshots, now)); if (!route) return null;
-    const history = await this.historicalFor([{ data: item.data, route }]);
-    return buildOddsIntelligence({ ...item.data, route }, history.get(item.data.matchId) ?? [],
-      { mode: 'CLOSEST_NEIGHBORS', limit: oddsNeighborConfig.closestLimit }, now);
+    try {
+      const raw = await this.targets(matchId, 1, now); const item = raw[0]; if (!item) return null;
+      const route = selectPrimary(routeCandidates(item.data, item.snapshots, now)); if (!route) return null;
+      const history = await this.historicalFor([{ data: item.data, route }]);
+      return buildOddsIntelligence({ ...item.data, route }, history.get(item.data.matchId) ?? [],
+        { mode: 'CLOSEST_NEIGHBORS', limit: oddsNeighborConfig.closestLimit }, now);
+    } catch {
+      return null;
+    }
   }
 
   async historyAudit(limit = 5000) {

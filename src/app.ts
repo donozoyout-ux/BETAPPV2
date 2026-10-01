@@ -74,7 +74,20 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
   };
 
   const loadDashboardSourcesUncached = async () => {
-    const data = await repository.dashboardData('Europe/Istanbul');
+    const emptyData = {
+      matches: [],
+      recentFinishedMatches: [],
+      archiveSummary: null,
+      providers: [],
+      qualification: [],
+      cornerAnalyses: [],
+      oddsAnalyses: [],
+      datasetAudit: null,
+      validation: null,
+      backfill: [],
+      odds: [],
+    };
+    const data = await optionalDashboardSource('repository.dashboardData', () => repository.dashboardData('Europe/Istanbul'), emptyData);
 
     const [today, previews, reviewCandidates] = await Promise.all([
       predictions ? optionalDashboardSource('predictions.today', () => predictions.today(), []) : [],
@@ -256,9 +269,14 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
 
   app.get('/data-coverage.js', async (_request, reply) => reply.type('application/javascript').send(dataPoolScript));
   app.get('/api/data-coverage', async (_request, reply) => {
-    const data = await repository.dataCoverage(config.SUPPORTED_COMPETITIONS);
-    reply.header('Cache-Control', 'private, max-age=300');
-    return { ...data, html: dataPoolCard(data) };
+    try {
+      const data = await repository.dataCoverage(config.SUPPORTED_COMPETITIONS);
+      reply.header('Cache-Control', 'private, max-age=300');
+      return { ...data, html: dataPoolCard(data) };
+    } catch {
+      reply.header('Cache-Control', 'no-store');
+      return { competitions: [], summary: {}, error: 'coverage_temporarily_unavailable' };
+    }
   });
 
   app.get('/health', async (_request, reply) => {
@@ -302,6 +320,8 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
       timestamp: new Date().toISOString() });
   });
 
+  app.get('/api/db-diagnostics', async () => repository.dbDiagnostics());
+
   app.get('/api/dashboard', async () => {
     const { data, today, previews, reviewCandidates, history, performance, selfAudit, segmentAudits,
       rootCauses, adaptiveProposals, oddsSimilarity, predictionDiagnostics, oddsIntelligenceData, apiFootballHealth } = await loadDashboardSources();
@@ -330,10 +350,19 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
     modelVersion: 'PREDICTION_V1', maxCurrentMatches: 4, maxHistoricalMatchesPerCurrent: 5,
     matches: predictions ? await predictions.oddsSimilarityShowcase(4, 5) : [],
   }));
-  app.get<{ Querystring: { mode?: 'CLOSEST_NEIGHBORS' | 'ODDS_BAND' } }>('/api/odds-intelligence/upcoming', async (request) => ({
-    engineVersion: 'ODDS_NEIGHBOR_V2', executionAuthority: false, aiPredictionAuthority: false,
-    analyses: oddsIntelligence ? await oddsIntelligence.upcoming(20, new Date(), request.query.mode === 'ODDS_BAND' ? 'ODDS_BAND' : 'CLOSEST_NEIGHBORS') : [],
-  }));
+  app.get<{ Querystring: { mode?: 'CLOSEST_NEIGHBORS' | 'ODDS_BAND' } }>('/api/odds-intelligence/upcoming', async (request) => {
+    try {
+      return {
+        engineVersion: 'ODDS_NEIGHBOR_V2', executionAuthority: false, aiPredictionAuthority: false,
+        analyses: oddsIntelligence ? await oddsIntelligence.upcoming(20, new Date(), request.query.mode === 'ODDS_BAND' ? 'ODDS_BAND' : 'CLOSEST_NEIGHBORS') : [],
+      };
+    } catch {
+      return {
+        engineVersion: 'ODDS_NEIGHBOR_V2', executionAuthority: false, aiPredictionAuthority: false,
+        analyses: [],
+      };
+    }
+  });
   app.get<{ Querystring: { limit?: string } }>('/api/odds-intelligence/audit/history', async (request) => {
     const requested = Number(request.query.limit ?? 5000);
     const limit = Number.isFinite(requested) && requested > 0 ? Math.trunc(requested) : 5000;

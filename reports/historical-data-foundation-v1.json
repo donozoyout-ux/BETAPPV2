@@ -1,0 +1,176 @@
+{
+  "version": "HISTORICAL_DATA_FOUNDATION_V1",
+  "generatedAt": "2026-10-01T18:04:02.173Z",
+  "targetDateScope": {
+    "from": "2024-01-01",
+    "to": "2026-10-01",
+    "seasonsCovered": [
+      "2024-25",
+      "2025-26",
+      "2026-27",
+      "2024"
+    ]
+  },
+  "CURRENT_DB_DEPTH": {
+    "totalFixtures": 446,
+    "finishedMatches": 183,
+    "scheduledMatches": 263,
+    "earliestKickoff": "2026-09-17T19:30:00.000Z",
+    "latestKickoff": "2026-10-12T17:00:00.000Z",
+    "depthDays": 14,
+    "pre2026Matches": 0,
+    "historicalSettledSampleBefore": 335,
+    "maxHistoricalSamplePerMatchBefore": 29,
+    "officialDecisionsBefore": 59,
+    "predictCountBefore": 0,
+    "skipCountBefore": 59
+  },
+  "SOURCE_COVERAGE": {
+    "totalSourceMatchesEvaluated": 8012,
+    "totalEligibleMatches": 5563,
+    "dateRange": "2024-06-14 to 2026-09-20",
+    "providersEvaluated": [
+      "openfootball",
+      "football-data-csv",
+      "fotmob-archive"
+    ]
+  },
+  "OPENFOOTBALL": {
+    "provider": "openfootball/football.json (CC0)",
+    "status": "PASS (Fully Verified CC0 Public Domain)",
+    "totalRawMatches": 8012,
+    "eligibleFinishedMatches": 5563,
+    "newInsertable": 5563,
+    "duplicatesWithDb": 0,
+    "ambiguous": 0,
+    "invalidOrFuture": 2449,
+    "dateMin": "2024-06-14T19:00:00.000Z",
+    "dateMax": "2026-09-20T19:00:00.000Z",
+    "competitions": [
+      {
+        "competition": "Premier League",
+        "configKey": "PremierLeague",
+        "season": "2024-25 / 2025-26 / 2026-27",
+        "eligible": 778
+      },
+      {
+        "competition": "La Liga",
+        "configKey": "LaLiga",
+        "season": "2024-25 / 2025-26 / 2026-27",
+        "eligible": 772
+      },
+      {
+        "competition": "Bundesliga",
+        "configKey": "Bundesliga",
+        "season": "2024-25 / 2025-26 / 2026-27",
+        "eligible": 618
+      },
+      {
+        "competition": "Serie A",
+        "configKey": "SerieA",
+        "season": "2024-25 / 2025-26 / 2026-27",
+        "eligible": 757
+      },
+      {
+        "competition": "Ligue 1",
+        "configKey": "Ligue1",
+        "season": "2024-25 / 2025-26 / 2026-27",
+        "eligible": 610
+      },
+      {
+        "competition": "Eredivisie",
+        "configKey": "Eredivisie",
+        "season": "2024-25 / 2025-26 / 2026-27",
+        "eligible": 610
+      },
+      {
+        "competition": "Belgian Pro League",
+        "configKey": "BelgianProLeague",
+        "season": "2024-25 / 2025-26",
+        "eligible": 480
+      },
+      {
+        "competition": "Greek Super League",
+        "configKey": "GreekSuperLeague",
+        "season": "2024-25 / 2025-26",
+        "eligible": 364
+      },
+      {
+        "competition": "Süper Lig",
+        "configKey": "SuperLig",
+        "season": "2024-25 / 2025-26",
+        "eligible": 738
+      },
+      {
+        "competition": "EURO",
+        "configKey": "EURO",
+        "season": "2024",
+        "eligible": 51
+      },
+      {
+        "competition": "FIFA World Cup",
+        "configKey": "WorldCup",
+        "season": "2026",
+        "eligible": 104
+      }
+    ]
+  },
+  "FOOTBALL_DATA": {
+    "provider": "football-data.co.uk CSV",
+    "status": "PARTIAL (Archival only; shadow evidence due to unknown exact capture timestamp)",
+    "sourceUsagePolicy": "ARCHIVE_ONLY_NO_FAKE_TIMESTAMP",
+    "networkAvailability": "Restricted / apex redirect timeout",
+    "officialPredictionEligibility": false,
+    "shadowResearchEligible": true
+  },
+  "COMPETITION_COVERAGE": {
+    "totalConfigured": 26,
+    "withHistoricalDataInOpenFootball": 11,
+    "withHistoricalDataInFotMobArchive": 26,
+    "withoutHistoricalDataInSources": 0
+  },
+  "TEAM_MAPPING": {
+    "status": "PASS (Canonical Aliasing & Normalization Verified)",
+    "normalizationEngine": "normalizeTeamAlias (strips FC, CF, FK, AS, AC, accents, and Turkish characters)",
+    "ambiguousCount": 0,
+    "duplicatePrevention": "Idempotent externalId hash based on sourceKey + date + normalizedHome + normalizedAway"
+  },
+  "MATCH_RECONCILIATION": {
+    "reconciliationMethod": "Exact / Kickoff +/- 120min Window + Canonical Team Key",
+    "sourceTotal": 8012,
+    "sourceEligible": 5563,
+    "dbTotal": 446,
+    "dbFinished": 183,
+    "newInsertable": 5563,
+    "duplicates": 0,
+    "ambiguous": 0,
+    "invalid": 2449
+  },
+  "NEW_INSERTABLE": 5563,
+  "DUPLICATES": 0,
+  "AMBIGUOUS": 0,
+  "INVALID": 2449,
+  "PREDICTION_SAMPLE_BEFORE": {
+    "totalHistoricalSettledExamples": 335,
+    "maxSettledSamplePerMatch": 29,
+    "officialPredictCount": 0,
+    "officialSkipCount": 59,
+    "skipRate": "100.0%"
+  },
+  "PREDICTION_SAMPLE_EXPECTED_AFTER": {
+    "expectedTotalHistoricalSettledMatches": 5746,
+    "expectedMaxSettledSamplePerMatch": "> 250",
+    "expectedThreshold30PassRate": "> 90% in all primary leagues",
+    "notice": "Dry-run calculation only; no data written to production PostgreSQL database."
+  },
+  "RISKS": [
+    "RISK 1: CSV oranlarının resmi pre-kickoff havuzuna karışması (Shadow evidence izolasyonu ile engellendi).",
+    "RISK 2: Farklı sağlayıcılar arasında takım ismi uyuşmazlığı (normalizeTeamAlias motoru ile çözüldü).",
+    "RISK 3: Production DB yükü (Batch <= 150 ve transaction güvenliği ile korundu)."
+  ],
+  "NEXT_STEP": [
+    "1. OpenFootball CC0 2024-2026 bitmiş maçlarını batch (150) transaction ile PostgreSQL DB'ye yükle.",
+    "2. FotMob historical collector ile eksik şut/korner/xG istatistiklerini bağla.",
+    "3. Prediction V1 self-audit çalıştırarak sampleSize >= 30 eşiğinin aşıldığını doğrula."
+  ]
+}

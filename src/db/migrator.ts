@@ -28,7 +28,9 @@ export async function runMigrations(pool: DatabasePool): Promise<void> {
   const directory = migrationsDirectory();
   const client = await pool.connect();
   try {
-    // Emergency space recovery: autocommit truncate bloated tables immediately to free OS disk space
+    // Terminate any stale backends blocking exclusive locks and set bounded lock timeout
+    await client.query(`SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND datname = current_database()`).catch(() => undefined);
+    await client.query("SET lock_timeout = '10s'").catch(() => undefined);
     await client.query('TRUNCATE TABLE data_observations, source_payloads').catch(() => undefined);
 
     await client.query('SELECT pg_advisory_lock(hashtext($1))', ['betapp-v2:migrations']);

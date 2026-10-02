@@ -45,7 +45,8 @@ describe('Nowgoal odds provider', () => {
       ] }), { status: 200 });
     });
     vi.stubGlobal('fetch', fetchMock);
-    const config = loadConfig({ DATABASE_URL: 'postgresql://localhost/betapp', NOWGOAL_COMPANY_IDS: '22' });
+    const config = loadConfig({ DATABASE_URL: 'postgresql://localhost/betapp', NOWGOAL_COMPANY_IDS: '22',
+      NOWGOAL_BASE_URL: 'https://nowgoal.test/wp-json/sport-theme-plugin/v1/proxy' });
     const provider = new NowgoalProvider(config, createLogger({ ...config, LOG_LEVEL: 'silent' }, 'test'));
     const matches = await provider.getPrematchOddsForDate(new Date('2026-09-18T00:00:00Z'));
     expect(matches).toHaveLength(1);
@@ -84,7 +85,8 @@ describe('Nowgoal odds provider', () => {
   });
 
   it('logs the actual skip gate when a scheduled fixture has no normalized odds', async () => {
-    const config = loadConfig({ DATABASE_URL: 'postgresql://localhost/betapp', NOWGOAL_COMPANY_IDS: '2' });
+    const config = loadConfig({ DATABASE_URL: 'postgresql://localhost/betapp', NOWGOAL_COMPANY_IDS: '2',
+      NOWGOAL_BASE_URL: 'https://provider.example.test/proxy' });
     const { entries, logger } = captureLogger();
     const provider = new NowgoalProvider(config, logger);
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
@@ -98,4 +100,40 @@ describe('Nowgoal odds provider', () => {
     expect(entries.find((entry) => entry.fields.event === 'PREMATCH_FIXTURE_SKIPPED')?.fields.reason).toBe('NO_ODDS');
     expect(JSON.stringify(entries)).not.toContain('only-for-hash');
   });
+
+  it('supports direct SoccerAjax endpoint for health check and fixtures with type 4 odds', async () => {
+    const config = loadConfig({ DATABASE_URL: 'postgresql://localhost/betapp', NOWGOAL_BASE_URL: 'https://www.nowgoal26.com' });
+    const { entries, logger } = captureLogger();
+    const provider = new NowgoalProvider(config, logger);
+
+    const type6Data = 'var A=Array(2);var B=Array(2);A[1]=[1001,1,10,20,\'Arsenal\',\'Chelsea\',\'2026,8,20,15,00,00\',0];B[1]=[1,\'PL\',\'Premier League\'];';
+    const type4Data = '1001,8,Bet365#Ear,0,0,,,,,,,0.90,0.50,0.90,0.90,0.50,0.90,,,,,,,0.85,2.50,0.95,0.85,2.50,0.95,,,,,,,2.10,3.40,3.20,2.10,3.40,3.20';
+
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes('type=6')) {
+        return new Response(JSON.stringify({ ErrCode: 0, Data: type6Data }), { status: 200 });
+      }
+      if (url.includes('type=4')) {
+        return new Response(JSON.stringify({ ErrCode: 0, Data: type4Data }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ ErrCode: -1 }), { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const health = await provider.healthCheck();
+    expect(health.ok).toBe(true);
+
+    const matches = await provider.getPrematchOddsForDate(new Date('2026-09-20T00:00:00Z'));
+    expect(matches).toHaveLength(1);
+    expect(matches[0]?.fixture).toMatchObject({
+      providerMatchId: '1001',
+      homeTeam: 'Arsenal',
+      awayTeam: 'Chelsea',
+      leagueName: 'Premier League',
+    });
+    expect(matches[0]?.odds.length).toBeGreaterThanOrEqual(7);
+    expect(matches[0]?.odds.find((o) => o.marketType === 'MATCH_RESULT' && o.selection === 'HOME')?.oddsDecimal).toBe(2.1);
+  });
 });
+

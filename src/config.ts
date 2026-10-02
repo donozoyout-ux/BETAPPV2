@@ -113,7 +113,7 @@ const schema = z.object({
   FOTMOB_BASE_URL: z.string().url().default('https://www.fotmob.com/api/data'),
   IDDAA_BASE_URL: z.string().url().default('https://www.iddaa.com'),
   FLASHSCORE_BASE_URL: z.string().url().default('https://www.flashscore.com'),
-  NOWGOAL_BASE_URL: z.string().url().default('https://nowgoal816.com/wp-json/sport-theme-plugin/v1/proxy'),
+  NOWGOAL_BASE_URL: z.string().url().default('https://www.nowgoal26.com'),
   PROVIDER_CIRCUIT_FAILURE_THRESHOLD: z.coerce.number().int().min(1).max(20).default(3),
   PROVIDER_CIRCUIT_COOLDOWN_MS: z.coerce.number().int().min(10_000).default(300_000),
   NVIDIA_API_KEY: z.string().default(''),

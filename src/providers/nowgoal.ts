@@ -107,16 +107,93 @@ function safeFixtureRef(providerMatchId: string | undefined): string | null {
 }
 
 function parseUtc(value: string): Date {
+  if (value.includes(',')) {
+    const p = value.split(',').map(Number);
+    return new Date(Date.UTC(p[0]!, p[1]!, p[2]!, p[3] ?? 0, p[4] ?? 0, p[5] ?? 0));
+  }
   return new Date(`${value.replace(' ', 'T')}Z`);
+}
+
+export function parseNowgoalType4Odds(
+  data: string,
+  nowgoalMatchId: string,
+  companyNames: Readonly<Record<number, string>> = nowgoalCompanies,
+  capturedAt = new Date(),
+): NormalizedOdds[] {
+  const normalizedOdds: NormalizedOdds[] = [];
+  for (const companyBlock of data.split('!')) {
+    const split = companyBlock.indexOf('#');
+    if (split < 0) continue;
+    const [providerId, bookmakerIdStr, bookmakerName] = companyBlock.slice(0, split).split(',');
+    if (providerId !== nowgoalMatchId || !bookmakerIdStr) continue;
+    const companyId = Number(bookmakerIdStr);
+    const bookmaker = (companyNames[companyId] ?? bookmakerName?.trim() ?? `company_${companyId}`)
+      .toLowerCase().replace(/[^a-z0-9_]/g, '_');
+
+    const rawRows = companyBlock.slice(split + 1).split('^');
+    for (const rawRow of rawRows) {
+      const row = rawRow.split(',');
+      if (row.length < 36) continue;
+      const num = (v: string | undefined): number | null => {
+        if (!v || v.trim() === '') return null;
+        const p = Number(v.trim().replace(',', '.'));
+        return Number.isFinite(p) ? p : null;
+      };
+      const oddsVal = (v: string | undefined): number | null => {
+        const p = num(v);
+        return p != null && p > 1 && p <= 1000 ? p : null;
+      };
+      const hkOddsVal = (v: string | undefined): number | null => {
+        const p = num(v);
+        return p != null && p > 0 && p <= 1000 ? Math.round((p + 1) * 10_000) / 10_000 : null;
+      };
+
+      const h1x2 = oddsVal(row[33]);
+      const d1x2 = oddsVal(row[34]);
+      const a1x2 = oddsVal(row[35]);
+      if (h1x2 != null && d1x2 != null && a1x2 != null) {
+        normalizedOdds.push(
+          { provider: `nowgoal:${bookmaker}`, providerMatchId: nowgoalMatchId, marketType: 'MATCH_RESULT', marketName: '1X2', line: null, selection: 'HOME', oddsDecimal: h1x2, capturedAt },
+          { provider: `nowgoal:${bookmaker}`, providerMatchId: nowgoalMatchId, marketType: 'MATCH_RESULT', marketName: '1X2', line: null, selection: 'DRAW', oddsDecimal: d1x2, capturedAt },
+          { provider: `nowgoal:${bookmaker}`, providerMatchId: nowgoalMatchId, marketType: 'MATCH_RESULT', marketName: '1X2', line: null, selection: 'AWAY', oddsDecimal: a1x2, capturedAt },
+        );
+      }
+
+      const ahHome = hkOddsVal(row[9]);
+      const ahLine = num(row[10]);
+      const ahAway = hkOddsVal(row[11]);
+      if (ahHome != null && ahAway != null && ahLine != null) {
+        normalizedOdds.push(
+          { provider: `nowgoal:${bookmaker}`, providerMatchId: nowgoalMatchId, marketType: 'ASIAN_HANDICAP', marketName: 'Asian Handicap', line: ahLine, selection: 'HOME', oddsDecimal: ahHome, capturedAt },
+          { provider: `nowgoal:${bookmaker}`, providerMatchId: nowgoalMatchId, marketType: 'ASIAN_HANDICAP', marketName: 'Asian Handicap', line: ahLine, selection: 'AWAY', oddsDecimal: ahAway, capturedAt },
+        );
+      }
+
+      const ouOver = hkOddsVal(row[21]);
+      const ouLine = num(row[22]);
+      const ouUnder = hkOddsVal(row[23]);
+      if (ouOver != null && ouUnder != null && ouLine != null) {
+        normalizedOdds.push(
+          { provider: `nowgoal:${bookmaker}`, providerMatchId: nowgoalMatchId, marketType: 'TOTAL_GOALS', marketName: 'Total Goals', line: ouLine, selection: 'OVER', oddsDecimal: ouOver, capturedAt },
+          { provider: `nowgoal:${bookmaker}`, providerMatchId: nowgoalMatchId, marketType: 'TOTAL_GOALS', marketName: 'Total Goals', line: ouLine, selection: 'UNDER', oddsDecimal: ouUnder, capturedAt },
+        );
+      }
+
+      if (normalizedOdds.some((o) => o.provider === `nowgoal:${bookmaker}`)) break;
+    }
+  }
+  return normalizedOdds;
 }
 
 export class NowgoalProvider implements OddsProvider, QualifiableProvider {
   readonly name = 'nowgoal';
   private readonly http: ResilientHttpClient;
   private readonly companyIds: number[];
+  private readonly isDirect: boolean;
 
   constructor(private readonly config: AppConfig, private readonly logger: Logger) {
     this.companyIds = config.NOWGOAL_COMPANY_IDS;
+    this.isDirect = !config.NOWGOAL_BASE_URL.includes('/proxy') && !config.NOWGOAL_BASE_URL.includes('wp-json');
     this.http = new ResilientHttpClient({ baseUrl: config.NOWGOAL_BASE_URL.replace(/\/$/, ''),
       timeoutMs: config.PROVIDER_TIMEOUT_MS, requestsPerSecond: config.PROVIDER_REQUESTS_PER_SECOND,
       maxRetries: config.PROVIDER_MAX_RETRIES, logger });
@@ -147,6 +224,85 @@ export class NowgoalProvider implements OddsProvider, QualifiableProvider {
   }
 
   async getPrematchOddsForDate(date: Date): Promise<MatchOdds[]> {
+    if (this.isDirect) {
+      return this.getPrematchOddsDirect(date);
+    }
+    return this.getPrematchOddsProxy(date);
+  }
+
+  private async getPrematchOddsDirect(date: Date): Promise<MatchOdds[]> {
+    const url = `/Ajax/SoccerAjax?type=6&date=${dateOnly(date)}&p=${Date.now()}`;
+    const matchRequest = await this.requestJson<{ ErrCode?: number; Data?: string }>(url, date, 'fixture_diary');
+    const rawData = matchRequest.payload?.Data ?? '';
+    const sandbox: { A?: unknown[][]; B?: unknown[][]; ShowBf?: () => void } = { ShowBf: () => {} };
+    try {
+      const fn = new Function('sandbox', `var ShowBf = sandbox.ShowBf; ${rawData}; sandbox.A = A; sandbox.B = B;`);
+      fn(sandbox);
+    } catch {
+      this.logResponse(date, 'fixture_diary', matchRequest.status, 0);
+      return [];
+    }
+    const rawMatches = (sandbox.A || []).filter(Boolean) as unknown[][];
+    const leagues = sandbox.B || [];
+    this.logResponse(date, 'fixture_diary', matchRequest.status, rawMatches.length);
+
+    const capturedAt = new Date();
+    const scheduledMatches = rawMatches.filter((m) => m[7] === 0 && m[0] && m[4] && m[5]);
+    const candidates: MatchOdds[] = [];
+    let totalQuotes = 0;
+
+    // Fetch type=4 odds for scheduled matches
+    for (const m of scheduledMatches) {
+      const scheduleId = String(m[0]);
+      const leagueIndex = Number(m[1]);
+      const leagueItem = leagues[leagueIndex] as unknown[] | undefined;
+      const leagueName = leagueItem ? String(leagueItem[2] || leagueItem[1] || '') : null;
+      const fixtureRef = safeFixtureRef(scheduleId);
+      const homeTeam = String(m[4]);
+      const awayTeam = String(m[5]);
+      const kickoffStr = String(m[6] || '');
+      const kickoffAt = parseUtc(kickoffStr);
+
+      if (Number.isNaN(kickoffAt.getTime())) {
+        this.logger.info({ event: 'PREMATCH_FIXTURE_SKIPPED', fixtureRef, competition: leagueName, kickoff: kickoffStr,
+          provider: this.name, status: 'scheduled', reason: 'INVALID_FIXTURE', count: 0 }, 'PREMATCH_FIXTURE_SKIPPED');
+        continue;
+      }
+
+      let odds: NormalizedOdds[] = [];
+      try {
+        const oddsReq = await this.requestJson<{ ErrCode?: number; Data?: string }>(
+          `/Ajax/SoccerAjax?type=4&id=${scheduleId}&p=${Date.now()}`, date, 'odds_diary');
+        if (oddsReq.payload?.Data) {
+          odds = parseNowgoalType4Odds(oddsReq.payload.Data, scheduleId, nowgoalCompanies, capturedAt);
+        }
+        this.logResponse(date, 'odds_diary', oddsReq.status, odds.length);
+      } catch {
+        // Continue with next fixture if single odds request fails
+      }
+
+      if (!odds.length) {
+        this.logger.info({ event: 'PREMATCH_FIXTURE_SKIPPED', fixtureRef, competition: leagueName,
+          kickoff: kickoffAt.toISOString(), provider: this.name, status: 'scheduled', reason: 'NO_ODDS', count: 0 },
+        'PREMATCH_FIXTURE_SKIPPED');
+        continue;
+      }
+
+      totalQuotes += odds.length;
+      const fixture: OddsFixture = { providerMatchId: scheduleId, kickoffAt, homeTeam, awayTeam, leagueName };
+      candidates.push({ fixture, odds });
+      this.logger.info({ event: 'PREMATCH_FIXTURE_CANDIDATE', fixtureRef, competition: leagueName,
+        kickoff: kickoffAt.toISOString(), provider: this.name, status: 'scheduled', count: odds.length },
+      'PREMATCH_FIXTURE_CANDIDATE');
+    }
+
+    this.logger.info({ event: 'PREMATCH_ODDS_NORMALIZED', provider: this.name, date: dateOnly(date),
+      sourceRowCount: totalQuotes, normalizedQuoteCount: totalQuotes, candidateCount: candidates.length },
+    'PREMATCH_ODDS_NORMALIZED');
+    return candidates;
+  }
+
+  private async getPrematchOddsProxy(date: Date): Promise<MatchOdds[]> {
     const query = `date=${dateOnly(date)}&timeRange=all&lang=en&ishot=0&halfOdd=0`;
     const matchRequest = await this.requestJson<MatchDiaryResponse>(
       this.proxyPath(`/v1/football/match/diary?${query}`), date, 'fixture_diary');
@@ -214,6 +370,14 @@ export class NowgoalProvider implements OddsProvider, QualifiableProvider {
   async healthCheck() {
     const startedAt = Date.now();
     try {
+      if (this.isDirect) {
+        const url = `/Ajax/SoccerAjax?type=6&date=${dateOnly(new Date())}&p=${Date.now()}`;
+        const response = await this.requestJson<{ ErrCode?: number; Data?: string }>(url, new Date(), 'fixture_diary_health');
+        const ok = response.payload?.ErrCode === 0 && Boolean(response.payload?.Data);
+        this.logResponse(new Date(), 'fixture_diary_health', response.status, ok ? 1 : 0);
+        return { provider: this.name, ok, checkedAt: new Date(), latencyMs: Date.now() - startedAt,
+          message: ok ? 'Direct SoccerAjax reachable' : 'Invalid response from SoccerAjax' };
+      }
       const query = `date=${dateOnly(new Date())}&timeRange=all&lang=en&ishot=0&halfOdd=0`;
       const response = await this.requestJson<MatchDiaryResponse>(
         this.proxyPath(`/v1/football/match/diary?${query}`), new Date(), 'fixture_diary_health');

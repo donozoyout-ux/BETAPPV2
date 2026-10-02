@@ -54,7 +54,7 @@ services:
       - key: NOWGOAL_COMPANY_IDS
         value: 2,3,4,14,15,22,136
       - key: NOWGOAL_BASE_URL
-        value: https://nowgoal816.com/wp-json/sport-theme-plugin/v1/proxy
+        value: https://www.nowgoal26.com
       - key: SUPPORTED_COMPETITIONS
         value: PremierLeague,LaLiga,Bundesliga,SerieA,Ligue1,SuperLig,ChampionsLeague,EuropaLeague,ConferenceLeague,BrasileiraoSerieA,WorldCup,EURO,EUROQualification,UefaNationsLeagueA,UefaNationsLeagueB,UefaNationsLeagueC,UefaNationsLeagueD,WorldCupQualificationUEFA,CopaAmerica,WorldCupQualificationCONMEBOL,InternationalFriendlies,Eredivisie,BelgianProLeague,DanishSuperliga,Allsvenskan,GreekSuperLeague
       - key: GROQ_API_KEY
@@ -167,7 +167,7 @@ services:
       - key: NOWGOAL_COMPANY_IDS
         value: 2,3,4,14,15,22,136
       - key: NOWGOAL_BASE_URL
-        value: https://nowgoal816.com/wp-json/sport-theme-plugin/v1/proxy
+        value: https://www.nowgoal26.com
       - key: SUPPORTED_COMPETITIONS
         value: PremierLeague,LaLiga,Bundesliga,SerieA,Ligue1,SuperLig,ChampionsLeague,EuropaLeague,ConferenceLeague,BrasileiraoSerieA,WorldCup,EURO,EUROQualification,UefaNationsLeagueA,UefaNationsLeagueB,UefaNationsLeagueC,UefaNationsLeagueD,WorldCupQualificationUEFA,CopaAmerica,WorldCupQualificationCONMEBOL,InternationalFriendlies,Eredivisie,BelgianProLeague,DanishSuperliga,Allsvenskan,GreekSuperLeague
       - key: COLLECTOR_INTERVAL_MS

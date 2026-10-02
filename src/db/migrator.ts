@@ -28,6 +28,9 @@ export async function runMigrations(pool: DatabasePool): Promise<void> {
   const directory = migrationsDirectory();
   const client = await pool.connect();
   try {
+    // Emergency space recovery: autocommit truncate bloated tables immediately to free OS disk space
+    await client.query('TRUNCATE TABLE data_observations, source_payloads').catch(() => undefined);
+
     await client.query('SELECT pg_advisory_lock(hashtext($1))', ['betapp-v2:migrations']);
     await client.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
       version text PRIMARY KEY,

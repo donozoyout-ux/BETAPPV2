@@ -723,32 +723,9 @@ export class FootballRepository {
       await client.query('BEGIN');
       await client.query('TRUNCATE TABLE data_observations');
       await client.query('TRUNCATE TABLE source_payloads');
-      await client.query(`
-        DO $$
-        BEGIN
-          IF EXISTS (
-            SELECT 1 FROM pg_constraint
-            WHERE conrelid = 'data_observations'::regclass AND contype = 'p'
-          ) THEN
-            EXECUTE (
-              SELECT 'ALTER TABLE data_observations DROP CONSTRAINT ' || quote_ident(conname)
-              FROM pg_constraint
-              WHERE conrelid = 'data_observations'::regclass AND contype = 'p'
-            );
-          END IF;
-          IF EXISTS (
-            SELECT 1 FROM pg_constraint
-            WHERE conrelid = 'source_payloads'::regclass AND contype = 'p'
-          ) THEN
-            EXECUTE (
-              SELECT 'ALTER TABLE source_payloads DROP CONSTRAINT ' || quote_ident(conname)
-              FROM pg_constraint
-              WHERE conrelid = 'source_payloads'::regclass AND contype = 'p'
-            );
-          END IF;
-        END $$;
-      `);
+      await client.query('ALTER TABLE data_observations DROP CONSTRAINT IF EXISTS data_observations_pkey');
       await client.query('ALTER TABLE data_observations ADD PRIMARY KEY (match_id, metric, provider)');
+      await client.query('ALTER TABLE source_payloads DROP CONSTRAINT IF EXISTS source_payloads_pkey');
       await client.query('ALTER TABLE source_payloads ADD PRIMARY KEY (provider, entity_type, external_id)');
       await client.query('COMMIT');
       return { success: true, message: 'Database tables truncated and bounded successfully', diagnostics: await this.dbDiagnostics() };

@@ -7,7 +7,7 @@ import { liveRecommendationCard, liveRecommendationsPollScript } from './live/re
 import { controlAuditCard, controlAuditPollScript } from './control-audit-view.js';
 import type { ControlAuditService } from './control-audit.js';
 import helmet from '@fastify/helmet';
-import Fastify from 'fastify';
+import Fastify, { type FastifyRequest } from 'fastify';
 import type { AppConfig } from './config.js';
 import type { FootballRepository } from './db/repository.js';
 import type { OddsAnalysisRepository } from './db/odds-analysis-repository.js';
@@ -49,6 +49,14 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
   const app = Fastify({ loggerInstance: logger });
   const ai = aiService ?? new AiService(config, { logger });
   void app.register(helmet, { contentSecurityPolicy: false });
+
+  const isProduction = config.NODE_ENV === 'production';
+  const adminToken = config.ADMIN_API_TOKEN?.trim();
+  const adminRouteAllowed = (request: FastifyRequest): boolean => {
+    if (!isProduction) return true;
+    if (!adminToken) return false;
+    return request.headers['x-admin-token'] === adminToken;
+  };
 
   const competitionAllowed = (row: Record<string, unknown>): boolean => {
     const league = row.league ?? row.competition;
@@ -320,9 +328,17 @@ export function buildApp(config: AppConfig, repository: FootballRepository, logg
       timestamp: new Date().toISOString() });
   });
 
-  app.get('/api/db-diagnostics', async () => repository.dbDiagnostics());
-  app.get('/api/db-cleanup', async () => repository.dbCleanup());
-  app.post('/api/db-cleanup', async () => repository.dbCleanup());
+  // Privileged operational endpoints. Disabled in production unless a matching
+  // ADMIN_API_TOKEN is supplied. The destructive cleanup endpoint is POST-only and
+  // must never be reachable via GET.
+  app.get('/api/db-diagnostics', async (request, reply) => {
+    if (!adminRouteAllowed(request)) return reply.code(404).send({ error: 'not_found' });
+    return repository.dbDiagnostics();
+  });
+  app.post('/api/db-cleanup', async (request, reply) => {
+    if (!adminRouteAllowed(request)) return reply.code(404).send({ error: 'not_found' });
+    return repository.dbCleanup();
+  });
 
   app.get('/api/dashboard', async () => {
     const { data, today, previews, reviewCandidates, history, performance, selfAudit, segmentAudits,

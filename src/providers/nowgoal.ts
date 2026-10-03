@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { z } from 'zod';
 import type { AppConfig } from '../config.js';
 import type { MatchOdds, NormalizedOdds, OddsFixture, OddsProvider } from '../domain/odds.js';
 import type { Logger } from '../logger.js';
@@ -112,6 +113,95 @@ function parseUtc(value: string): Date {
     return new Date(Date.UTC(p[0]!, p[1]!, p[2]!, p[3] ?? 0, p[4] ?? 0, p[5] ?? 0));
   }
   return new Date(`${value.replace(' ', 'T')}Z`);
+}
+
+export const nowgoalDirectResponseSchema = z.object({
+  ErrCode: z.number().optional(),
+  Data: z.string().optional(),
+});
+
+type ParsedScalar = string | number | boolean | null;
+type ParsedValue = ParsedScalar | ParsedValue[];
+
+// Deterministic, non-executing reader for the fixture diary payload. The provider
+// returns JavaScript-like array assignments (A[i]=[...]; B[i]=[...]). We read only
+// array literals and ignore every other token, so no remote code is ever evaluated.
+function parseJsArrayLiteral(input: string, start: number): { value: ParsedValue[]; next: number } | null {
+  if (input[start] !== '[') return null;
+  const value: ParsedValue[] = [];
+  let i = start + 1;
+  let expectValue = true;
+  while (i < input.length) {
+    while (i < input.length && /\s/.test(input[i]!)) i += 1;
+    if (i >= input.length) return null;
+    const ch = input[i]!;
+    if (ch === ']') return { value, next: i + 1 };
+    if (ch === ',') {
+      if (expectValue) value.push(null);
+      expectValue = true;
+      i += 1;
+      continue;
+    }
+    if (ch === '[') {
+      const nested = parseJsArrayLiteral(input, i);
+      if (!nested) return null;
+      value.push(nested.value);
+      i = nested.next;
+      expectValue = false;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      const quote = ch;
+      let text = '';
+      i += 1;
+      while (i < input.length && input[i] !== quote) {
+        if (input[i] === '\\' && i + 1 < input.length) {
+          const escaped = input[i + 1]!;
+          text += escaped === 'n' ? '\n' : escaped === 't' ? '\t' : escaped;
+          i += 2;
+        } else {
+          text += input[i];
+          i += 1;
+        }
+      }
+      if (i >= input.length) return null;
+      i += 1;
+      value.push(text);
+      expectValue = false;
+      continue;
+    }
+    let end = i;
+    while (end < input.length && input[end] !== ',' && input[end] !== ']') end += 1;
+    const token = input.slice(i, end).trim();
+    i = end;
+    if (token === 'true') value.push(true);
+    else if (token === 'false') value.push(false);
+    else if (token === '' || token === 'null' || token === 'undefined') value.push(null);
+    else if (/^-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(token)) value.push(Number(token));
+    else value.push(token);
+    expectValue = false;
+  }
+  return null;
+}
+
+export function parseNowgoalFixtureDiary(data: string): { matches: unknown[][]; leagues: unknown[][] } {
+  const matches: unknown[][] = [];
+  const leagues: unknown[][] = [];
+  const assignment = /(?:^|[;{}\s])([AB])\s*(?:\[\s*(\d+)\s*\])?\s*=\s*\[/g;
+  let found: RegExpExecArray | null;
+  while ((found = assignment.exec(data)) !== null) {
+    const name = found[1];
+    if (name !== 'A' && name !== 'B') continue;
+    const index = found[2] != null ? Number(found[2]) : null;
+    const bracketStart = found.index + found[0].length - 1;
+    const parsed = parseJsArrayLiteral(data, bracketStart);
+    if (!parsed) continue;
+    const bucket = name === 'A' ? matches : leagues;
+    if (index != null && Number.isFinite(index)) bucket[index] = parsed.value;
+    else if (parsed.value.length) bucket.push(parsed.value);
+    assignment.lastIndex = parsed.next;
+  }
+  return { matches, leagues };
 }
 
 export function parseNowgoalType4Odds(
@@ -232,18 +322,22 @@ export class NowgoalProvider implements OddsProvider, QualifiableProvider {
 
   private async getPrematchOddsDirect(date: Date): Promise<MatchOdds[]> {
     const url = `/Ajax/SoccerAjax?type=6&date=${dateOnly(date)}&p=${Date.now()}`;
-    const matchRequest = await this.requestJson<{ ErrCode?: number; Data?: string }>(url, date, 'fixture_diary');
-    const rawData = matchRequest.payload?.Data ?? '';
-    const sandbox: { A?: unknown[][]; B?: unknown[][]; ShowBf?: () => void } = { ShowBf: () => {} };
-    try {
-      const fn = new Function('sandbox', `var ShowBf = sandbox.ShowBf; ${rawData}; sandbox.A = A; sandbox.B = B;`);
-      fn(sandbox);
-    } catch {
+    const matchRequest = await this.requestJson<unknown>(url, date, 'fixture_diary');
+    const response = nowgoalDirectResponseSchema.safeParse(matchRequest.payload);
+    if (!response.success) {
+      this.logger.warn({ event: 'PREMATCH_FIXTURE_PARSE', provider: this.name, date: dateOnly(date),
+        requestType: 'fixture_diary', reason: 'PARSE_ERROR', count: 0 }, 'PREMATCH_FIXTURE_PARSE');
       this.logResponse(date, 'fixture_diary', matchRequest.status, 0);
       return [];
     }
-    const rawMatches = (sandbox.A || []).filter(Boolean) as unknown[][];
-    const leagues = sandbox.B || [];
+    const rawData = response.data.Data ?? '';
+    const fixture = parseNowgoalFixtureDiary(rawData);
+    const rawMatches = fixture.matches.filter(Boolean);
+    const leagues = fixture.leagues;
+    if (rawData && rawMatches.length === 0) {
+      this.logger.warn({ event: 'PREMATCH_FIXTURE_PARSE', provider: this.name, date: dateOnly(date),
+        requestType: 'fixture_diary', reason: 'NO_DATA', count: 0 }, 'PREMATCH_FIXTURE_PARSE');
+    }
     this.logResponse(date, 'fixture_diary', matchRequest.status, rawMatches.length);
 
     const capturedAt = new Date();

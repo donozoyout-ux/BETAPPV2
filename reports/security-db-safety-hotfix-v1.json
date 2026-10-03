@@ -1,0 +1,109 @@
+{
+  "report": "security-db-safety-hotfix-v1",
+  "generatedAt": "2026-10-03",
+  "scope": "read-only audit bulgularinin production guvenligi ve DB emniyeti icin duzeltilmesi",
+  "push": false,
+  "changedFiles": [
+    "src/db/migrator.ts",
+    "src/app.ts",
+    "src/config.ts",
+    "src/providers/nowgoal.ts",
+    "test/unit/nowgoal.test.ts",
+    "test/unit/migrator-startup-safety.test.ts",
+    "test/unit/security-source-regression.test.ts",
+    "test/unit/db-admin-guard.test.ts",
+    "test/unit/nowgoal-safe-parser.test.ts"
+  ],
+  "findings": [
+    {
+      "id": "FIX-1",
+      "title": "Startup TRUNCATE removal",
+      "status": "FIXED",
+      "file": "src/db/migrator.ts",
+      "before": "await client.query('TRUNCATE TABLE data_observations, source_payloads').catch(() => undefined);",
+      "after": "query removed; only SET lock_timeout and pg_advisory_lock remain before migration loop",
+      "securityImpact": "Her deploy/restart'ta observability/provenance tablolarinin silinmesi durduruldu; migration idempotency ve advisory lock korundu",
+      "migrationBehavior": "schema_migrations dongusu, BEGIN/COMMIT ve error handling degismedi; 020 migration yalnizca bir kez calisir"
+    },
+    {
+      "id": "FIX-2",
+      "title": "Unauthenticated destructive endpoint hardening",
+      "status": "FIXED",
+      "file": "src/app.ts, src/config.ts",
+      "before": "GET+POST /api/db-cleanup ve GET /api/db-diagnostics auth olmadan acik",
+      "after": "GET /api/db-cleanup kaldirildi; POST /api/db-cleanup ve GET /api/db-diagnostics production'da ADMIN_API_TOKEN/x-admin-token guard arkasinda, aksi halde 404",
+      "securityImpact": "Anonim destructive GET kaldirildi; production'da token yoksa endpointler tamamen devre disi",
+      "productionCleanupEndpointBehavior": "GET yok; POST yalnizca dogru x-admin-token ile; anonymous 404 ve repository.dbCleanup cagrilmiyor",
+      "configAdded": "ADMIN_API_TOKEN (optional)"
+    },
+    {
+      "id": "FIX-3",
+      "title": "Nowgoal remote JavaScript execution removal",
+      "status": "FIXED",
+      "file": "src/providers/nowgoal.ts",
+      "before": "new Function('sandbox', ...rawData...); fn(sandbox);",
+      "after": "zod schema validation + deterministic parseNowgoalFixtureDiary array-literal parser; no eval/new Function/vm",
+      "securityImpact": "Remote provider Data alani artik kod olarak calistirilamaz; RCE primitifi kaldirildi",
+      "parserBehavior": "Yalnizca A[i]=[...] / B[i]=[...] array literalleri okunur; diger ifadeler yok sayilir; gecersiz payload NO_DATA/PARSE_ERROR ile [] doner, crash yok, sahte odds yok"
+    },
+    {
+      "id": "FIX-4",
+      "title": "pg_terminate_backend removal",
+      "status": "FIXED",
+      "file": "src/db/migrator.ts",
+      "before": "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND datname = current_database()",
+      "after": "query removed; migration serialization only via pg_advisory_lock",
+      "securityImpact": "Web/worker/health/backfill ve diger servis baglantilari startup'ta sonlandirilmiyor"
+    }
+  ],
+  "tests": {
+    "framework": "vitest",
+    "unit": {
+      "status": "PASS",
+      "files": 58,
+      "tests": 317
+    },
+    "integration": {
+      "status": "NOT_RUN",
+      "reason": "Docker daemon unreachable; Testcontainers cannot start",
+      "affected": [
+        "test/integration/repository.test.ts",
+        "test/integration/nowgoal-live-odds.test.ts"
+      ]
+    },
+    "newRegressionTests": [
+      "test/unit/migrator-startup-safety.test.ts",
+      "test/unit/security-source-regression.test.ts",
+      "test/unit/db-admin-guard.test.ts",
+      "test/unit/nowgoal-safe-parser.test.ts"
+    ]
+  },
+  "verification": {
+    "npm_ci": "ABORTED_BY_USER",
+    "npm_run_typecheck": "PASS",
+    "npm_run_lint": "PASS",
+    "npm_test_unit": "PASS",
+    "npm_test_full": "PARTIAL_DOCKER_UNAVAILABLE",
+    "npm_run_build": "PASS"
+  },
+  "constraints": {
+    "PREDICTION_LOGIC_CHANGED": "NO",
+    "ODDS_ANALYSIS_CHANGED": "NO",
+    "ODDS_SCHEDULING_CHANGED": "NO",
+    "AI_CHANGED": "NO",
+    "HISTORICAL_BACKFILL_CHANGED": "NO",
+    "DOMAIN_SCHEMA_CHANGED": "NO"
+  },
+  "remainingRisks": [
+    "Integration testleri Docker olmadigindan calistirilamadi",
+    "Nowgoal gercek format array-literal degilse parser guvenli NO_DATA doner ve odds kapsami duser",
+    "ADMIN_API_TOKEN set edilmezse production'da diagnostics/cleanup tamamen erisilemez",
+    "020 migration schema_migrations kaydi yoksa ilk uygulanista bir kez TRUNCATE calistirir (tasarim)",
+    "npm ci tamamlanmadi; temiz ortam kurulum dogrulamasi yapilmadi"
+  ],
+  "summary": {
+    "commit": "fix: harden production db and provider execution paths",
+    "security_fix_status": "4/4 confirmed findings fixed",
+    "test_status": "unit PASS (58 files / 317 tests); typecheck/lint/build PASS; integration NOT RUN (Docker unavailable); npm ci ABORTED"
+  }
+}

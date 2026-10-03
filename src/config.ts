@@ -125,6 +125,9 @@ const schema = z.object({
   AI_ROUTER_PROVIDER: z.enum(['groq', 'nvidia']).default('groq'),
   AI_FALLBACK_PROVIDER: z.enum(['groq', 'nvidia', 'none']).default('nvidia'),
   AI_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(60_000).default(15_000),
+  // Optional shared secret for privileged operational endpoints. When unset in
+  // production those endpoints are disabled (404). Never logged or returned.
+  ADMIN_API_TOKEN: optionalText,
 });
 
 export type AppConfig = z.infer<typeof schema>;

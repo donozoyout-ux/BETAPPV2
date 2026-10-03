@@ -103,7 +103,7 @@ describe('Nowgoal odds provider', () => {
 
   it('supports direct SoccerAjax endpoint for health check and fixtures with type 4 odds', async () => {
     const config = loadConfig({ DATABASE_URL: 'postgresql://localhost/betapp', NOWGOAL_BASE_URL: 'https://www.nowgoal26.com' });
-    const { entries, logger } = captureLogger();
+    const { logger } = captureLogger();
     const provider = new NowgoalProvider(config, logger);
 
     const type6Data = 'var A=Array(2);var B=Array(2);A[1]=[1001,1,10,20,\'Arsenal\',\'Chelsea\',\'2026,8,20,15,00,00\',0];B[1]=[1,\'PL\',\'Premier League\'];';

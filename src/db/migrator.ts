@@ -28,10 +28,11 @@ export async function runMigrations(pool: DatabasePool): Promise<void> {
   const directory = migrationsDirectory();
   const client = await pool.connect();
   try {
-    // Terminate any stale backends blocking exclusive locks and set bounded lock timeout
-    await client.query(`SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND datname = current_database()`).catch(() => undefined);
+    // Migration serialization is handled by the advisory lock below. Never terminate
+    // other application connections (web/worker/health/backfill) and never truncate
+    // observability/provenance tables on startup. Bounded lock wait is retained so a
+    // concurrent migration holder surfaces as a normal PostgreSQL lock error.
     await client.query("SET lock_timeout = '10s'").catch(() => undefined);
-    await client.query('TRUNCATE TABLE data_observations, source_payloads').catch(() => undefined);
 
     await client.query('SELECT pg_advisory_lock(hashtext($1))', ['betapp-v2:migrations']);
     await client.query(`CREATE TABLE IF NOT EXISTS schema_migrations (

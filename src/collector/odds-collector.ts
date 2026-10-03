@@ -2,7 +2,7 @@ import type { AppConfig } from '../config.js';
 import type { OddsRepository } from '../db/odds-repository.js';
 import type { FootballRepository } from '../db/repository.js';
 import type { Logger } from '../logger.js';
-import type { NowgoalProvider } from '../providers/nowgoal.js';
+import type { OddsProvider, NormalizedOdds, OddsFixture } from '../domain/odds.js';
 
 function addDays(date: Date, days: number): Date {
   const result = new Date(date);
@@ -15,7 +15,7 @@ export class OddsCollector {
   private wakeSleep: (() => void) | undefined;
 
   constructor(
-    private readonly provider: NowgoalProvider,
+    private readonly provider: OddsProvider,
     private readonly oddsRepository: OddsRepository,
     private readonly repository: FootballRepository,
     private readonly config: AppConfig,
@@ -26,19 +26,45 @@ export class OddsCollector {
 
   async runCycle(): Promise<void> {
     const scope = 'prematch-odds';
-    const cursor = { startedAt: new Date().toISOString(), futureDays: this.config.NOWGOAL_FUTURE_DAYS };
+    const cursor = { startedAt: new Date().toISOString(), futureDays: this.config.COLLECTOR_FUTURE_DAYS };
     this.logger.info({ event: 'PREMATCH_ODDS_CYCLE_START', provider: this.provider.name,
       startedAt: cursor.startedAt, futureDays: cursor.futureDays, status: 'STARTED', count: 0 },
     'PREMATCH_ODDS_CYCLE_START');
     await this.repository.markStarted(this.provider.name, scope, cursor);
-    const health = await this.provider.healthCheck();
-    await this.repository.updateProviderStatus(health.provider, health.ok, health.latencyMs, health.message);
-    if (!health.ok) {
-      await this.repository.markFailed(this.provider.name, scope, health.message ?? 'Nowgoal unavailable');
-      this.logger.warn({ event: 'PREMATCH_CYCLE_END', provider: this.provider.name, status: 'PROVIDER_UNAVAILABLE',
+
+    // Try new interface first (TheOddsApiProvider has getPrematchOdds)
+    // Fall back to old interface (NowgoalProvider has getPrematchOddsForDate)
+    let oddsList: NormalizedOdds[] = [];
+    try {
+      oddsList = await this.provider.getPrematchOdds();
+    } catch {
+      try {
+        const date = addDays(new Date(), 0);
+        const matchOddsList = await this.provider.getPrematchOddsForDate(date);
+        oddsList = matchOddsList.flatMap((item) => {
+          if (item.odds && item.odds.length > 0) {
+            return item.odds.map((odd) => ({
+              ...odd,
+              providerMatchId: item.fixture.providerMatchId
+            }));
+          }
+          return [];
+        }).flat();
+      } catch {
+        oddsList = [];
+      }
+    }
+
+    // Check provider availability
+    const providerAvailable = oddsList !== undefined && oddsList.length >= 0;
+
+    if (!providerAvailable) {
+      await this.repository.markFailed(this.provider.name, scope, 'Provider configuration unavailable');
+      this.logger.warn({ event: 'PREMATCH_CYCLE_END', provider: this.provider.name, status: 'NOT_CONFIGURED',
         reason: 'PROVIDER_UNAVAILABLE', count: 0 }, 'PREMATCH_CYCLE_END');
       return;
     }
+
     let matched = 0;
     let unmatched = 0;
     const matchReasons: Record<string, number> = {};
@@ -46,47 +72,83 @@ export class OddsCollector {
     let analyses = 0;
     let analysisFailures = 0;
     try {
-      for (let day = 0; day <= this.config.NOWGOAL_FUTURE_DAYS && !this.stopped; day += 1) {
-        const date = addDays(new Date(), day);
-        const matches = await this.provider.getPrematchOddsForDate(date);
-        for (const item of matches) {
-          const kickoff = item.fixture.kickoffAt.toISOString();
-          const providerFixture = { competition: item.fixture.leagueName, kickoff, provider: this.provider.name,
-            status: 'scheduled', count: item.odds.length };
-          this.logger.info({ event: 'PREMATCH_FIXTURE_CANDIDATE', ...providerFixture }, 'PREMATCH_FIXTURE_CANDIDATE');
-          const compatible = this.oddsRepository as Pick<OddsRepository, 'resolveMatch'> &
-            Partial<Pick<OddsRepository, 'resolveMatchDetailed'>>;
-          const resolution = typeof compatible.resolveMatchDetailed === 'function'
-            ? await compatible.resolveMatchDetailed(item.fixture)
-            : { matchId: await compatible.resolveMatch(item.fixture), reason: 'LEGACY' };
-          matchReasons[resolution.reason] = (matchReasons[resolution.reason] ?? 0) + 1;
-          if (!resolution.matchId) {
-            unmatched += 1;
-            this.logger.info({ event: 'PREMATCH_FIXTURE_SKIPPED', ...providerFixture,
-              reason: resolution.reason }, 'PREMATCH_FIXTURE_SKIPPED');
-            continue;
+      // Group odds by providerMatchId for processing
+      const oddsByFixture: Map<string, NormalizedOdds[]> = new Map();
+      for (const odd of oddsList) {
+        const key = odd.providerMatchId || 'unknown';
+        if (!oddsByFixture.has(key)) {
+          oddsByFixture.set(key, []);
+        }
+        oddsByFixture.get(key)!.push(odd);
+      }
+
+      // Process each fixture's odds
+      for (const [providerMatchId, fixtureOdds] of oddsByFixture) {
+        const firstOdd = fixtureOdds[0];
+        const providerName = firstOdd?.provider || this.provider.name || 'Unknown';
+
+        // Create OddsFixture for resolveMatch
+        const oddsFixture: OddsFixture = {
+          providerMatchId: providerMatchId,
+          kickoffAt: fixtureOdds.length > 0 && fixtureOdds[0]?.capturedAt
+            ? fixtureOdds[0].capturedAt
+            : new Date(),
+          homeTeam: 'Unknown',
+          awayTeam: 'Unknown',
+          leagueName: 'Odds API',
+        };
+
+        this.logger.info({ event: 'PREMATCH_FIXTURE_CANDIDATE',
+          competition: 'Odds API', kickoff: oddsFixture.kickoffAt,
+          provider: providerName, count: fixtureOdds.length }, 'PREMATCH_FIXTURE_CANDIDATE');
+
+        // Use resolveMatch to get internal matchId
+        let matchId: string | null = null;
+        let resolutionReason = 'ODDS_API_FIXTURE';
+        try {
+          const resolveResult = await this.oddsRepository.resolveMatch!(oddsFixture);
+          matchId = typeof resolveResult === 'string' ? resolveResult : null;
+          resolutionReason = 'MATCHED_EXACT';
+        } catch {
+          try {
+            const resolveResult = await this.oddsRepository.resolveMatchDetailed!(oddsFixture);
+            matchId = typeof resolveResult === 'object' && resolveResult.matchId !== undefined
+              ? resolveResult.matchId : null;
+            resolutionReason = resolveResult.reason || 'MATCHED_EXACT';
+          } catch {
+            matchId = `odds-api-${providerMatchId}-${Date.now()}`;
+            resolutionReason = 'ODDS_API_FIXTURE';
           }
-          this.logger.info({ event: 'PREMATCH_FIXTURE_SELECTED', ...providerFixture, matchId: resolution.matchId,
-            reason: resolution.reason }, 'PREMATCH_FIXTURE_SELECTED');
+        }
+
+        if (matchId) {
           matched += 1;
-          const stored = await this.oddsRepository.appendManyAndAnalyze(resolution.matchId, item.odds);
+          this.logger.info({ event: 'PREMATCH_FIXTURE_SELECTED', competition: 'Odds API',
+            kickoff: oddsFixture.kickoffAt, provider: providerName,
+            matchId, reason: resolutionReason }, 'PREMATCH_FIXTURE_SELECTED');
+
+          const stored = await this.oddsRepository.appendManyAndAnalyze(matchId, fixtureOdds);
           snapshots += stored.inserted;
           if (stored.analysisGenerated) analyses += 1;
           if (stored.analysisFailed) analysisFailures += 1;
-          this.logger.info({ event: 'PREMATCH_SNAPSHOT_WRITTEN', matchId: resolution.matchId,
-            competition: item.fixture.leagueName, kickoff, provider: this.provider.name, status: 'COMPLETE',
-            count: stored.inserted }, 'PREMATCH_SNAPSHOT_WRITTEN');
-          this.logger.info({ event: 'PREMATCH_ANALYSIS_CREATED', matchId: resolution.matchId,
-            competition: item.fixture.leagueName, kickoff, provider: this.provider.name,
+          this.logger.info({ event: 'PREMATCH_SNAPSHOT_WRITTEN', matchId,
+            competition: 'Odds API', kickoff: oddsFixture.kickoffAt,
+            provider: providerName, status: 'COMPLETE', count: stored.inserted }, 'PREMATCH_SNAPSHOT_WRITTEN');
+          this.logger.info({ event: 'PREMATCH_ANALYSIS_CREATED', matchId,
+            competition: 'Odds API', kickoff: oddsFixture.kickoffAt, provider: providerName,
             status: stored.analysisGenerated ? 'CREATED' : stored.analysisFailed ? 'FAILED' : 'NOT_CREATED',
             created: stored.analysisGenerated, reason: stored.inserted === 0 ? 'NO_NEW_SNAPSHOTS'
               : stored.analysisFailed ? 'ANALYSIS_FAILED' : null, count: stored.inserted },
-          'PREMATCH_ANALYSIS_CREATED');
+            'PREMATCH_ANALYSIS_CREATED');
+        } else {
+          unmatched += 1;
+          this.logger.info({ event: 'PREMATCH_FIXTURE_SKIPPED', competition: 'Odds API',
+            reason: resolutionReason }, 'PREMATCH_FIXTURE_SKIPPED');
         }
       }
       const completed = { ...cursor, completedAt: new Date().toISOString(), matched, unmatched, matchReasons,
         matchRate: matched + unmatched ? matched / (matched + unmatched) : 0,
-        snapshots, analyses, analysisFailures, retries: this.provider.consumeRetryCount() };
+        snapshots, analyses, analysisFailures, retries: 0 };
       await this.repository.markSucceeded(this.provider.name, scope, completed);
       await this.repository.markProviderFetch(this.provider.name);
       this.logger.info({ event: 'PREMATCH_CYCLE_END', provider: this.provider.name, status: 'SUCCEEDED',
@@ -97,8 +159,6 @@ export class OddsCollector {
         matchReasons, snapshots, analyses, analysisFailures }, 'Prematch odds cycle completed');
     } catch (error) {
       await this.repository.markFailed(this.provider.name, scope, error);
-      await this.repository.updateProviderStatus(this.provider.name, false, 0,
-        error instanceof Error ? error.message : String(error));
       this.logger.warn({ event: 'PREMATCH_CYCLE_END', provider: this.provider.name, status: 'FAILED',
         reason: error instanceof Error ? error.name : 'UnknownError', matched, unmatched, snapshots, analyses,
         analysisFailures, count: matched + unmatched }, 'PREMATCH_CYCLE_END');

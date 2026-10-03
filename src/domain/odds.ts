@@ -25,4 +25,5 @@ export type MatchOdds = {
 export interface OddsProvider {
   readonly name: string;
   getPrematchOdds(): Promise<NormalizedOdds[]>;
+  getPrematchOddsForDate(date: Date): Promise<MatchOdds[]>;
 }

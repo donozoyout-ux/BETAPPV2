@@ -1,5 +1,5 @@
 import type { AppConfig } from '../config.js';
-import type { NormalizedOdds, OddsProvider } from '../domain/odds.js';
+import type { MatchOdds, NormalizedOdds, OddsProvider } from '../domain/odds.js';
 import { notTestedChecks, type ProviderQualification, type QualifiableProvider } from '../qualification/types.js';
 
 abstract class PublicPageQualificationProvider implements QualifiableProvider {
@@ -43,6 +43,7 @@ export class IddaaProvider extends PublicPageQualificationProvider implements Od
   protected readonly relevantCapabilities = ['FIXTURES', 'PREMATCH_ODDS', 'LIVE_ODDS', 'ODDS_MARKETS'] as const;
   constructor(config: AppConfig) { super(); this.baseUrl = config.IDDAA_BASE_URL; }
   async getPrematchOdds(): Promise<NormalizedOdds[]> { return []; }
+  async getPrematchOddsForDate(_date: Date): Promise<MatchOdds[]> { return []; }
 }
 
 export class FlashscoreProvider extends PublicPageQualificationProvider {

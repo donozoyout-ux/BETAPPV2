@@ -13,6 +13,7 @@ import { FotMobProvider } from './providers/fotmob.js';
 import { CornerRepository } from './db/corner-repository.js';
 import { buildAllLeagueBaselines, buildAllTeamProfiles } from './corners/profiles.js';
 import { NowgoalProvider } from './providers/nowgoal.js';
+import { TheOddsApiProvider } from './providers/the-odds-api.js';
 import { OddsRepository } from './db/odds-repository.js';
 import { OddsCollector } from './collector/odds-collector.js';
 import { ApiFootballPrematchOddsCollector } from './collector/api-football-odds-collector.js';
@@ -33,6 +34,14 @@ import { GoogleLiveOddsSheetSync } from './sheets/nowgoal-live-odds.js';
 
 const config = loadConfig();
 const logger = createLogger(config, 'betapp-worker');
+const oddsApiEnabled = config.THE_ODDS_API_ENABLED === true;
+const oddsApiKeyPresent = Boolean(config.THE_ODDS_API_KEY?.trim());
+const oddsApiConfigured = oddsApiEnabled && oddsApiKeyPresent;
+let oddsApiProvider: TheOddsApiProvider | null = null;
+if (oddsApiConfigured) {
+  oddsApiProvider = new TheOddsApiProvider(config, logger);
+}
+
 const envPresence = (name: string) => process.env[name]?.trim() ? 'SET' : 'NOT_SET';
 logger.info({ event: 'PREMATCH_ODDS_ENV_STATUS', provider: 'nowgoal',
   nowgoalEnabled: envPresence('NOWGOAL_ENABLED'),
@@ -40,6 +49,9 @@ logger.info({ event: 'PREMATCH_ODDS_ENV_STATUS', provider: 'nowgoal',
   collectorInterval: envPresence('COLLECTOR_INTERVAL_MS'),
   nowgoalBaseUrl: envPresence('NOWGOAL_BASE_URL'),
   nowgoalCompanyIds: envPresence('NOWGOAL_COMPANY_IDS') }, 'PREMATCH_ODDS_ENV_STATUS');
+
+logger.info({ event: 'THE_ODDS_API_RUNTIME_STATUS', enabled: oddsApiEnabled, configured: oddsApiConfigured,
+  instantiated: oddsApiProvider !== null, providerName: oddsApiProvider?.name ?? 'nowgoal', reason: oddsApiConfigured ? 'READY' : oddsApiEnabled ? 'MISSING_KEY' : 'DISABLED' }, 'THE_ODDS_API_RUNTIME_STATUS');
 const pool = createPool({ ...config,
   DB_POOL_MAX: Math.min(config.DB_POOL_MAX, 4),
   DB_CONNECT_TIMEOUT: Math.max(config.DB_CONNECT_TIMEOUT, 15_000),
@@ -62,8 +74,15 @@ const footballCollectors = [new Collector(sofascore, repository, config, logger)
   })] : []),
 ];
 const nowgoal = new NowgoalProvider(config, logger);
+
 const oddsCollector = config.NOWGOAL_ENABLED
-  ? new OddsCollector(nowgoal, oddsRepository, repository, config, logger)
+  ? new OddsCollector(
+      oddsApiProvider ?? nowgoal,
+      oddsRepository,
+      repository,
+      config,
+      logger,
+    )
   : null;
 const predictionRepository = new PredictionRepository(pool, config.SUPPORTED_COMPETITIONS);
 const predictionService = new PredictionService(predictionRepository);
@@ -189,25 +208,21 @@ async function runCycle(): Promise<void> {
     try { await predictionRepository.refreshHistoricalIncremental(); }
     catch (error) { logger.error({ err: error }, 'Prediction historical refresh failed; continuing'); }
   }
+if (!stopped) {
+    try { await predictionService.refreshPreviewsAndLocks(); }
+    catch (error) { logger.error({ err: error }, 'Prediction preview/lock cycle failed; continuing'); }
+  }
   if (!stopped) {
     logger.info(prematchCollectorRuntimeStatus({ enabled: config.NOWGOAL_ENABLED,
       instantiated: oddsCollector !== null, started: oddsCollector !== null,
       source: 'worker.runCycle', reason: oddsCollector ? null : 'NOWGOAL_DISABLED' }),
-    'PREMATCH_COLLECTOR_RUNTIME_STATUS');
+      'PREMATCH_COLLECTOR_RUNTIME_STATUS');
     try { await oddsCollector?.runCycle(); }
     catch (error) { logger.error({ err: error }, 'Odds collector cycle failed'); }
   }
   if (!stopped) {
     try { await predictionService.refreshPreviewsAndLocks(); }
     catch (error) { logger.error({ err: error }, 'Prediction preview/lock cycle failed; continuing'); }
-  }
-  if (!stopped) {
-    try {
-      const audit = await controlAudit.run();
-      logger.info({ status: audit.status, version: audit.version }, 'Control audit completed');
-    } catch (error) {
-      logger.error({ err: error }, 'Control audit failed; continuing');
-    }
   }
 }
 

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { AppConfig } from '../config.js';
 import type { MatchOdds, NormalizedOdds, OddsFixture, OddsProvider } from '../domain/odds.js';
 import type { Logger } from '../logger.js';
+import { NowgoalScraperResult, getNowgoalScraper, fetchNowgoalOdds } from '../scrapers/nowgoal-scraper.js';
 import { check, statusFromError } from '../qualification/helpers.js';
 import { providerCapabilities, type ProviderQualification, type QualifiableProvider } from '../qualification/types.js';
 import { ProviderHttpError, ResilientHttpClient } from './http-client.js';
@@ -332,10 +333,36 @@ export class NowgoalProvider implements OddsProvider, QualifiableProvider {
   }
 
   async getPrematchOddsForDate(date: Date): Promise<MatchOdds[]> {
-    if (this.isDirect) {
-      return this.getPrematchOddsDirect(date);
+    const primaryResult = (this.isDirect
+      ? await this.getPrematchOddsDirect(date)
+      : await this.getPrematchOddsProxy(date));
+
+    // If primary provider returned no odds, try Nowgoal scraper as fallback
+    if (primaryResult.length === 0) {
+      this.logger.info({ event: 'NOWGOAL_FALLBACK_SCRAPER', provider: this.name,
+        reason: 'PRIMARY_PROVIDER_EMPTY', date: dateOnly(date) }, 'NOWGOAL_FALLBACK_SCRAPER');
+      try {
+        const scraperResult = await fetchNowgoalOdds(this.config, this.logger, date);
+        if (scraperResult.success && scraperResult.odds.length > 0) {
+          this.logger.info({ event: 'NOWGOAL_SCRAPER_FALLBACK_WORKED', count: scraperResult.odds.length }, 'NOWGOAL_SCRAPER_FALLBACK_WORKED');
+          // Convert scraper odds (NormalizedOdds[]) to MatchOdds[] format
+          return scraperResult.odds.map((odd) => ({
+            fixture: {
+              providerMatchId: odd.providerMatchId,
+              kickoffAt: odd.capturedAt,
+              homeTeam: 'Unknown',
+              awayTeam: 'Unknown',
+              leagueName: 'Nowgoal',
+            },
+            odds: [odd],
+          }));
+        }
+      } catch (scraperError) {
+        this.logger.warn({ err: scraperError, event: 'NOWGOAL_SCRAPER_FALLBACK_FAILED' }, 'NOWGOAL_SCRAPER_FALLBACK_FAILED');
+      }
     }
-    return this.getPrematchOddsProxy(date);
+
+    return primaryResult;
   }
 
   private async getPrematchOddsDirect(date: Date): Promise<MatchOdds[]> {

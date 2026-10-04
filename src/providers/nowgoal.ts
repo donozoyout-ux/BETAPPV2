@@ -278,15 +278,19 @@ export function parseNowgoalType4Odds(
 export class NowgoalProvider implements OddsProvider, QualifiableProvider {
   readonly name = 'nowgoal';
   private readonly http: ResilientHttpClient;
+  private readonly fallbackClients: Array<{ baseUrl: string; http: ResilientHttpClient }>;
   private readonly companyIds: number[];
   private readonly isDirect: boolean;
 
   constructor(private readonly config: AppConfig, private readonly logger: Logger) {
     this.companyIds = config.NOWGOAL_COMPANY_IDS;
     this.isDirect = !config.NOWGOAL_BASE_URL.includes('/proxy') && !config.NOWGOAL_BASE_URL.includes('wp-json');
-    this.http = new ResilientHttpClient({ baseUrl: config.NOWGOAL_BASE_URL.replace(/\/$/, ''),
-      timeoutMs: config.PROVIDER_TIMEOUT_MS, requestsPerSecond: config.PROVIDER_REQUESTS_PER_SECOND,
-      maxRetries: config.PROVIDER_MAX_RETRIES, logger });
+    const baseUrls = [...new Set([config.NOWGOAL_BASE_URL, ...config.NOWGOAL_FALLBACK_BASE_URLS])].map((url) => url.replace(/\/$/, ''));
+    this.http = new ResilientHttpClient({ baseUrl: baseUrls[0]!, timeoutMs: config.PROVIDER_TIMEOUT_MS,
+      requestsPerSecond: config.PROVIDER_REQUESTS_PER_SECOND, maxRetries: config.PROVIDER_MAX_RETRIES, logger });
+    this.fallbackClients = baseUrls.slice(1).map((baseUrl) => ({ baseUrl,
+      http: new ResilientHttpClient({ baseUrl, timeoutMs: config.PROVIDER_TIMEOUT_MS,
+        requestsPerSecond: config.PROVIDER_REQUESTS_PER_SECOND, maxRetries: config.PROVIDER_MAX_RETRIES, logger }) }));
   }
 
   private proxyPath(path: string): string { return `?path=${encodeURIComponent(path)}`; }
@@ -294,17 +298,31 @@ export class NowgoalProvider implements OddsProvider, QualifiableProvider {
   private async requestJson<T>(path: string, date: Date, requestType: string): Promise<{ payload: T; status: number | null }> {
     this.logger.info({ event: 'PREMATCH_PROVIDER_REQUEST', provider: this.name, date: dateOnly(date), requestType },
       'PREMATCH_PROVIDER_REQUEST');
-    let status: number | null = null;
-    try {
-      const payload = await this.http.getJson<T>(path, (responseStatus) => { status = responseStatus; });
-      return { payload, status };
-    } catch (error) {
-      const errorStatus = error instanceof ProviderHttpError ? error.status ?? status : status;
-      this.logger.warn({ event: 'PREMATCH_PROVIDER_RESPONSE', provider: this.name, date: dateOnly(date), requestType,
-        httpStatus: errorStatus, requestSuccess: false, count: 0,
-        errorClass: error instanceof Error ? error.name : 'UnknownError' }, 'PREMATCH_PROVIDER_RESPONSE');
-      throw error;
+    const clients = [{ baseUrl: this.config.NOWGOAL_BASE_URL.replace(/\/$/, ''), http: this.http }, ...this.fallbackClients];
+    let lastError: unknown;
+    for (let index = 0; index < clients.length; index += 1) {
+      const candidate = clients[index]!;
+      let status: number | null = null;
+      try {
+        const payload = await candidate.http.getJson<T>(path, (responseStatus) => { status = responseStatus; });
+        if (index > 0) this.logger.warn({ event: 'NOWGOAL_FAILOVER_SELECTED', provider: this.name,
+          baseHost: new URL(candidate.baseUrl).hostname, requestType }, 'NOWGOAL_FAILOVER_SELECTED');
+        return { payload, status };
+      } catch (error) {
+        lastError = error;
+        const errorStatus = error instanceof ProviderHttpError ? error.status ?? status : status;
+        this.logger.warn({ event: 'NOWGOAL_FAILOVER_ATTEMPT', provider: this.name,
+          baseHost: new URL(candidate.baseUrl).hostname, requestType, httpStatus: errorStatus,
+          attempt: index + 1, remaining: clients.length - index - 1,
+          errorClass: error instanceof Error ? error.name : 'UnknownError' }, 'NOWGOAL_FAILOVER_ATTEMPT');
+        if (index === clients.length - 1) {
+          this.logger.warn({ event: 'PREMATCH_PROVIDER_RESPONSE', provider: this.name, date: dateOnly(date), requestType,
+            httpStatus: errorStatus, requestSuccess: false, count: 0,
+            errorClass: error instanceof Error ? error.name : 'UnknownError' }, 'PREMATCH_PROVIDER_RESPONSE');
+        }
+      }
     }
+    throw lastError instanceof Error ? lastError : new ProviderHttpError('Nowgoal provider unavailable');
   }
 
   private logResponse(date: Date, requestType: string, status: number | null, count: number) {
@@ -459,7 +477,7 @@ export class NowgoalProvider implements OddsProvider, QualifiableProvider {
     return (await this.getPrematchOddsForDate(new Date())).flatMap((match) => match.odds);
   }
 
-  consumeRetryCount() { return this.http.consumeRetryCount(); }
+  consumeRetryCount() { return this.http.consumeRetryCount() + this.fallbackClients.reduce((sum, item) => sum + item.http.consumeRetryCount(), 0); }
 
   async healthCheck() {
     const startedAt = Date.now();

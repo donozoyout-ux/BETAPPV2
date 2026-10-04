@@ -55,6 +55,8 @@ services:
         value: 2,3,4,14,15,22,136
       - key: NOWGOAL_BASE_URL
         value: https://www.nowgoal26.com
+      - key: NOWGOAL_FALLBACK_BASE_URLS
+        value: https://www.nowgoal.world,https://www.nowgoal.net,https://www.nowgoal828.com
       - key: SUPPORTED_COMPETITIONS
         value: PremierLeague,LaLiga,Bundesliga,SerieA,Ligue1,SuperLig,ChampionsLeague,EuropaLeague,ConferenceLeague,BrasileiraoSerieA,WorldCup,EURO,EUROQualification,UefaNationsLeagueA,UefaNationsLeagueB,UefaNationsLeagueC,UefaNationsLeagueD,WorldCupQualificationUEFA,CopaAmerica,WorldCupQualificationCONMEBOL,InternationalFriendlies,Eredivisie,BelgianProLeague,DanishSuperliga,Allsvenskan,GreekSuperLeague
       - key: GROQ_API_KEY
@@ -168,6 +170,8 @@ services:
         value: 2,3,4,14,15,22,136
       - key: NOWGOAL_BASE_URL
         value: https://www.nowgoal26.com
+      - key: NOWGOAL_FALLBACK_BASE_URLS
+        value: https://www.nowgoal.world,https://www.nowgoal.net,https://www.nowgoal828.com
       - key: SUPPORTED_COMPETITIONS
         value: PremierLeague,LaLiga,Bundesliga,SerieA,Ligue1,SuperLig,ChampionsLeague,EuropaLeague,ConferenceLeague,BrasileiraoSerieA,WorldCup,EURO,EUROQualification,UefaNationsLeagueA,UefaNationsLeagueB,UefaNationsLeagueC,UefaNationsLeagueD,WorldCupQualificationUEFA,CopaAmerica,WorldCupQualificationCONMEBOL,InternationalFriendlies,Eredivisie,BelgianProLeague,DanishSuperliga,Allsvenskan,GreekSuperLeague
       - key: COLLECTOR_INTERVAL_MS

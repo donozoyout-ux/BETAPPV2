@@ -119,6 +119,11 @@ const schema = z.object({
   IDDAA_BASE_URL: z.string().url().default('https://www.iddaa.com'),
   FLASHSCORE_BASE_URL: z.string().url().default('https://www.flashscore.com'),
   NOWGOAL_BASE_URL: z.string().url().default('https://www.nowgoal26.com'),
+  NOWGOAL_FALLBACK_BASE_URLS: z.string().default('https://www.nowgoal.world,https://www.nowgoal.net,https://www.nowgoal828.com').transform((value, context) => {
+    const urls = [...new Set(value.split(',').map((item) => item.trim()).filter(Boolean))];
+    for (const url of urls) { try { new URL(url); } catch { context.addIssue({ code: 'custom', message: `Invalid NOWGOAL_FALLBACK_BASE_URLS URL: ${url}` }); } }
+    return urls;
+  }),
   PROVIDER_CIRCUIT_FAILURE_THRESHOLD: z.coerce.number().int().min(1).max(20).default(3),
   PROVIDER_CIRCUIT_COOLDOWN_MS: z.coerce.number().int().min(10_000).default(300_000),
   NVIDIA_API_KEY: z.string().default(''),

@@ -41,7 +41,7 @@ function normalizeTheOddsApiBooks(bookmakers: unknown[], fixture: TheOddsApiFixt
     const bookmakerObj = bookmaker as Record<string, unknown>;
     const bookmakerKey = typeof bookmakerObj.key === 'string' ? bookmakerObj.key.toLowerCase() : '';
     const bookmakerName = bookmakerKey.trim() || 'unknown';
-    const lastUpdate = typeof bookmakerObj.last_update === 'number' ? bookmakerObj.last_update * 1000 : null;
+    const lastUpdate = typeof bookmakerObj.last_update === 'string'      ? new Date(bookmakerObj.last_update)      : typeof bookmakerObj.last_update === 'number'        ? new Date(bookmakerObj.last_update * 1000)        : null;
 
     const markets = Array.isArray(bookmakerObj.markets) ? bookmakerObj.markets as Record<string, unknown>[] : [];
     for (const market of markets) {

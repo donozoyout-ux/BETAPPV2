@@ -34,7 +34,7 @@ import { GoogleLiveOddsSheetSync } from './sheets/nowgoal-live-odds.js';
 
 const config = loadConfig();
 const logger = createLogger(config, 'betapp-worker');
-const oddsApiEnabled = config.THE_ODDS_API_ENABLED === true;
+const oddsApiEnabled = false;
 const oddsApiKeyPresent = Boolean(config.THE_ODDS_API_KEY?.trim());
 const oddsApiConfigured = oddsApiEnabled && oddsApiKeyPresent;
 let oddsApiProvider: TheOddsApiProvider | null = null;
